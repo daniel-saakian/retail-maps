@@ -1,0 +1,6 @@
+flask
+requests
+tabulate
+PyGithub
+python-dotenv
+openpyxl
