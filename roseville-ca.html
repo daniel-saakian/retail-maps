@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8' />
+  <title>Retail Centers – Roseville, CA</title>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' />
+  <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
+  <style>
+    body { margin: 0; font-family: sans-serif; }
+    #map { height: 100vh; width: 100%; }
+    .legend {
+      background: white; padding: 10px 14px; border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); line-height: 1.8;
+      font-size: 13px;
+    }
+    .legend-dot { display: inline-block; width: 12px; height: 12px;
+                   border-radius: 50%; margin-right: 6px; }
+  </style>
+</head>
+<body>
+<div id='map'></div>
+<script>
+  var map = L.map('map').setView([38.69152505811112, -121.31665390341976], 12);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(map);
+
+  function addCluster(lat, lng, radius_m, name, address, county, city, numAnchors, stores, color) {
+    L.circle([lat, lng], {
+      radius: radius_m,
+      color: color,
+      fillColor: color,
+      fillOpacity: 0.08,
+      weight: 2
+    }).addTo(map);
+
+    var popup = '<b>' + name + '</b><br>'
+      + (address !== '-' ? address + '<br>' : '')
+      + city + (county !== '-' ? ', ' + county + ' County' : '') + '<br>'
+      + '<br><b>' + numAnchors + ' anchors:</b><br>'
+      + stores.split(', ').join('<br>');
+
+    L.circleMarker([lat, lng], {
+      radius: 7,
+      color: '#fff',
+      fillColor: color,
+      fillOpacity: 1,
+      weight: 2
+    }).bindPopup(popup).bindTooltip(name, {permanent: false, direction: 'top'}).addTo(map);
+  }
+
+  function addStore(lat, lng, name, address, color, plaza) {
+    var icon = L.divIcon({
+      className: '',
+      html: '<div style="width:9px;height:9px;border-radius:50%;background:' + color + ';border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.4)"></div>',
+      iconSize: [9, 9],
+      iconAnchor: [4, 4]
+    });
+    L.marker([lat, lng], {icon: icon})
+      .bindPopup('<b>' + name + '</b><br>' 
+        + '<i>' + plaza + '</i><br>'
+        + address)
+      .bindTooltip(name, {direction: 'top'})
+      .addTo(map);
+  }
+
+    addCluster(38.676761366666675, -121.27289555555555, 611.5, 'Sunrise Mall', '7929 Greenback Lane Citrus Heights', 'Sacramento County', 'Citrus Heights', 9, 'BevMo!, Sprouts Farmers Market, Marshalls, Harbor Freight Tools, Lowe\'s, Walmart Neighborhood Market, Dollar Tree, Best Buy, Target', '#e74c3c');
+  addCluster(38.639970983333335, -121.49772206666667, 611.5, 'The Promenade', '3601 North Freeway Boulevard Sacramento', 'Sacramento County', 'Sacramento', 6, 'Target, BevMo!, Burlington, TJ Maxx, Nordstrom Rack, Best Buy', '#e74c3c');
+  addCluster(38.59838668333333, -121.42482816666667, 611.5, 'Market Square at Arden Fair', '1896 Arden Way Sacramento', 'Sacramento County', 'Sacramento', 6, 'Macy\'s, Kohl\'s, Dollar Tree, Petco, H&M, Best Buy', '#e74c3c');
+  addCluster(38.5957682, -121.28747795, 611.5, 'Zinfandel Village', '10655 Folsom Boulevard Rancho Cordova', 'Sacramento County', 'Rancho Cordova', 6, 'Walmart Supercenter, Target, Marshalls, Ross, Grocery Outlet, Dollar Tree', '#e74c3c');
+  addCluster(38.596634333333334, -121.41681375, 611.5, 'Howe Bout Arden Shopping Center', '2201 Arden Way Sacramento', 'Sacramento County', 'Sacramento', 6, 'Walgreens, Harbor Freight, Dollar Tree, Nordstrom Rack, HomeGoods, Burlington', '#e74c3c');
+  addCluster(38.78753812, -121.28066559999999, 611.5, 'Nugget Plaza', '771 Pleasant Grove Boulevard Roseville', 'Placer County', 'Roseville', 5, 'Nugget Markets, BevMo!, Trader Joe\'s, Lowe\'s, WinCo Foods', '#e74c3c');
+  addCluster(38.940353339999994, -121.09682047999999, 611.5, 'Crossroads Shopping Center', '2700 Bell Road Auburn', '-', 'Auburn', 5, 'BevMo!, Target, Petco, The Home Depot, Smart & Final', '#e74c3c');
+  addCluster(38.744211719999996, -121.25361677999999, 611.5, 'Rocky Ridge Plaza', '2030 Douglas Boulevard Roseville', 'Placer County', 'Roseville', 5, 'Sprouts Farmers Market, BevMo!, TJ Maxx, Max Home Goods, Target', '#e74c3c');
+  addCluster(38.6189252, -121.39933169999999, 611.5, 'Town and Country Village', '2735 Marconi Avenue Sacramento', 'Sacramento County', 'Sacramento', 5, 'Sprouts Farmers Market, Walmart Neighborhood Market, TJ Maxx, Trader Joe\'s, Ross', '#e74c3c');
+  addCluster(38.58876534000001, -121.54883004000001, 611.5, 'Riverpoint Marketplace', '690 Riverpoint Court West Sacramento', 'Yolo County', 'West Sacramento', 5, 'Walmart Auto Care Center, The Home Depot, Walmart Supercenter, Ross, Petco', '#e74c3c');
+  addCluster(38.77399088, -121.26173708000002, 611.5, 'Creekside Town Center', '1248 Galleria Boulevard Roseville', 'Placer County', 'Roseville', 5, 'Burlington, Best Buy, Harbor Freight Tools, Nordstrom Rack, Marshalls', '#e74c3c');
+  addCluster(38.67836656, -121.29481348000002, 611.5, 'Unnamed Retail Center', '7342 Greenback Lane Citrus Heights', 'Sacramento County', 'Citrus Heights', 5, 'Ross, Burlington, Kohl\'s, Sam\'s Club, Safeway', '#3498db');
+  addCluster(38.671617780000005, -121.15524808, 611.5, 'Unnamed Retail Center', '1003 East Bidwell Street Folsom', 'Sacramento County', 'Folsom', 5, 'Dick\'s Sporting Goods, Target, Trader Joe\'s, HomeGoods, Lowe\'s', '#3498db');
+  addCluster(38.655411325, -121.127939075, 611.5, 'Broadstone Plaza', '2745 East Bidwell Street Folsom', 'Sacramento County', 'Folsom', 4, 'Marshalls, Ross, Walgreens, The Home Depot', '#e74c3c');
+  addCluster(38.745864725000004, -121.2743301, 611.5, 'Hillcrest Center', '424 Roseville Square Roseville', 'Placer County', 'Roseville', 4, 'Grocery Outlet, Smart & Final Extra!, Dollar Tree, Trader Joe\'s', '#e74c3c');
+  addCluster(38.647676175, -121.1181895, 611.5, 'Palladio at Broadstone', '270 Palladio Parkway Folsom', 'Sacramento County', 'Folsom', 4, 'Sam\'s Club, BevMo!, H&M, Whole Foods Market', '#e74c3c');
+  addCluster(38.63756135, -121.50695102499999, 611.5, 'Natomas Marketplace', '3701 Truxel Road Sacramento', 'Sacramento County', 'Sacramento', 4, 'Ross, HomeGoods, Indian Grocery Outlet, Walmart', '#e74c3c');
+  addCluster(38.527205349999996, -121.445789775, 611.5, 'Tirapelli Plaza', '5051 Fruitridge Road Sacramento Fruitridge', 'Sacramento County', 'Sacramento Fruitridge', 4, 'Dollar Tree, Harbor Freight Tools, Smart & Final, Ross', '#e74c3c');
+  addCluster(38.74234725, -121.22656417500001, 611.5, 'Renaissance Creek Shopping Center', '4051 Douglas Boulevard Granite Bay', 'Placer County', 'Granite Bay', 4, 'Walgreens, HomeGoods, Nugget Markets, Safeway', '#e74c3c');
+  addCluster(38.788659325, -121.28860212500001, 611.5, 'Highland Reserve Marketplace', '900 Pleasant Grove Boulevard Roseville', 'Placer County', 'Roseville', 4, 'Walmart Supercenter, Sam\'s Club, Target, Kohl\'s', '#e74c3c');
+  addCluster(38.7829461, -121.27004289999999, 611.5, 'Stanford Ranch Crossing', '10001 Fairway Drive Roseville', 'Placer County', 'Roseville', 4, 'The Home Depot, Dollar Tree, Ross, Dick\'s Sporting Goods', '#e74c3c');
+  addCluster(38.87084745, -121.30337867499999, 611.5, 'Unnamed Retail Center', '950 Groveland Lane Lincoln', 'Placer County', 'Lincoln', 4, 'Target, The Home Depot, TJ Maxx, Sprouts Farmers Market', '#3498db');
+  addCluster(38.658812675, -121.509570575, 611.5, 'Unnamed Retail Center', '4700 Natomas Boulevard Sacramento', 'Sacramento County', 'Sacramento', 4, 'Kohl\'s, Raley\'s, Marshalls, Dollar Tree', '#3498db');
+  addCluster(38.79460506666667, -121.32830263333334, 611.5, 'Crocker Ranch', '9045 Woodcreek Oaks Boulevard Roseville', 'Placer County', 'Roseville', 3, 'Walgreens, Nugget Markets, Safeway', '#e74c3c');
+  addCluster(38.661016499999995, -121.34961080000001, 611.5, 'College Oak Plaza Business Park', '5111 College Oak Dr. Sacramento', 'Sacramento County', 'Sacramento', 3, 'Dollar Tree, Smart & Final, Target', '#e74c3c');
+  addCluster(38.5947869, -121.38854786666667, 611.5, 'Ardendale', '3106 Arden Way Sacramento', 'Sacramento County', 'Sacramento', 3, 'BevMo!, Dollar Tree, Safeway', '#e74c3c');
+  addCluster(38.80359813333333, -121.20909556666668, 611.5, 'Rocklin Commons', '5112 Commons Drive Rocklin', 'Placer County', 'Rocklin', 3, 'Ross, Trader Joe\'s, Target', '#e74c3c');
+  addCluster(38.617840666666666, -121.27024896666667, 611.5, 'Rivergate Shopping Center', '2280 Sunrise Boulevard Rancho Cordova', 'Sacramento County', 'Rancho Cordova', 3, 'Grocery Outlet, Smart & Final, Dollar Tree', '#e74c3c');
+  addCluster(38.57648316666667, -121.48418553333335, 611.5, 'Velo Trap', '1712 L Street Sacramento', 'Sacramento County', 'Sacramento', 3, 'BevMo!, Target, Grocery Outlet', '#e74c3c');
+  addCluster(38.628973, -121.4769759, 611.5, 'Natomas Gardens', '3315 Northgate Boulevard Sacramento', 'Sacramento County', 'Sacramento', 3, 'Smart & Final, Dollar Tree, Ross', '#e74c3c');
+  addCluster(38.8017356, -121.20188436666666, 611.5, 'Rocklin Crossings', '5454 Crossings Drive Rocklin', 'Placer County', 'Rocklin', 3, 'Walmart Supercenter, TJ Maxx, HomeGoods', '#e74c3c');
+  addCluster(38.61108613333334, -121.44809173333333, 611.5, 'Unnamed Retail Center', '-', 'Sacramento County', '-', 3, 'Walgreens, Grocery Outlet, Lucky Market', '#3498db');
+  addCluster(38.690639366666666, -121.3825628, 611.5, 'Unnamed Retail Center', '6736 Watt Avenue North Highlands', 'Sacramento County', 'North Highlands', 3, 'Walgreens, Dollar Tree, Ross', '#3498db');
+  addCluster(38.59537726666667, -121.36431256666667, 611.5, 'Unnamed Retail Center', '4200 Arden Way Sacramento', 'Sacramento County', 'Sacramento', 3, 'Walgreens, Bel Air, Whole Foods Market', '#3498db');
+  addCluster(38.67986526666667, -121.2307104, 611.5, 'Unnamed Retail Center', '8839 Greenback Lane Orangevale', 'Sacramento County', 'Orangevale', 3, 'Save Mart, Grocery Outlet, WinCo Foods', '#3498db');
+  addCluster(38.8758397, -121.29484733333334, 611.5, 'Unnamed Retail Center', '51 Lincoln Boulevard Lincoln', 'Placer County', 'Lincoln', 3, 'Lowe\'s, Dollar Tree, Safeway', '#3498db');
+  addCluster(38.65491866666667, -121.06969443333334, 611.5, 'Unnamed Retail Center', '4500 Post Street El Dorado Hills', 'El Dorado County', 'El Dorado Hills', 3, 'Raley\'s, Nugget Markets, Walgreens', '#3498db');
+  addCluster(38.5518291, -121.42588223333333, 611.5, 'Unnamed Retail Center', '6507 4th Avenue Sacramento', 'Sacramento County', 'Sacramento', 3, 'Target, Dollar Tree, Grocery Outlet', '#3498db');
+  addCluster(38.66257616666667, -121.32523793333333, 611.5, 'Unnamed Retail Center', '6005 Madison Avenue Carmichael', 'Sacramento County', 'Carmichael', 3, 'Walmart Neighborhood Market, Ross, The Home Depot', '#3498db');
+  addCluster(38.714265266666665, -121.36648763333334, 611.5, 'Unnamed Retail Center', '4207 Elverta Road Antelope', 'Sacramento County', 'Antelope', 3, 'Petco, WinCo Foods, Bel Air', '#3498db');
+  addCluster(38.68997206666666, -121.1243214, 611.5, 'Unnamed Retail Center', '25025 Blue Ravine Road Folsom', 'Sacramento County', 'Folsom', 3, '99 Ranch Market, Dollar Tree, Raley\'s', '#3498db');
+  addCluster(38.931686299999996, -121.08864850000002, 611.5, 'Unnamed Retail Center', '1760 Grass Valley Highway Auburn', 'Placer County', 'Auburn', 3, 'Best Buy, Walgreens, Dollar Tree', '#3498db');
+  addCluster(38.6805859, -121.3204008, 611.5, 'Unnamed Retail Center', '6085 Greenback Lane Citrus Heights', 'Sacramento County', 'Citrus Heights', 3, 'Dollar Tree, Petco, Grocery Outlet', '#3498db');
+  addCluster(38.75226755, -121.30997550000001, 611.5, 'Unnamed Retail Center', '3999 Foothills Boulevard Roseville', 'Placer County', 'Roseville', 2, 'Walgreens, Raley\'s Bel Air', '#3498db');
+  addCluster(38.5800576, -121.5272421, 611.5, 'Unnamed Retail Center', '1351 West Capitol Avenue West Sacramento', '-', 'West Sacramento', 2, 'Walgreens, Raley\'s', '#3498db');
+    addStore(38.7897526, -121.279782, 'Nugget Markets', '771 Pleasant Grove Boulevard Roseville', '#e74c3c', 'Nugget Plaza');
+  addStore(38.649725, -121.326109, 'Foodmaxx', '4708 Manzanita Avenue', '#27ae60', 'Standalone Anchor');
+  addStore(38.6418424, -121.533552, 'Bel Air', '3250 Arena Boulevard', '#27ae60', 'Standalone Anchor');
+  addStore(38.7624832, -121.3127424, 'Dollar Tree', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.7887666, -121.28368, 'BevMo!', '-', '#e74c3c', 'Nugget Plaza');
+  addStore(38.7673647, -121.2670545, 'Whole Foods Market', '1001 Galleria Boulevard Roseville', '#27ae60', 'Standalone Anchor');
+  addStore(38.7724336, -121.2705732, 'H&M', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.9407089, -121.0933058, 'BevMo!', '-', '#e74c3c', 'Crossroads Shopping Center');
+  addStore(38.7429147, -121.2519953, 'Sprouts Farmers Market', '2030 Douglas Boulevard Roseville', '#e74c3c', 'Rocky Ridge Plaza');
+  addStore(38.9053539, -121.074061, 'Save Mart', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.9047723, -121.07521, 'Grocery Outlet', '415 Grass Valley Highway', '#27ae60', 'Standalone Anchor');
+  addStore(38.7448798, -121.2762033, 'Grocery Outlet', '424 Roseville Square Roseville', '#e74c3c', 'Hillcrest Center');
+  addStore(38.6620983, -121.2749434, 'Trader Joe\'s', '5309 Sunrise Boulevard Fair Oaks', '#27ae60', 'Standalone Anchor');
+  addStore(38.6454358, -121.1180681, 'Sam\'s Club', '-', '#e74c3c', 'Palladio at Broadstone');
+  addStore(38.6469299, -121.1157099, 'BevMo!', '-', '#e74c3c', 'Palladio at Broadstone');
+  addStore(38.6798271, -121.2703327, 'BevMo!', '7929 Greenback Lane Citrus Heights', '#e74c3c', 'Sunrise Mall');
+  addStore(38.6798103, -121.270794, 'Sprouts Farmers Market', '7905 Greenback Lane Citrus Heights', '#e74c3c', 'Sunrise Mall');
+  addStore(38.6609925, -120.9664973, 'Belair', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.6798655, -121.229027, 'Save Mart', '8839 Greenback Lane Orangevale', '#3498db', 'Unnamed Retail Center');
+  addStore(38.6373384, -121.506158, 'Ross', '3701 Truxel Road Sacramento', '#e74c3c', 'Natomas Marketplace');
+  addStore(38.6412216, -121.498638, 'Target', '3601 North Freeway Boulevard Sacramento', '#e74c3c', 'The Promenade');
+  addStore(38.6584959, -121.5082395, 'Kohl\'s', '4700 Natomas Boulevard Sacramento', '#3498db', 'Unnamed Retail Center');
+  addStore(38.6574654, -121.509945, 'Raley\'s', '-', '#3498db', 'Unnamed Retail Center');
+  addStore(38.6002768, -121.425265, 'Macy\'s', '-', '#e74c3c', 'Market Square at Arden Fair');
+  addStore(38.874087, -121.2948285, 'Lowe\'s', '51 Lincoln Boulevard Lincoln', '#3498db', 'Unnamed Retail Center');
+  addStore(38.6374314, -121.496599, 'BevMo!', '3678 North Freeway Boulevard Sacramento', '#e74c3c', 'The Promenade');
+  addStore(38.6118907, -121.496488, 'Bel Air', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.5770654, -121.5502033, 'Dollar Tree', '3015 West Capitol Avenue West Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.6557983, -121.069652, 'Raley\'s', '-', '#3498db', 'Unnamed Retail Center');
+  addStore(38.6691715, -121.1560808, 'Dick\'s Sporting Goods', '1003 East Bidwell Street Folsom', '#3498db', 'Unnamed Retail Center');
+  addStore(38.6718137, -121.1526678, 'Target', '430 Blue Ravine Road Folsom', '#3498db', 'Unnamed Retail Center');
+  addStore(38.6724297, -121.1558851, 'Trader Joe\'s', '850 East Bidwell Street Folsom', '#3498db', 'Unnamed Retail Center');
+  addStore(38.6683603, -121.1675262, 'Walmart Supercenter', '1018 Riley Street Folsom', '#27ae60', 'Standalone Anchor');
+  addStore(38.6411731, -121.4976914, 'Burlington', '3611 North Freeway Boulevard Sacramento', '#e74c3c', 'The Promenade');
+  addStore(38.5695842, -121.493943, 'Dollar Tree', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.5495395, -121.426261, 'Target', '6507 4th Avenue Sacramento', '#3498db', 'Unnamed Retail Center');
+  addStore(38.596234, -121.4237803, 'Kohl\'s', '1896 Arden Way Sacramento', '#e74c3c', 'Market Square at Arden Fair');
+  addStore(38.5966386, -121.4146569, 'Walgreens', '2201 Arden Way Sacramento', '#e74c3c', 'Howe Bout Arden Shopping Center');
+  addStore(38.5980764, -121.4278329, 'Dollar Tree', '1692 Arden Way Sacramento', '#e74c3c', 'Market Square at Arden Fair');
+  addStore(38.5952605, -121.391774, 'BevMo!', '3106 Arden Way Sacramento', '#e74c3c', 'Ardendale');
+  addStore(38.5478069, -121.4548403, 'Walgreens', '2900 Stockton Boulevard Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.6252538, -121.2635602, 'Bel Air', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.8034121, -121.209007, 'Ross', '5112 Commons Drive Rocklin', '#e74c3c', 'Rocklin Commons');
+  addStore(38.8028944, -121.20906, 'Trader Joe\'s', '5116 Commons Drive', '#e74c3c', 'Rocklin Commons');
+  addStore(38.6193357, -121.3983183, 'Sprouts Farmers Market', '2735 Marconi Avenue Sacramento', '#e74c3c', 'Town and Country Village');
+  addStore(38.6195838, -121.2691756, 'Grocery Outlet', '2280 Sunrise Boulevard Rancho Cordova', '#e74c3c', 'Rivergate Shopping Center');
+  addStore(38.6165531, -121.270698, 'Smart & Final', '-', '#e74c3c', 'Rivergate Shopping Center');
+  addStore(38.6173851, -121.2708733, 'Dollar Tree', '-', '#e74c3c', 'Rivergate Shopping Center');
+  addStore(38.7959292, -121.328017, 'Walgreens', '-', '#e74c3c', 'Crocker Ranch');
+  addStore(38.65398, -121.1271155, 'Marshalls', '-', '#e74c3c', 'Broadstone Plaza');
+  addStore(38.6536393, -121.1268709, 'Ross', '2745 East Bidwell Street Folsom', '#e74c3c', 'Broadstone Plaza');
+  addStore(38.6499626, -121.0621558, 'Target', '4400 Town Center Boulevard El Dorado Hills', '#27ae60', 'Standalone Anchor');
+  addStore(38.6528595, -121.0672066, 'Nugget Markets', '4500 Post Street El Dorado Hills', '#3498db', 'Unnamed Retail Center');
+  addStore(38.5775553, -121.4837086, 'BevMo!', '-', '#e74c3c', 'Velo Trap');
+  addStore(38.5778602, -121.483624, 'Target', '1707 J Street Sacramento', '#e74c3c', 'Velo Trap');
+  addStore(38.600279, -121.414845, 'Harbor Freight', '1900 Howe Avenue Sacramento', '#e74c3c', 'Howe Bout Arden Shopping Center');
+  addStore(38.5829954, -121.514748, 'Raley\'s', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.6796621, -121.2688785, 'Marshalls', '7975 Greenback Lane Citrus Heights', '#e74c3c', 'Sunrise Mall');
+  addStore(38.6495231, -121.1208786, 'H&M', '-', '#e74c3c', 'Palladio at Broadstone');
+  addStore(38.8924208, -121.293105, 'Dollar Tree', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.6170218, -121.3990868, 'Walmart Neighborhood Market', '2700 Marconi Avenue Sacramento', '#e74c3c', 'Town and Country Village');
+  addStore(38.6198699, -121.400012, 'TJ Maxx', '-', '#e74c3c', 'Town and Country Village');
+  addStore(38.6185413, -121.400195, 'Trader Joe\'s', '2625 Marconi Avenue Sacramento', '#e74c3c', 'Town and Country Village');
+  addStore(38.6198573, -121.3990464, 'Ross', '2729 Marconi Avenue Sacramento', '#e74c3c', 'Town and Country Village');
+  addStore(38.628318, -121.477035, 'Smart & Final', '3315 Northgate Boulevard Sacramento', '#e74c3c', 'Natomas Gardens');
+  addStore(38.6602036, -121.5105925, 'Marshalls', '-', '#3498db', 'Unnamed Retail Center');
+  addStore(38.6438045, -121.4578284, 'Walgreens', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.61085, -121.4476809, 'Walgreens', '-', '#3498db', 'Unnamed Retail Center');
+  addStore(38.6099912, -121.4770309, 'Harbor Freight Tools', '2361 Northgate Boulevard Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.6625991, -121.3249, 'Walmart Neighborhood Market', '6005 Madison Avenue Carmichael', '#3498db', 'Unnamed Retail Center');
+  addStore(38.5961282, -121.2918143, 'Walmart Supercenter', '10655 Folsom Boulevard Rancho Cordova', '#e74c3c', 'Zinfandel Village');
+  addStore(38.6705021, -121.5051865, 'Dollar Tree', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.6720384, -121.1539538, 'HomeGoods', '1010 East Bidwell Street Folsom', '#3498db', 'Unnamed Retail Center');
+  addStore(38.6411955, -121.497248, 'TJ Maxx', '3621 North Freeway Boulevard Sacramento', '#e74c3c', 'The Promenade');
+  addStore(38.5530101, -121.4259468, 'Dollar Tree', '-', '#3498db', 'Unnamed Retail Center');
+  addStore(38.5575686, -121.4380459, 'Petco', '5610 Folsom Boulevard Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.5577417, -121.438666, 'Save Mart', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.6123145, -121.4996454, 'Grocery Outlet', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.5258773, -121.445558, 'Dollar Tree', '-', '#e74c3c', 'Tirapelli Plaza');
+  addStore(38.5256153, -121.445593, 'Harbor Freight Tools', '5051 Fruitridge Road Sacramento Fruitridge', '#e74c3c', 'Tirapelli Plaza');
+  addStore(38.744421, -121.1732264, 'Raley\'s', '6845 Douglas Boulevard Granite Bay', '#27ae60', 'Standalone Anchor');
+  addStore(38.6514258, -121.3825222, 'Dollar Tree', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.6690645, -121.3380917, 'Harbor Freight Tools', '5439 Auburn Boulevard Sacramento North', '#27ae60', 'Standalone Anchor');
+  addStore(38.5485859, -121.3948422, 'Raley\'s', '8391 Folsom Boulevard Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.709514, -121.3132575, 'Raley\'s', '7847 Lichen Drive Citrus Heights', '#27ae60', 'Standalone Anchor');
+  addStore(38.7095047, -121.3126422, 'Dollar Tree', '7859 Lichen Drive Citrus Heights', '#27ae60', 'Standalone Anchor');
+  addStore(38.746942, -121.27344, 'Smart & Final Extra!', '1159 Roseville Square Roseville', '#e74c3c', 'Hillcrest Center');
+  addStore(38.6581053, -121.1293356, 'Walgreens', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.656345, -121.5417453, 'Walgreens', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.6260817, -121.4989867, 'FoodMaxx', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.5970115, -121.381395, 'Smart & Final Extra!', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.5960678, -121.4250335, 'Petco', '1878 Arden Way Sacramento', '#e74c3c', 'Market Square at Arden Fair');
+  addStore(38.5947763, -121.4191684, 'Nordstrom Rack', '-', '#e74c3c', 'Howe Bout Arden Shopping Center');
+  addStore(38.5944793, -121.4191094, 'HomeGoods', '1600 Ethan way Sacramento', '#e74c3c', 'Howe Bout Arden Shopping Center');
+  addStore(38.6775493, -121.2951651, 'Ross', '7342 Greenback Lane Citrus Heights', '#3498db', 'Unnamed Retail Center');
+  addStore(38.6771047, -121.294638, 'Burlington', '6145 San Juan Avenue Citrus Heights', '#3498db', 'Unnamed Retail Center');
+  addStore(38.6766633, -121.2939995, 'Kohl\'s', '6135 San Juan Avenue Citrus Heights', '#3498db', 'Unnamed Retail Center');
+  addStore(38.6789546, -121.2749427, 'Harbor Freight Tools', '7829 Greenback Lane Citrus Heights', '#e74c3c', 'Sunrise Mall');
+  addStore(38.6370518, -121.505888, 'HomeGoods', '3691 Truxel Road Sacramento', '#e74c3c', 'Natomas Marketplace');
+  addStore(38.7153039, -121.3658896, 'Petco', '4207 Elverta Road Antelope', '#3498db', 'Unnamed Retail Center');
+  addStore(38.6604302, -121.3484779, 'Dollar Tree', '-', '#e74c3c', 'College Oak Plaza Business Park');
+  addStore(38.6910464, -121.3836531, 'Walgreens', '-', '#3498db', 'Unnamed Retail Center');
+  addStore(38.6914642, -121.3796322, 'Dollar Tree', '-', '#3498db', 'Unnamed Retail Center');
+  addStore(38.7938133, -121.3262573, 'Nugget Markets', '-', '#e74c3c', 'Crocker Ranch');
+  addStore(38.6751471, -121.028389, 'Safeway', '3383 Bass Lake Road El Dorado Hills', '#27ae60', 'Standalone Anchor');
+  addStore(38.7510802, -121.3084309, 'Walgreens', '3999 Foothills Boulevard', '#27ae60', 'Standalone Anchor');
+  addStore(38.6402262, -121.5097266, 'Indian Grocery Outlet', '-', '#e74c3c', 'Natomas Marketplace');
+  addStore(38.5574894, -121.2449689, 'Raley\'s', '4030 Sunrise Boulevard Rancho Cordova', '#27ae60', 'Standalone Anchor');
+  addStore(38.5529377, -121.4254389, 'Grocery Outlet', '-', '#3498db', 'Unnamed Retail Center');
+  addStore(38.5285708, -121.4459615, 'Smart & Final', '-', '#e74c3c', 'Tirapelli Plaza');
+  addStore(38.5408513, -121.4837573, 'Safeway', '3680 Crocker Drive Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.6406086, -121.5220652, 'Costco', '3881 East Commerce Way Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.7027309, -121.384466, 'FoodMaxx', '7477 Watt Avenue North Highlands', '#27ae60', 'Standalone Anchor');
+  addStore(38.6379171, -121.3305, 'Bel Air', '4005 Manzanita Ave Carmichael', '#27ae60', 'Standalone Anchor');
+  addStore(38.6072589, -121.381167, 'WinCo Foods', '2300 Watt Avenue Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.5485728, -121.3601709, 'Save Mart', '9137 Kiefer Boulevard Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.5803316, -121.5253026, 'Walgreens', '1351 West Capitol Avenue West Sacramento', '#3498db', 'Unnamed Retail Center');
+  addStore(38.5947817, -121.3656316, 'Walgreens', '4200 Arden Way Sacramento', '#3498db', 'Unnamed Retail Center');
+  addStore(38.6906887, -121.125382, '99 Ranch Market', 'Blue Ravine Road', '#3498db', 'Unnamed Retail Center');
+  addStore(38.6903472, -121.125183, 'Dollar Tree', 'Blue Ravine Road', '#3498db', 'Unnamed Retail Center');
+  addStore(38.5946514, -121.3872245, 'Dollar Tree', '-', '#e74c3c', 'Ardendale');
+  addStore(38.85193, -121.2883397, 'Walgreens', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.6653893, -121.2709222, 'Smart & Final Extra!', '7945 Madison Avenue', '#27ae60', 'Standalone Anchor');
+  addStore(38.5884991, -121.3067609, 'Dollar Tree', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.5960534, -121.2858455, 'Target', '10881 Olson Drive Rancho Cordova', '#e74c3c', 'Zinfandel Village');
+  addStore(38.5950991, -121.2857446, 'Marshalls', '-', '#e74c3c', 'Zinfandel Village');
+  addStore(38.5947594, -121.2857486, 'Ross', '10835 Olson Drive Rancho Cordova', '#e74c3c', 'Zinfandel Village');
+  addStore(38.5959024, -121.2873789, 'Grocery Outlet', '-', '#e74c3c', 'Zinfandel Village');
+  addStore(38.6006347, -121.2818242, 'Harbor Freight Tools', '10873 Folsom Boulevard Rancho Cordova', '#27ae60', 'Standalone Anchor');
+  addStore(38.5966667, -121.2883358, 'Dollar Tree', '-', '#e74c3c', 'Zinfandel Village');
+  addStore(38.5974959, -121.3451622, 'Raley\'s', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.6325509, -121.3294818, 'Smart & Final Extra!', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.6566414, -120.9711073, 'Safeway', '3380 Coach Lane Cameron Park', '#27ae60', 'Standalone Anchor');
+  addStore(38.6305505, -121.476987, 'Dollar Tree', '-', '#e74c3c', 'Natomas Gardens');
+  addStore(38.6280505, -121.4769057, 'Ross', '3309 Northgate Boulevard Sacramento', '#e74c3c', 'Natomas Gardens');
+  addStore(38.6620689, -121.3247599, 'Ross', '6045 Madison Avenue', '#3498db', 'Unnamed Retail Center');
+  addStore(38.7047646, -121.3627174, 'Walgreens', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.6894075, -121.3844031, 'Ross', '6736 Watt Avenue North Highlands', '#3498db', 'Unnamed Retail Center');
+  addStore(38.7023288, -121.3472327, 'Kohl\'s', '5030 Antelope Road Antelope', '#27ae60', 'Standalone Anchor');
+  addStore(38.744261, -121.2246472, 'Walgreens', '4051 Douglas Boulevard Granite Bay', '#e74c3c', 'Renaissance Creek Shopping Center');
+  addStore(38.7429056, -121.2505494, 'BevMo!', '-', '#e74c3c', 'Rocky Ridge Plaza');
+  addStore(38.671469, -121.2736632, 'Dollar Tree', '-', '#e74c3c', 'Sunrise Mall');
+  addStore(38.792964, -121.3570329, 'Raley\'s O-N-E Market', '1970 Blue Oaks Boulevard', '#27ae60', 'Standalone Anchor');
+  addStore(38.74326, -121.2561451, 'TJ Maxx', '-', '#e74c3c', 'Rocky Ridge Plaza');
+  addStore(38.6410327, -121.5003513, 'Nordstrom Rack', '-', '#e74c3c', 'The Promenade');
+  addStore(38.6118141, -121.3819002, 'Dollar Tree', '2540 Watt Avenue Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.74073, -121.2281839, 'HomeGoods', '8676 Sierra College Boulevard Roseville', '#e74c3c', 'Renaissance Creek Shopping Center');
+  addStore(38.6590858, -121.5095053, 'Dollar Tree', '4710 Natomas Boulevard Sacramento', '#3498db', 'Unnamed Retail Center');
+  addStore(38.6105293, -121.4493707, 'Grocery Outlet', '-', '#3498db', 'Unnamed Retail Center');
+  addStore(38.6118791, -121.4472236, 'Lucky Market', '-', '#3498db', 'Unnamed Retail Center');
+  addStore(38.7453356, -121.272745, 'Dollar Tree', '-', '#e74c3c', 'Hillcrest Center');
+  addStore(38.7457912, -121.2553335, 'Max Home Goods', '-', '#e74c3c', 'Rocky Ridge Plaza');
+  addStore(38.7466126, -121.2613719, 'Ross', '1740 Santa Clara Drive Roseville', '#27ae60', 'Standalone Anchor');
+  addStore(38.9290326, -121.0862129, 'Best Buy', '1760 Grass Valley Highway Auburn', '#3498db', 'Unnamed Retail Center');
+  addStore(38.8091339, -121.2042582, 'Costco', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.6404976, -121.5226686, 'Costco Food Court', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.7877683, -121.2814367, 'Trader Joe\'s', '-', '#e74c3c', 'Nugget Plaza');
+  addStore(38.5947576, -121.3635561, 'Bel Air', '4320 Arden Way', '#3498db', 'Unnamed Retail Center');
+  addStore(38.528758, -121.4460466, 'Ross', '-', '#e74c3c', 'Tirapelli Plaza');
+  addStore(38.5866562, -121.5509059, 'Walmart Auto Care Center', '-', '#e74c3c', 'Riverpoint Marketplace');
+  addStore(38.6026331, -121.4145988, 'The Home Depot', '2000 Howe Avenue', '#27ae60', 'Standalone Anchor');
+  addStore(38.7999897, -121.2957676, 'Grocery Outlet', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.799743, -121.2955477, 'Dollar Tree', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.6798659, -121.229289, 'Grocery Outlet', '8835 Greenback Lane Orangevale', '#3498db', 'Unnamed Retail Center');
+  addStore(38.6184612, -121.3467621, 'Dollar Tree', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.6184798, -121.3469208, 'Grocery Outlet', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.6009393, -121.4258852, 'H&M', '-', '#e74c3c', 'Market Square at Arden Fair');
+  addStore(38.7541791, -121.3669282, 'Costco', '5200 Baseline Road Roseville', '#27ae60', 'Standalone Anchor');
+  addStore(38.7425425, -121.2249389, 'Nugget Markets', '-', '#e74c3c', 'Renaissance Creek Shopping Center');
+  addStore(38.6012619, -121.427007, 'Lucky Brand Jeans', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.7674146, -121.3571787, 'Safeway', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.8753112, -121.2955924, 'Dollar Tree', '53 Lincoln Boulevard Lincoln', '#3498db', 'Unnamed Retail Center');
+  addStore(38.8705601, -121.3038426, 'Target', '950 Groveland Lane Lincoln', '#3498db', 'Unnamed Retail Center');
+  addStore(38.5971279, -121.453353, 'Costco', '1600 Expo Parkway Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.5806748, -121.5015302, 'Macy\'s Downtown Plaza Sacramento', '414 K Street', '#27ae60', 'Standalone Anchor');
+  addStore(38.7880054, -121.2897464, 'Walmart Supercenter', '900 Pleasant Grove Boulevard Roseville', '#e74c3c', 'Highland Reserve Marketplace');
+  addStore(38.7940727, -121.3306336, 'Safeway', '9045 Woodcreek Oaks Boulevard Roseville', '#e74c3c', 'Crocker Ranch');
+  addStore(38.5621661, -121.4968135, 'Target', '2505 Riverside Boulevard Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.6327124, -121.5061269, 'The Home Depot', '3611 Truxel Road Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.635629, -121.5060315, 'Walmart', '3661 Truxel Road Sacramento', '#e74c3c', 'Natomas Marketplace');
+  addStore(38.7864208, -121.2877333, 'Sam\'s Club', '904 Pleasant Grove Boulevard Roseville', '#e74c3c', 'Highland Reserve Marketplace');
+  addStore(38.7863151, -121.2799849, 'Lowe\'s', '10201 Fairway Drive Roseville', '#e74c3c', 'Nugget Plaza');
+  addStore(38.785088, -121.2784444, 'WinCo Foods', '10151', '#e74c3c', 'Nugget Plaza');
+  addStore(38.7828167, -121.2742656, 'The Home Depot', '10001 Fairway Drive Roseville', '#e74c3c', 'Stanford Ranch Crossing');
+  addStore(38.7800946, -121.267971, 'Costco', '6750 Stanford Ranch Road Roseville', '#27ae60', 'Standalone Anchor');
+  addStore(38.7911486, -121.2902047, 'Target', '10451 Fairway Drive Roseville', '#e74c3c', 'Highland Reserve Marketplace');
+  addStore(38.7829577, -121.2691881, 'Dollar Tree', '-', '#e74c3c', 'Stanford Ranch Crossing');
+  addStore(38.7829778, -121.2687035, 'Ross', '6744 Stanford Ranch Road Roseville', '#e74c3c', 'Stanford Ranch Crossing');
+  addStore(38.7830322, -121.2680144, 'Dick\'s Sporting Goods', '6740 Stanford Ranch Road Roseville', '#e74c3c', 'Stanford Ranch Crossing');
+  addStore(38.7748847, -121.2635385, 'Burlington', '1248 Galleria Boulevard Roseville', '#e74c3c', 'Creekside Town Center');
+  addStore(38.7739383, -121.2610397, 'Best Buy', '1236 Galleria Boulevard Roseville', '#e74c3c', 'Creekside Town Center');
+  addStore(38.7535216, -121.2631595, 'The Home Depot', '324 North Sunrise Avenue Roseville', '#27ae60', 'Standalone Anchor');
+  addStore(38.7769536, -121.2608072, 'Harbor Freight Tools', '6860 Five Star Boulevard Rocklin', '#e74c3c', 'Creekside Town Center');
+  addStore(38.7463015, -121.2749321, 'Trader Joe\'s', '1117 Roseville Square Roseville', '#e74c3c', 'Hillcrest Center');
+  addStore(38.8150761, -121.2553329, 'Dollar Tree', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.8161848, -121.259349, 'Save Mart', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.8182214, -121.1883978, 'Raley\'s', '6119 horseshoe Bar Road Loomis', '#27ae60', 'Standalone Anchor');
+  addStore(38.769881, -121.3321196, 'Raley\'s', '4051 Woodcreek Oaks Boulevard', '#27ae60', 'Standalone Anchor');
+  addStore(38.6458085, -121.1096673, 'Costco', '1800 Cavitt Drive Folsom', '#27ae60', 'Standalone Anchor');
+  addStore(38.6559133, -121.1283447, 'The Home Depot', '2675 East Bidwell Street Folsom', '#e74c3c', 'Broadstone Plaza');
+  addStore(38.9240429, -121.0540472, 'Raley\'s', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.6806139, -121.2960284, 'Sam\'s Club', '7147 Greenback Lane Citrus Heights', '#3498db', 'Unnamed Retail Center');
+  addStore(38.6791715, -121.2977394, 'Sam\'s Club', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.6563016, -121.541786, 'Walgreens', '3521 Del Paso Road Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.9431268, -121.0952792, 'Target', '2700 Bell Road Auburn', '#e74c3c', 'Crossroads Shopping Center');
+  addStore(38.7310596, -121.2712742, 'Safeway', '989 Sunrise Avenue Roseville', '#27ae60', 'Standalone Anchor');
+  addStore(38.728615, -121.2708192, 'Bel Air', '1039 Sunrise Avenue Roseville', '#27ae60', 'Standalone Anchor');
+  addStore(38.9387008, -121.0978473, 'Petco', '2635 Bell Avenue Auburn', '#e74c3c', 'Crossroads Shopping Center');
+  addStore(38.7512399, -121.3085997, 'Walgreens', '3999 Foothills Boulevard Roseville', '#3498db', 'Unnamed Retail Center');
+  addStore(38.7532952, -121.3113513, 'Raley\'s Bel Air', '4008 Foothills Boulevard Roseville', '#3498db', 'Unnamed Retail Center');
+  addStore(38.7602865, -121.312664, 'Save Mart', '5060 Foothills Boulevard', '#27ae60', 'Standalone Anchor');
+  addStore(38.7719314, -121.2618259, 'Nordstrom Rack', '1196 Galleria Boulevard Roseville', '#e74c3c', 'Creekside Town Center');
+  addStore(38.7722464, -121.2614741, 'Marshalls', '1200 Galleria Boulevard', '#e74c3c', 'Creekside Town Center');
+  addStore(38.7890625, -121.2867241, 'Kohl\'s', '10375 Fairway Drive Roseville', '#e74c3c', 'Highland Reserve Marketplace');
+  addStore(38.6910465, -121.3836376, 'Walgreens', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.587747, -121.2638738, 'Costco', '11260 White Rock Road Rancho Cordova', '#27ae60', 'Standalone Anchor');
+  addStore(38.7461871, -121.2540606, 'Target', '1925 Douglas Boulevard Roseville', '#e74c3c', 'Rocky Ridge Plaza');
+  addStore(38.5906045, -121.5463436, 'The Home Depot', '690 Riverpoint Court West Sacramento', '#e74c3c', 'Riverpoint Marketplace');
+  addStore(38.5780553, -121.5477565, 'Grocery Outlet', '845 Harbor Boulevard West Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.5804098, -121.5254428, 'Walgreens', '1351 West Capitol Avenue West Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.5797836, -121.5291816, 'Raley\'s', '1601 West Capitol Avenue West Sacramento', '#3498db', 'Unnamed Retail Center');
+  addStore(38.5872989, -121.5500893, 'Walmart Supercenter', '755 Riverpoint Court West Sacramento', '#e74c3c', 'Riverpoint Marketplace');
+  addStore(38.5887345, -121.5484121, 'Ross', '735 Riverpoint Court West Sacramento', '#e74c3c', 'Riverpoint Marketplace');
+  addStore(38.6498352, -121.1658144, 'Safeway', '1850 Prairie City Road Folsom', '#27ae60', 'Standalone Anchor');
+  addStore(38.8517633, -121.2882645, 'Walgreens', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.7472929, -121.2569366, 'Walmart Supercenter', '1400 Lead Hill Boulevard Roseville', '#27ae60', 'Standalone Anchor');
+  addStore(38.7851408, -121.2886722, 'Sam\'s Club', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.7414943, -121.3083361, 'Walgreens', '3999 Foothills Boulevard Roseville', '#27ae60', 'Standalone Anchor');
+  addStore(38.6541017, -121.290795, 'Raley\'s', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.6488159, -121.1181014, 'Whole Foods Market', '270 Palladio Parkway Folsom', '#e74c3c', 'Palladio at Broadstone');
+  addStore(38.6561923, -121.1218964, 'Bel Air', '2760 East Bidwell Street', '#27ae60', 'Standalone Anchor');
+  addStore(38.6444477, -121.1178841, 'Sam\'s Club', '2495 Iron Point Road Folsom', '#27ae60', 'Standalone Anchor');
+  addStore(38.6440318, -121.1204083, 'Best Buy', '2445 Iron Point Road Folsom', '#27ae60', 'Standalone Anchor');
+  addStore(38.6559062, -121.1746167, 'WinCo Foods', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.6798644, -121.2338152, 'WinCo Foods', '8701 Greenback Lane Orangevale', '#3498db', 'Unnamed Retail Center');
+  addStore(38.6888803, -121.1223992, 'Raley\'s', '25025 Blue Ravine Road Folsom', '#3498db', 'Unnamed Retail Center');
+  addStore(38.6417484, -121.5336513, 'Bel Air', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.6377716, -121.4958047, 'Best Buy', '3690 North Freeway Boulevard Sacramento', '#e74c3c', 'The Promenade');
+  addStore(38.5987258, -121.4211721, 'Best Buy', '1901 Arden Way Sacramento', '#e74c3c', 'Market Square at Arden Fair');
+  addStore(38.6545813, -121.5239033, 'Sprouts Farmers Market', '2810 Del Paso Road Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.5715993, -121.4646196, 'Safeway', '1025 Alhambra Boulevard Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.6009983, -121.4028432, 'Target', '1919 Fulton Avenue Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.6075178, -121.3866684, 'Costco Business Center', '3360 El Camino Avenue Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.6726356, -121.1576529, 'Lowe\'s', '800 East Bidwell Street Folsom', '#3498db', 'Unnamed Retail Center');
+  addStore(38.9392097, -121.1000277, 'The Home Depot', '11755 Willow Creek Drive Auburn', '#e74c3c', 'Crossroads Shopping Center');
+  addStore(38.6581127, -121.1294252, 'Walgreens', '2595 East Bidwell Street Folsom', '#e74c3c', 'Broadstone Plaza');
+  addStore(38.6720905, -121.1676609, 'Kohl\'s', '1013 Riley Street Folsom', '#27ae60', 'Standalone Anchor');
+  addStore(38.6576126, -121.5247496, 'Safeway', '2851 Del Paso Road Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.5679392, -121.4861293, 'Safeway', '1814 19th Street Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.6864897, -121.3394089, 'Safeway', '5345 Elkhorn Boulevard Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.5732798, -121.4131009, 'Safeway', '424 Howe Avenue Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.5944488, -121.3866451, 'Safeway', '3320 Arden Way Sacramento', '#e74c3c', 'Ardendale');
+  addStore(38.7773406, -121.2915953, 'Safeway', '1080 Pleasant Grove Boulevard Roseville', '#27ae60', 'Standalone Anchor');
+  addStore(38.7418555, -121.2284867, 'Safeway', '8640 Sierra College Boulevard Roseville', '#e74c3c', 'Renaissance Creek Shopping Center');
+  addStore(38.7900681, -121.2221978, 'Safeway', '4805 Granite Drive Rocklin', '#27ae60', 'Standalone Anchor');
+  addStore(38.802903, -121.2742949, 'Safeway', '2220 Sunset Boulevard Rocklin', '#27ae60', 'Standalone Anchor');
+  addStore(38.5955016, -121.2933474, 'Safeway', '10635 Folsom Boulevard Rancho Cordova', '#27ae60', 'Standalone Anchor');
+  addStore(38.6699033, -121.1598238, 'Raley\'s', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.6895337, -121.295186, 'Walmart Supercenter', '7010 Auburn Boulevard Citrus Heights', '#27ae60', 'Standalone Anchor');
+  addStore(38.6894898, -121.2971874, 'Costco', '7000 Auburn Boulevard Citrus Heights', '#27ae60', 'Standalone Anchor');
+  addStore(38.8781209, -121.2941211, 'Safeway', '67 Lincoln Boulevard Lincoln', '#3498db', 'Unnamed Retail Center');
+  addStore(38.5604402, -121.4448792, 'Trader Joe\'s', '5000 Folsom Boulevard Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.5905326, -121.5483993, 'Petco', '795 Ikea Court West Sacramento', '#e74c3c', 'Riverpoint Marketplace');
+  addStore(38.5574492, -121.4754169, 'Smart & Final', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.6652051, -121.3071342, 'Safeway', '5450 Dewey Drive Fair Oaks', '#27ae60', 'Standalone Anchor');
+  addStore(38.6653844, -121.2240659, 'Safeway', '8925 Madison Avenue Fair Oaks', '#27ae60', 'Standalone Anchor');
+  addStore(38.7113687, -121.084109, 'Safeway', '2207 Francisco Drive El Dorado Hills', '#27ae60', 'Standalone Anchor');
+  addStore(38.6799016, -121.2942364, 'Safeway', '7301 Greenback Lane Citrus Heights', '#3498db', 'Unnamed Retail Center');
+  addStore(38.6381399, -121.3261777, 'Safeway', '4040 Manzanita Avenue Carmichael', '#27ae60', 'Standalone Anchor');
+  addStore(38.5836762, -121.2827141, 'Lowe\'s', '3251 Zinfandel Drive Rancho Cordova', '#27ae60', 'Standalone Anchor');
+  addStore(38.8683378, -121.3031636, 'The Home Depot', '1000 Groveland Lane Lincoln', '#3498db', 'Unnamed Retail Center');
+  addStore(38.870745, -121.3043747, 'TJ Maxx', '930 Groveland Lane Lincoln', '#3498db', 'Unnamed Retail Center');
+  addStore(38.869915, -121.3042337, 'Target', '950 Groveland Lane Lincoln', '#27ae60', 'Standalone Anchor');
+  addStore(38.8741428, -121.3020781, 'Ross', '113 Ferrari Ranch Road Lincoln', '#27ae60', 'Standalone Anchor');
+  addStore(38.8737469, -121.3021338, 'Sprouts Farmers Market', '115 Ferrari Ranch Road Lincoln', '#3498db', 'Unnamed Retail Center');
+  addStore(38.802706, -121.2018978, 'Walmart Supercenter', '5454 Crossings Drive Rocklin', '#e74c3c', 'Rocklin Crossings');
+  addStore(38.574034, -121.485224, 'Grocery Outlet', '1700 Capitol Avenue', '#e74c3c', 'Velo Trap');
+  addStore(38.5966508, -121.414597, 'Walgreens', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.7960231, -121.3278736, 'Walgreens', '1492 Blue Oaks Boulevard', '#27ae60', 'Standalone Anchor');
+  addStore(38.6794129, -121.222562, 'Walmart Supercenter', '8961 Greenback Lane Orangevale', '#27ae60', 'Standalone Anchor');
+  addStore(38.6756887, -121.2754475, 'Best Buy', '6110 Birdcage Center Lane Citrus Heights', '#e74c3c', 'Sunrise Mall');
+  addStore(38.6769141, -121.2738151, 'Lowe\'s', '7840 Greenback Lane Citrus Heights', '#e74c3c', 'Sunrise Mall');
+  addStore(38.6756778, -121.2733823, 'Walmart Neighborhood Market', '6197 Sunrise Boulevard Citrus Heights', '#e74c3c', 'Sunrise Mall');
+  addStore(38.6728486, -121.274804, 'Target', '5837 Sunrise Boulevard Citrus Heights', '#e74c3c', 'Sunrise Mall');
+  addStore(38.5996849, -121.4157957, 'Dollar Tree', '1895 Howe Avenue Sacramento', '#e74c3c', 'Howe Bout Arden Shopping Center');
+  addStore(38.602199, -121.4139402, 'The Home Depot', '2000 Howe Avenue Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.932391, -121.08977, 'Walgreens', '-', '#3498db', 'Unnamed Retail Center');
+  addStore(38.5965925, -121.36375, 'Whole Foods Market', '4315 Arden Way Sacramento', '#3498db', 'Unnamed Retail Center');
+  addStore(38.5948674, -121.3654057, 'Walgreens', '4200 Arden Way Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.6605138, -121.3515165, 'Smart & Final', '4820 Madison Avenue Sacramento', '#e74c3c', 'College Oak Plaza Business Park');
+  addStore(38.6621055, -121.348838, 'Target', '5001 Madison Avenue Sacramento', '#e74c3c', 'College Oak Plaza Business Park');
+  addStore(38.6603332, -121.3485889, 'Dollar Tree', '5020 Madison Avenue', '#27ae60', 'Standalone Anchor');
+  addStore(38.5558688, -121.2436357, 'Walgreens', '4050 Sunrise Boulevard Rancho Cordova', '#27ae60', 'Standalone Anchor');
+  addStore(38.6108465, -121.447638, 'Walgreens', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.7042594, -121.3319355, 'Walmart Supercenter', '5821 Antelope Road Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.704702, -121.3290919, 'The Home Depot', '5859 Antelope Road Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.6801964, -121.3199083, 'Dollar Tree', '6085 Greenback Lane Citrus Heights', '#3498db', 'Unnamed Retail Center');
+  addStore(38.6806317, -121.3204375, 'Petco', '6067 Greenback Lane Citrus Heights', '#3498db', 'Unnamed Retail Center');
+  addStore(38.6809296, -121.3208566, 'Grocery Outlet', '6059 Greenback Lane Citrus Heights', '#3498db', 'Unnamed Retail Center');
+  addStore(38.7156458, -121.3672848, 'WinCo Foods', '4137 Elverta Road Antelope', '#3498db', 'Unnamed Retail Center');
+  addStore(38.801063, -121.201772, 'TJ Maxx', '5440 Crossings Drive Rocklin', '#e74c3c', 'Rocklin Crossings');
+  addStore(38.8014378, -121.2019833, 'HomeGoods', '5446 Crossings Drive Rocklin', '#e74c3c', 'Rocklin Crossings');
+  addStore(38.5750965, -121.4171628, 'Raley\'s', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.6560982, -121.0722247, 'Walgreens', '-', '#3498db', 'Unnamed Retail Center');
+  addStore(38.6630605, -121.3260539, 'The Home Depot', '6001 Madison Avenue Carmichael', '#3498db', 'Unnamed Retail Center');
+  addStore(38.5750718, -121.404005, 'Save Mart', 'Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.5487236, -121.411446, 'The Home Depot', '8000 Folsom Boulevard Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.7839896, -121.2395657, 'Walmart Neighborhood Market', '5609 Pacific Street Rocklin', '#27ae60', 'Standalone Anchor');
+  addStore(38.712851, -121.3946154, 'Walmart Supercenter', '7901 Watt Avenue Antelope', '#27ae60', 'Standalone Anchor');
+  addStore(38.8886009, -121.2918418, 'Walmart Neighborhood Market', '255 Lincoln Boulevard Lincoln', '#27ae60', 'Standalone Anchor');
+  addStore(38.5559119, -121.334513, 'Grocery Outlet', '3615 Bradshaw Road Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.5562064, -121.3345133, 'Dollar Tree', '3615 Bradshaw Road Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.7118461, -121.3662885, 'Bel Air', '7901 Walerga Road Antelope', '#3498db', 'Unnamed Retail Center');
+  addStore(38.798146, -121.2646658, 'Bel Air', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.6498635, -121.3863382, 'Walmart Supercenter', '4675 Watt Avenue North Highlands', '#27ae60', 'Standalone Anchor');
+  addStore(38.5939479, -121.4173071, 'Burlington', '1596 Ethan Way Sacramento', '#e74c3c', 'Howe Bout Arden Shopping Center');
+  addStore(38.60038, -121.2681482, 'The Home Depot', '2756 Sunrise Boulevard Rancho Cordova', '#27ae60', 'Standalone Anchor');
+  addStore(38.704635, -121.3629055, 'Walgreens', '4331 Antelope Road Antelope', '#27ae60', 'Standalone Anchor');
+  addStore(38.6748485, -121.0298932, 'Safeway', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.9347415, -121.091065, 'BelAir', '-', '#27ae60', 'Standalone Anchor');
+  addStore(38.9336353, -121.0899626, 'Dollar Tree', '-', '#3498db', 'Unnamed Retail Center');
+  addStore(38.8724529, -121.2966684, 'Raley\'s', '39 Lincoln Boulevard Lincoln', '#27ae60', 'Standalone Anchor');
+  addStore(38.9400205, -121.0976424, 'Smart & Final', '-', '#e74c3c', 'Crossroads Shopping Center');
+  addStore(38.5255955, -121.4318205, 'Bel Air', '6231 Fruitridge Road Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.6165955, -121.381578, 'Raley\'s', '3518 Marconi Avenue Sacramento', '#27ae60', 'Standalone Anchor');
+  addStore(38.9412796, -121.0924605, 'Harbor Freight Tools', '2513 Bell Road Auburn', '#27ae60', 'Standalone Anchor');
+  addStore(38.5773492, -121.2822486, 'Sprouts', '10846 Bear Hollow Drive Rancho Cordova', '#27ae60', 'Standalone Anchor');
+  addStore(38.8044879, -121.2092197, 'Target', '5104 Commons Drive Rocklin', '#e74c3c', 'Rocklin Commons');
+  addStore(38.7754834, -121.2683715, 'Macy\'s', '1197 Galleria Boulevard Roseville', '#27ae60', 'Standalone Anchor');
+  addStore(38.5615673, -121.4974888, 'Target Drive-Up', '-', '#27ae60', 'Standalone Anchor');
+
+  var legend = L.control({position: 'bottomright'});
+  legend.onAdd = function() {
+    var div = L.DomUtil.create('div', 'legend');
+    div.innerHTML = '<b>Retail Centers – Roseville, CA</b><br>'
+      + '<span class="legend-dot" style="background:#e74c3c"></span> Named plaza<br>'
+      + '<span class="legend-dot" style="background:#3498db"></span> Unnamed cluster<br>'
+      + '<span class="legend-dot" style="background:#27ae60"></span> Anchor store<br>'
+      + 'Circle = 0.38 mi radius<br>'
+      + '● = individual store';
+    return div;
+  };
+  legend.addTo(map);
+</script>
+</body>
+</html>
