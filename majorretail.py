@@ -21,12 +21,12 @@ anchor_brands = [
     "erewhon", "erewhon market", "trader joes", "trader joe's", "vons", "vons supermarket", "vons market", "albertsons",
     "albertson's", "albertson", "ralphs", "ralphs supermarket", "ralphs market", "smart & final", "smart and final", 
     "smart & final extra", "smart and final extra", "publix", "whole foods", "whole foods market", "wholefoods", 
-    "wholefoods market", "foodmaxx", "99 ranch market", "walgreens", "cvs",
+    "wholefoods market", "foodmaxx", "99 ranch market", "walgreens", "cvs", "big lots", "planet fitness", "gold's gym", "crunch fitness", "lifetime fitness", "california family fitness", "24 hour fitness",
 
     "home depot", "the home depot", "lowe's", "lowes", "best buy", "macy's", "macys", "nordstrom", "nordstrom rack", "bloomingdale's", 
     "bloomingdales", "dicks sporting goods", "dick's sporting", "dick's sporting goods", "dollar tree", "save mart", "grocery outlet",
     "winco", "bevmo", "bevmo!", "harbor freight", "homegoods", "home goods", "ross", "burlington", "tj maxx", "william-sonoma",
-    "petco", "h&m", "marshalls", "kohl's"
+    "petco", "h&m", "marshalls", "kohl's","ace hardware", "office depot", "big 5", "rite aid", "jcpenney"
 ]
 subbrand_noise = [
     "gasoline", "gas", "gas station", "fuel", "fuel station", "pharmacy", "garden center", "garden centre", "car wash", "tire center",
@@ -34,9 +34,11 @@ subbrand_noise = [
     "vision center", "furniture", "furniture gallery", "express", "convenience store",
 ]
 
-cluster_radius_mi = 0.38
-min_anchors_per_cluster = 3
-search_radius_km = 30
+plaza_radius_mi = 0.18
+min_anchors_per_plaza = 1
+search_radius_km = 12
+min_other_tenants = 1
+
 overpass_mirrors = [
     "https://overpass-api.de/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
@@ -53,36 +55,42 @@ class Store:
     brand: str = ""
     address: str= ""
     city: str = ""
+    is_anchor_store: bool = False
 
 @dataclass
-class RetailCluster:
-    stores: list = field(default_factory=list)
-    mall_name: str=""
+class Plaza:
+    anchors: list=field(default_factory=list)
+    tenants: list=field(default_factory=list)
+    mall_name: str = ""
     mall_address: str = ""
-    county: str = ""
+    county: str=""
 
     @property
+    def all_stores(self):
+        return self.anchors + self.tenants
+    
+    @property
     def center(self):
-        lats = [s.lat for s in self.stores]
-        lngs = [s.lng for s in self.stores]
+        pts = self.all_stores
+        lats = [s.lat for s in pts]
+        lngs = [s.lng for s in pts]
         return sum(lats) / len(lats), sum(lngs) / len(lngs)
     
     @property
     def label(self):
         return self.mall_name if self.mall_name else "Unnamed Retail Center"
-    
+
     @property
     def display_address(self):
         if self.mall_address:
             return self.mall_address
-        for s in self.stores:
+        for s in self.all_stores:
             if is_valid_address(s.address):
                 return s.address
         return "-"
-    
     @property
     def display_city(self):
-        for s in self.stores:
+        for s in self.all_stores:
             if s.city:
                 return s.city
         addr = self.display_address
@@ -90,6 +98,15 @@ class RetailCluster:
             return addr.strip().split()[-1]
         return "-"
     
+    @property
+    def anchor_names(self):
+        return ", ".join(sorted(set(s.name for s in self.anchors)))
+    
+    @property
+    def tenant_names(self):
+        return ", ".join(sorted(set(s.name for s in self.tenants)))
+
+
 def geocode_city(city:str) -> tuple[float,float, str]:
     parts = [p.strip() for p in city.split(",")]
     city_name = parts[0]
@@ -227,10 +244,11 @@ def extract_stores(elements:list) -> list[Store]:
     for el in elements:
         tags = el.get("tags",{})
         name = tags.get("name") or tags.get("brand") or ""
+        if not name:
+            continue
         if is_subbrand(name):
             continue
-        if not is_anchor(name):
-            continue
+
 
         lat = el.get("lat") or (el.get("center") or {}).get("lat")
         lng = el.get("lon") or (el.get("center") or {}).get("lon")
@@ -257,6 +275,7 @@ def extract_stores(elements:list) -> list[Store]:
             brand=tags.get("brand",""),
             address=address,
             city = addr_city,
+            is_anchor_store= is_anchor(name),
         ))
 
     return stores
@@ -272,87 +291,138 @@ def haversine_m(lat1,lng1,lat2,lng2) -> float:
          )
     return r*2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
 
-def cluster_stores(stores:list[Store], radius_miles: float, min_anchors:int) -> list[RetailCluster]:
+def build_plazas (stores: list[Store], radius_miles: float, min_other_tenants: int) -> list[Plaza]:
     radius_m = radius_miles * 1609.34
-    used = set()
-    clusters = []
+    anchors = [s for s in stores if s.is_anchor_store]
 
-    for i,store in enumerate(stores):
+    used = set()
+    anchor_groups: list[list[Store]] = []
+    for i, a in enumerate(anchors):
         if i in used:
             continue
-        group = [store]
+        group = [a]
         used.add(i)
-        for j, other in enumerate(stores):
+        for j, b in enumerate(anchors):
             if j in used:
                 continue
-            if all(haversine_m(member.lat,member.lng,other.lat,other.lng) <= radius_m for member in group):
-                group.append(other)
+            if all(haversine_m(m.lat, m.lng, b.lat, b.lng) <= radius_m for m in group):
+                group.append(b)
                 used.add(j)
-        if len(group) >= min_anchors:
-            clusters.append(RetailCluster(stores=group))
-    return sorted(clusters,key=lambda c: len(c.stores), reverse = True)
+        anchor_groups.append(group)
 
-def merge_same_name_clusters(clusters: list[RetailCluster]) -> list[RetailCluster]:
-    named: dict[str, RetailCluster] = {}
-    unnamed: list[RetailCluster] = []
+    plazas = []
+    for plaza_anchors in anchor_groups:
+        clat = sum(a.lat for a in plaza_anchors) / len(plaza_anchors)
+        clng = sum(a.lng for a in plaza_anchors) / len(plaza_anchors)
 
-    for cluster in clusters:
-        if not cluster.mall_name:
-            unnamed.append(cluster)
-        else:
-            key = cluster.mall_name.strip().lower()
-            if key not in named:
-                named[key] = cluster
-            else:
-                existing = named[key]
-                existing.stores.extend(cluster.stores)
-                if not is_valid_address(existing.mall_address) and is_valid_address(cluster.mall_address):
-                    existing.mall_address = cluster.mall_address
-    merged = list(named.values()) + unnamed
+        anchor_coords = {(round(a.lat, 4), round(a.lng, 4)) for a in plaza_anchors}
 
-    for cluster in merged:
+        tenants = []
+        for s in stores:
+            coord = (round(s.lat, 4), round(s.lng, 4))
+            if coord in anchor_coords:
+                continue
+            d = haversine_m(clat, clng, s.lat, s.lng)
+            if d <= radius_m:
+                tenants.append(s)
+
+        seen_coords = set()
+        unique_tenants = []
+        for t in tenants:
+            coord = (round(t.lat, 4), round(t.lng, 4))
+            if coord not in seen_coords:
+                seen_coords.add(coord)
+                unique_tenants.append(t)
+
+        non_anchor_tenants = [t for t in unique_tenants if not t.is_anchor_store]
+        extra_anchor_tenants = [t for t in unique_tenants if t.is_anchor_store]
+        plaza_anchors = plaza_anchors + extra_anchor_tenants
+
+        if len(non_anchor_tenants) >= min_other_tenants:
+            plazas.append(Plaza(anchors=plaza_anchors, tenants=non_anchor_tenants))
+
+    return plazas
+
+def deduplicate_plaza_stores(plazas: list[Plaza]) -> list[Plaza]:
+    def dedupe_list(items:list[Store]) -> list[Store]:
         seen_brands: dict[str,Store] = {}
-        for store in cluster.stores:
-            key = store.name.lower().strip()
-            if key not in seen_brands:
-                seen_brands[key] = store
-            else:
-                if is_valid_address(store.address) and is_valid_address(seen_brands[key].address):
-                    seen_brands[key] = store
-        cluster.stores = list(seen_brands.values())
-    return sorted(
-        [c for c in merged if len(c.stores) >= 2],
-        key=lambda c: len(c.stores),
-        reverse = True
-    )
-
-def deduplicate_within_clusters(clusters:list[RetailCluster]) -> list[RetailCluster]:
-    for cluster in clusters:
-        seen_brands: dict[str, Store] = {}
-        for store in cluster.stores:
+        for store in items:
             key = store.name.lower().strip()
             if key not in seen_brands:
                 seen_brands[key] = store
             else:
                 if is_valid_address(store.address) and not is_valid_address(seen_brands[key].address):
                     seen_brands[key] = store
-        cluster.stores = list(seen_brands.values())
-    global_seen: set[tuple] = set()
-    for cluster in clusters:
-        unique =[]
-        for store in cluster.stores:
-            coord_key = (round(store.lat,4), round(store.lng,4))
-            if coord_key not in global_seen:
-                global_seen.add(coord_key)
-                unique.append(store)
-        cluster.stores = unique
-    return sorted(
-        [c for c in clusters if len(c.stores) >= 2],
-        key = lambda c: len(c.stores),
-        reverse = True,
-        )
+        return list(seen_brands.values())
+    for plaza in plazas:
+        plaza.anchors = dedupe_list(plaza.anchors)
+        plaza.tenants = dedupe_list(plaza.tenants)
 
-def attach_mall_names(clusters: list[RetailCluster], mall_elements:list)-> None:
+    plazas_sorted = sorted(plazas, key = lambda p: len(p.all_stores), reverse = True)
+
+    global_seen: set[tuple] = set()
+    final_plazas = []
+    for plaza in plazas_sorted:
+        new_anchors, new_tenants =[], []
+        for a in plaza.anchors:
+            coord = (round(a.lat,4), round(a.lng,4))
+            if coord not in global_seen:
+                global_seen.add(coord)
+                new_anchors.append(a)
+        for t in plaza.tenants:
+            coord = (round(t.lat,4), round(t.lng,4))
+            if coord not in global_seen:
+                global_seen.add(coord)
+                new_tenants.append(t)
+        plaza.anchors = new_anchors
+        plaza.tenants = new_tenants
+
+        if len(plaza.anchors) >= 1 and len(plaza.tenants) >= min_other_tenants:
+            final_plazas.append(plaza)
+    return final_plazas
+
+def merge_same_name_plazas(plazas: list[Plaza]) -> list[Plaza]:
+    named: dict[str,Plaza] = {}
+    unnamed: list[Plaza] = []
+
+    for plaza in plazas:
+        if not plaza.mall_name:
+            unnamed.append(plaza)
+        else:
+            key = plaza.mall_name.strip().lower()
+            if key not in named:
+                named[key] = plaza
+            else:
+                existing = named[key]
+                existing.anchors.extend(plaza.anchors)
+                existing.tenants.extend(plaza.tenants)
+                if not is_valid_address(existing.mall_address) and is_valid_address(plaza.mall_address):
+                    existing.mall_address = plaza.mall_address
+
+    merged = list(named.values()) + unnamed
+
+    def dedupe_list(items: list[Store]) -> list[Store]:
+        seen_brands: dict[str, Store] = {}
+        for store in items:
+            key = store.name.lower().strip()
+            if key not in seen_brands:
+                seen_brands[key] = store
+            else:
+                if is_valid_address(store.address) and not is_valid_address(seen_brands[key].address):
+                    seen_brands[key] = store
+        return list(seen_brands.values())
+    
+    for plaza in merged:
+        plaza.anchors = dedupe_list(plaza.anchors)
+        plaza.tenants = dedupe_list(plaza.tenants)
+    
+    return sorted(
+        [p for p in merged if len(p.anchors) >= 1 and len(p.tenants) >= min_other_tenants],
+        key = lambda p: len(p.all_stores),
+        reverse = True,
+    )
+
+def attach_mall_names(plazas: list[Plaza], mall_elements:list)-> None:
     malls = []
     for el in mall_elements:
         tags = el.get("tags", {})
@@ -372,26 +442,18 @@ def attach_mall_names(clusters: list[RetailCluster], mall_elements:list)-> None:
         malls.append((name, lat, lng, address))
 
 
-    for cluster in clusters:
-        clat,clng = cluster.center
+    for plaza in plazas:
+        clat,clng = plaza.center
         best_name,best_addr,best_dist = None, "", float("inf")
         for name, mlat, mlng,address in malls:
             d = haversine_m(clat,clng,mlat,mlng)
-            if d < best_dist and d <= 800:
+            if d < best_dist and d <= 600:
                 best_dist = d
                 best_name = name
                 best_addr = address
-        cluster.mall_name = best_name or ""
-        cluster.mall_address = best_addr or ""
+        plaza.mall_name = best_name or ""
+        plaza.mall_address = best_addr or ""
 
-def filter_clusters(clusters: list[RetailCluster], min_anchors: int) -> list[RetailCluster]:
-    filtered = []
-    for cluster in clusters:
-        valid_stores = [s for s in cluster.stores if s.address]
-        if len(valid_stores) >= min_anchors:
-            cluster.stores = valid_stores
-            filtered.append(cluster)
-    return filtered
 
 def lookup_county(lat:float,lng:float) -> str:
     try: 
@@ -404,43 +466,19 @@ def lookup_county(lat:float,lng:float) -> str:
     except Exception:
         pass
     return "-"
-def attach_counties(clusters:list[RetailCluster]) -> None:
+def attach_counties(plazas:list[Plaza]) -> None:
     cache: dict[str, str] = {}
-    for i, cluster in enumerate(clusters):
-        clat,clng = cluster.center
+    for i, plaza in enumerate(plazas):
+        clat,clng = plaza.center
         cache_key = f"{round(clat,2)}, {round(clng,2)}"
         if cache_key not in cache:
-            print(f"  [county] looking up cluster {i + 1}/{len(clusters)}...", end="\r")
+            print(f"  [county] looking up cluster {i + 1}/{len(plazas)}...", end="\r")
             cache[cache_key] = lookup_county(clat,clng)
             time.sleep(0.5)
-        cluster.county = cache[cache_key]
+        plaza.county = cache[cache_key]
     print(" " * 50, end="\r")
 
-def absorb_nearby_stores(clusters:list[RetailCluster], all_stores: list[Store], radius_miles: float) -> None:
-    radius_m = radius_miles * 1609.34
-    clustered_coords = {
-        (round(s.lat,4), round(s.lng,4))
-        for c in clusters for s in c.stores
-    }
-    for store in all_stores:
-        coord = (round(store.lat,4), round(store.lng,4))
-        if coord in clustered_coords:
-            continue
 
-        candidates = []
-        for cluster in clusters:
-            clat,clng = cluster.center
-            d = haversine_m(store.lat, store.lng, clat, clng)
-            if d <= radius_m:
-                candidates.append((cluster,d))
-            
-        if not candidates:
-            continue
-        candidates.sort(key=lambda x: (
-            0 if x[0].mall_name else 1,
-            -len(x[0].stores),
-            x[1],
-        ))
 
 
 def js_escape(s:str) -> str:
@@ -448,55 +486,73 @@ def js_escape(s:str) -> str:
              .replace("'","\\'")
              .replace("\n"," ")
              .replace("\r",""))
-def generate_map(clusters: list[RetailCluster], city_display: str, radius_miles: float,stores, output_path = None) -> None:
+def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all_stores: list[Store], output_path = None) -> None:
     if output_path is None:
         slug = city_display.lower().replace(", ", "-").replace(" ", "-")
         output_path = f"{slug}.html"
-    if not clusters:
+    if not plazas:
         return
 
     # Center the map on the average of all cluster centers
-    all_lats = [c.center[0] for c in clusters]
-    all_lngs = [c.center[1] for c in clusters]
+    all_lats = [p.center[0] for p in plazas]
+    all_lngs = [p.center[1] for p in plazas]
     map_lat = sum(all_lats) / len(all_lats)
     map_lng = sum(all_lngs) / len(all_lngs)
-    radius_m = radius_miles * 1609.34
+    base_radius_m = radius_miles * 1609.34
 
     coord_to_color = {}
-    for c in clusters:
-        color = "#e74c3c" if c.mall_name else "#3498db"
-        for s in c.stores:
-            coord_to_color[(round(s.lat,4), round(s.lng,4))] = (color,c.label)
+    for p in plazas:
+        color = "#e74c3c" if p.mall_name else "#3498db"
+        for s in p.all_stores:
+            coord_to_color[(round(s.lat,4), round(s.lng,4))] = (color,p.label)
     store_js = []
-    for s in stores:
+    for s in all_stores:
         sname = js_escape(s.name)
         saddr = js_escape(s.address if s.address else "-")
         key = (round(s.lat,4), round(s.lng,4))
-        color, plaza = coord_to_color.get(key,("#27ae60", "Standalone Anchor"))
-        plaza = js_escape(plaza)
+
+        if key in coord_to_color:
+            color, plaza_label = coord_to_color[key]
+            if s.is_anchor_store:
+                dot_color = "#f39c12"
+            else:
+                dot_color = color
+        else:
+            color = "#27ae60"
+            plaza_label = "Standalone / Not in Plaza"
+            dot_color = "#27ae60"
+
+
+        plaza_label = js_escape(plaza_label)
         store_js.append(
-            f"  addStore({s.lat}, {s.lng}, '{sname}', '{saddr}', '{color}', '{plaza}');"
+            f"  addStore({s.lat}, {s.lng}, '{sname}', '{saddr}', '{dot_color}', '{plaza_label}', {str(s.is_anchor_store).lower()});"
         )
     stores_code = "\n".join(store_js)
 
-    cluster_js = []
-    for c in clusters:
-        clat, clng = c.center
-        stores_list = js_escape(", ".join(s.name for s in c.stores))
-        label       = js_escape(c.label)
-        address     = js_escape(c.display_address)
-        county      = js_escape(c.county)
-        city        = js_escape(c.display_city)
-        color = "#e74c3c" if c.mall_name else "#3498db"
+    plaza_js = []
+    for p in plazas:
+        clat, clng = p.center
+        max_dist = max(
+            (haversine_m(clat,clng,s.lat,s.lng) for s in p.all_stores),
+            default = base_radius_m,
+        )
+        plaza_radius_m = max(max_dist*1.15,base_radius_m)
+        anchors_list = js_escape(p.anchor_names)
+        tenants_list = js_escape(p.tenant_names)
+        label       = js_escape(p.label)
+        address     = js_escape(p.display_address)
+        county      = js_escape(p.county)
+        city        = js_escape(p.display_city)
+        color = "#e74c3c" if p.mall_name else "#3498db"
 
-        cluster_js.append(
-            f"  addCluster({clat}, {clng}, {radius_m:.1f}, '{label}', "
-            f"'{address}', '{county}', '{city}', {len(c.stores)}, "
-            f"'{stores_list}', '{color}');"
+        plaza_js.append(
+            f"  addPlaza({clat}, {clng}, {plaza_radius_m:.1f}, '{label}', "
+            f"'{address}', '{county}', '{city}', {len(p.anchors)}, '{anchors_list}', "
+            f"{len(p.tenants)}, '{tenants_list}', '{color}');"
         )
 
 
-    clusters_code = "\n".join(cluster_js)
+    plazas_code = "\n".join(plaza_js)
 
     html = f"""<!DOCTYPE html>
 <html>
@@ -528,7 +584,7 @@ def generate_map(clusters: list[RetailCluster], city_display: str, radius_miles:
     maxZoom: 19
   }}).addTo(map);
 
-  function addCluster(lat, lng, radius_m, name, address, county, city, numAnchors, stores, color) {{
+  function addPlaza(lat, lng, radius_m, name, address, county, city, numAnchors, anchors, numTenants, tenants, color) {{
     L.circle([lat, lng], {{
       radius: radius_m,
       color: color,
@@ -540,34 +596,37 @@ def generate_map(clusters: list[RetailCluster], city_display: str, radius_miles:
     var popup = '<b>' + name + '</b><br>'
       + (address !== '-' ? address + '<br>' : '')
       + city + (county !== '-' ? ', ' + county + ' County' : '') + '<br>'
-      + '<br><b>' + numAnchors + ' anchors:</b><br>'
-      + stores.split(', ').join('<br>');
+      + '<br><b>' + numAnchors + ' anchor(s):</b><br>'
+      + anchors.split(', ').join('<br>')
+      + '<br><br><b>' + numTenants + ' other tenant(s):</b><br>'
+      + tenants.split(', ').join('<br>');
 
     L.circleMarker([lat, lng], {{
-      radius: 7,
+      radius: 9,
       color: '#fff',
-      fillColor: color,
+      fillColor: '#8e44ad',
       fillOpacity: 1,
       weight: 2
     }}).bindPopup(popup).bindTooltip(name, {{permanent: false, direction: 'top'}}).addTo(map);
   }}
 
-  function addStore(lat, lng, name, address, color, plaza) {{
+  function addStore(lat, lng, name, address, color, plaza, isAnchor) {{
+    var size = isAnchor ? 11 : 9;
     var icon = L.divIcon({{
       className: '',
-      html: '<div style="width:9px;height:9px;border-radius:50%;background:' + color + ';border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.4)"></div>',
-      iconSize: [9, 9],
-      iconAnchor: [4, 4]
+      html: '<div style="position:absolute;width:' + size + 'px;height:' + size + 'px;border-radius:50%;background:' + color + ';border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.4);top:50%;left:50%;transform:translate(-50%,-50%)' + (isAnchor ? ';outline:2px solid rgba(0,0,0,0.25)' : '') + '"></div>',
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2]
     }});
     L.marker([lat, lng], {{icon: icon}})
-      .bindPopup('<b>' + name + '</b><br>' 
+      .bindPopup('<b>' + name + '</b>' + (isAnchor ? '⚓' : '')+ '<br>' 
         + '<i>' + plaza + '</i><br>'
         + address)
       .bindTooltip(name, {{direction: 'top'}})
       .addTo(map);
   }}
 
-  {clusters_code}
+  {plazas_code}
   {stores_code}
 
   var legend = L.control({{position: 'bottomright'}});
@@ -575,10 +634,11 @@ def generate_map(clusters: list[RetailCluster], city_display: str, radius_miles:
     var div = L.DomUtil.create('div', 'legend');
     div.innerHTML = '<b>Retail Centers – {city_display}</b><br>'
       + '<span class="legend-dot" style="background:#e74c3c"></span> Named plaza<br>'
-      + '<span class="legend-dot" style="background:#3498db"></span> Unnamed cluster<br>'
-      + '<span class="legend-dot" style="background:#27ae60"></span> Anchor store<br>'
-      + 'Circle = {radius_miles} mi radius<br>'
-      + '● = individual store';
+      + '<span class="legend-dot" style="background:#3498db"></span> Unnamed plaza<br>'
+      + '<span class="legend-dot" style="background:#8e44ad"></span> Plaza center point<br>'
+      + '<span class="legend-dot" style="background:#f39c12"></span> Anchor store (in plaza)<br>'
+      + '<span class="legend-dot" style="background:#27ae60"></span> Standalone store<br>'
+      + 'Circle = plaza footprint &nbsp; ⚓ = anchor';
     return div;
   }};
   legend.addTo(map);
@@ -591,50 +651,52 @@ def generate_map(clusters: list[RetailCluster], city_display: str, radius_miles:
     print(f"\n  Map saved → {output_path}  (open in any browser)")
     return output_path
 
-def print_results(clusters: list[RetailCluster], city_display: str, args) -> None:
+def print_results(plazas: list[Plaza], city_display: str, args) -> None:
     print(f"\n{'='*60}")
     print(f"  Major retail centers near {city_display}")
-    print(f"  Criteria: {args.min_anchors}+ anchors within {args.radius} mile radius")
+    print(f"  Criteria: {args.min_anchors}+ anchors, {args.min_tenants} + other tenant(s) within {args.radius} mile radius")
     print(f"{'='*60}\n")
 
-    if not clusters:
+    if not plazas:
         print("  No qualifying retail clusters found.")
         print("  Try lowering --min-anchors or increasing --radius.\n")
         return
 
     # Sort by county then city alphabetically
-    sorted_clusters = sorted(
-        clusters,
-        key=lambda c: (
-            c.county.lower() if c.county and c.county != "-" else "zzz",
-            c.display_city.lower() if c.display_city and c.display_city != "-" else "zzz",
+    sorted_plazas = sorted(
+        plazas,
+        key=lambda p: (
+            p.county.lower() if p.county and p.county != "-" else "zzz",
+            p.display_city.lower() if p.display_city and p.display_city != "-" else "zzz",
         )
     )
 
-    print(f"  Found {len(sorted_clusters)} major retail center(s):\n")
+    print(f"  Found {len(sorted_plazas)} major retail center(s):\n")
 
     table_rows = [
         [
-            c.label,
+            p.label,
             args.city.split(",")[1].strip() if "," in args.city else "-",
-            c.county,
-            c.display_city,
-            c.display_address,
-            len(c.stores),
-            ", ".join(s.name for s in c.stores),
+            p.county,
+            p.display_city,
+            p.display_address,
+            len(p.anchors),
+            p.anchor_names,
+            len(p.tenants),
+            p.tenant_names
         ]
-        for c in sorted_clusters
+        for p in sorted_plazas
     ]
 
     print(tabulate(
         table_rows,
-        headers=["Plaza / Property Name", "State", "County", "City", "Address", "# Anchors", "Anchor Names"],
+        headers=["Plaza / Property Name", "State", "County", "City", "Address", "# Anchors", "Anchor Names", "# Tenants", "Other Tenants"],
         tablefmt="simple",
     ))
     print()
  
 
-def export_to_excel(clusters, city_display, args, map_url, output_path = os.path.expanduser("~/Desktop/text.xlsx")):
+def export_to_excel(plazas, city_display, args, map_url, output_path = os.path.expanduser("~/Desktop/text.xlsx")):
     if os.path.exists(output_path):
         from openpyxl import load_workbook
         wb = load_workbook(output_path)
@@ -649,7 +711,7 @@ def export_to_excel(clusters, city_display, args, map_url, output_path = os.path
     ws = wb.create_sheet(title=tab_name)
 
 
-    ws.merge_cells("A1:G1")
+    ws.merge_cells("A1:I1")
     title_cell = ws["A1"]
     title_cell.value = "test"
     title_cell.font = Font(name = "Arial", bold = True, size = 16, color = "FFFFFF")
@@ -657,7 +719,7 @@ def export_to_excel(clusters, city_display, args, map_url, output_path = os.path
     title_cell.alignment = Alignment(horizontal = "center", vertical = "center")
     ws.row_dimensions[1].height = 32
 
-    ws.merge_cells("A2:G2")
+    ws.merge_cells("A2:I2")
     map_cell = ws["A2"]
     
     map_cell.hyperlink = map_url
@@ -668,7 +730,7 @@ def export_to_excel(clusters, city_display, args, map_url, output_path = os.path
     map_cell.alignment = Alignment(horizontal = "center", vertical = "center")
     ws.row_dimensions[2].height = 24
 
-    headers = ["Plaza / Property Name", "State", "County", "City", "Address", "# Anchors", "Anchor Names"]
+    headers = ["Plaza / Property Name", "State", "County", "City", "Address", "# Anchors", "Anchor Names", "# Tenants", "Other Tenants"]
     header_fill = PatternFill("solid", start_color = "34495E")
     header_font = Font(name = "Arial", bold = True, size = 11, color = "FFFFFF")
     thin = Side(style = "thin", color = "CCCCCC")
@@ -682,11 +744,11 @@ def export_to_excel(clusters, city_display, args, map_url, output_path = os.path
         cell.border=border
     ws.row_dimensions[3].height=20
 
-    sorted_clusters = sorted(
-        clusters,
-        key=lambda c: (
-            c.county.lower() if c.county and c.county != "-" else "zzz",
-            c.display_city.lower() if c.display_city and c.display_city != "-" else "zzz",
+    sorted_plazas = sorted(
+        plazas,
+        key=lambda p: (
+            p.county.lower() if p.county and p.county != "-" else "zzz",
+            p.display_city.lower() if p.display_city and p.display_city != "-" else "zzz",
         )
     )
     state = args.city.split(",")[1].strip() if "," in args.city else "-"
@@ -695,27 +757,35 @@ def export_to_excel(clusters, city_display, args, map_url, output_path = os.path
         PatternFill("solid", start_color = "EBF5FB"),
     ]
 
-    for i, cluster in enumerate(sorted_clusters):
+    for i, plaza in enumerate(sorted_plazas):
         row = i+4
         fill = row_fills[i % 2]
         data = [
-            cluster.label,
+            plaza.label,
             state,
-            cluster.county,
-            cluster.display_city,
-            cluster.display_address,
-            len(cluster.stores),
-            ", ".join(s.name for s in cluster.stores),
+            plaza.county,
+            plaza.display_city,
+            plaza.display_address,
+            len(plaza.anchors),
+            plaza.anchor_names,
+            len(plaza.tenants),
+            plaza.tenant_names,
         ]
         for col, value in enumerate(data, 1):
             cell = ws.cell(row=row, column = col, value = value)
             cell.font = Font(name="Arial", size = 10)
             cell.fill = fill
             cell.border = border
-            cell.alignment = Alignment(vertical = "center", wrap_text =(col == 7))
+            cell.alignment = Alignment(vertical = "center", wrap_text =(col in (7,9)))
+
+            if col == 5 and value and value != "-":
+                maps_url = f"https://www.google.com/maps/search/?api=1&query={requests.utils.quote(value)}"
+                cell.value = value
+                cell.hyperlink = maps_url
+                cell.font = Font(name="Arial", size=10, color = "0563C1", underline = "single")
         ws.row_dimensions[row].height = 18
 
-    for col, width in enumerate([35,8,18,18,38,10,60], 1):
+    for col, width in enumerate([35,8,18,18,38,10,40,10,55], 1):
         ws.column_dimensions[get_column_letter(col)].width = width
     
     ws.freeze_panes = "A4"
@@ -795,12 +865,16 @@ def main():
     )
     parser.add_argument("city", help='City to search, e.g. "Roseville, CA"')
     parser.add_argument(
-        "--radius", type=float, default=cluster_radius_mi,
-        help=f"Cluster radius in miles (default: {cluster_radius_mi})"
+        "--radius", type=float, default=plaza_radius_mi,
+        help=f"Cluster radius in miles (default: {plaza_radius_mi})"
     )
     parser.add_argument(
-        "--min-anchors", type=int, default=min_anchors_per_cluster,
-        help=f"Minimum anchor stores per cluster (default: {min_anchors_per_cluster})"
+        "--min-anchors", type=int, default=min_anchors_per_plaza,
+        help=f"Minimum anchor stores per cluster (default: {min_anchors_per_plaza})"
+    )
+    parser.add_argument(
+        "--min-tenants", type=int, default=min_other_tenants,
+        help=f"Minimum other (non-anchor) tenants required to confirm a real plaza (default: {min_other_tenants})"
     )
     parser.add_argument(
         "--search-km", type=float, default=search_radius_km,
@@ -810,12 +884,12 @@ def main():
  
     print(f"\n  Searching for major retail centers in: {args.city}")
  
-    print("  [1/4] Geocoding city...")
+    print("  [1/5] Geocoding city...")
     lat, lng, display = geocode_city(args.city)
     print(f"        → {display} ({lat:.4f}, {lng:.4f})")
     time.sleep(1)
  
-    print("  [2/4] Querying OpenStreetMap for stores (may take 10–20s)...")
+    print("  [2/5] Querying OpenStreetMap for stores (may take 10–20s)...")
     store_elements = run_overpass(build_store_query(lat, lng, args.search_km))
     print(f"        → {len(store_elements)} raw elements returned")
  
@@ -828,27 +902,29 @@ def main():
         mall_elements = []
  
     stores = extract_stores(store_elements)
-    print(f"\n  Anchor stores identified: {len(stores)}")
+    n_anchors = sum(1 for s in stores if s.is_anchor_store)
+    print(f"\n  Total shops identified: {len(stores)}  ({n_anchors} are anchors)")
+    if n_anchors == 0:
+        print("  No anchor stores found. OSM data may be sparse for this area.")
+        sys.exit(0)
     if not stores:
         print("  No anchor stores found. OSM data may be sparse for this area.")
         sys.exit(0)
  
-    print("  [4/4] Clustering, deduplicating, and matching mall names...")
-    clusters = cluster_stores(stores, args.radius, args.min_anchors)
-    attach_mall_names(clusters, mall_elements)
-    clusters = deduplicate_within_clusters(clusters)
-    absorb_nearby_stores(clusters,stores,args.radius)
-    clusters = merge_same_name_clusters(clusters)
+    print("  [4/5] Building plazas around each anchor and gathering tenants...")
+    plazas = build_plazas(stores, args.radius, args.min_tenants)
+    attach_mall_names(plazas, mall_elements)
+    plazas = deduplicate_plaza_stores(plazas)
+    plazas = merge_same_name_plazas(plazas)
  
-    print(f"  [5/5] Looking up counties for {len(clusters)} clusters...")
-    attach_counties(clusters)
+    print(f"  [5/5] Looking up counties for {len(plazas)} plazas...")
+    attach_counties(plazas)
  
-    print_results(clusters, display, args)
-    generate_map(clusters, display, args.radius, stores)
-    map_path = generate_map(clusters,display,args.radius,stores)
-    print("\n Uploading to Github...")
+    print_results(plazas, display, args)
+    map_path = generate_map(plazas, display, args.radius, stores)
+    print("\n  Uploading to GitHub...")
     map_url = upload_map_to_github(map_path)
-    export_to_excel(clusters, display, args, map_url)
+    export_to_excel(plazas, display, args, map_url)
  
  
 if __name__ == "__main__":

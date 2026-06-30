@@ -1,6 +1,8 @@
 flask
+flask-cors
 requests
 tabulate
 PyGithub
 python-dotenv
 openpyxl
+gunicorn
