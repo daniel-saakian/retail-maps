@@ -43,6 +43,7 @@ overpass_mirrors = [
     "https://overpass-api.de/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
     "https://overpass.openstreetmap.ru/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
 ]
 headers = {"User-Agent": "retailfinder/1.0"}
 
@@ -174,12 +175,12 @@ is_in({lat}, {lng});
 out tags;
 """.strip()
 
-def run_overpass(query: str, retries: int = 2) -> list:
+def run_overpass(query: str, retries: int = 3) -> list:
     last_error = None
     for mirror in overpass_mirrors:
         for attempt in range(retries):
             try:
-                resp = requests.post(mirror, data={"data": query}, headers=headers, timeout=90)
+                resp = requests.post(mirror, data={"data": query}, headers=headers, timeout=30)
                 if resp.status_code == 400:
                     print(f"\n  [Overpass 400] Query:\n{query}\n  Response: {resp.text[:300]}")
                     resp.raise_for_status()
