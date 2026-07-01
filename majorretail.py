@@ -12,7 +12,17 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from github import Github
 from dotenv import load_dotenv
+from supabase import create_client
 load_dotenv()
+def get_supabase():
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_KEY")
+    if not url or not key:
+        return None
+    try:
+        return create_client(url, key)
+    except Exception:
+        return None
 
 anchor_brands = [
     "walmart", "walmart supercenter", "walmart neighborhood market", "target", "costco", "sams club", "sam's club",
@@ -36,13 +46,13 @@ subbrand_noise = [
 
 plaza_radius_mi = 0.18
 min_anchors_per_plaza = 1
-search_radius_km = 5
+search_radius_km = 12
 min_other_tenants = 1
 
 overpass_mirrors = [
     "https://overpass-api.de/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
-    "https://overpass.openstreetmap.ru/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
     "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
 ]
 headers = {"User-Agent": "retailfinder/1.0"}
@@ -456,28 +466,60 @@ def attach_mall_names(plazas: list[Plaza], mall_elements:list)-> None:
         plaza.mall_address = best_addr or ""
 
 
-def lookup_county(lat:float,lng:float) -> str:
-    try: 
-        elements = run_overpass(build_county_query(lat,lng))
+def lookup_county(lat: float, lng: float) -> str:
+    sb = get_supabase()
+    if sb:
+        try:
+            lat_key = round(lat, 1)
+            lng_key = round(lng, 1)
+            result = (sb.table("county_cache")
+                        .select("county")
+                        .eq("lat_key", lat_key)
+                        .eq("lng_key", lng_key)
+                        .limit(1)
+                        .execute())
+            if result.data:
+                return result.data[0]["county"]
+        except Exception:
+            pass
+
+    county = "-"
+    try:
+        elements = run_overpass(build_county_query(lat, lng))
         for el in elements:
             tags = el.get("tags", {})
-            if (tags.get("admin_level") == "6" and tags.get("boundary") == "administrative"):
-                name = tags.get("name", "")
-                return name  
+            if (tags.get("admin_level") == "6" and
+                    tags.get("boundary") == "administrative"):
+                county = tags.get("name", "-")
+                break
     except Exception:
         pass
-    return "-"
-def attach_counties(plazas:list[Plaza]) -> None:
-    cache: dict[str, str] = {}
+
+    if sb and county != "-":
+        try:
+            sb.table("county_cache").upsert({
+                "lat_key": round(lat, 1),
+                "lng_key": round(lng, 1),
+                "county":  county,
+            }, on_conflict="lat_key,lng_key").execute()
+        except Exception:
+            pass
+
+    return county
+
+
+def attach_counties(plazas: list[Plaza]) -> None:
+    seen: dict[str, str] = {}
     for i, plaza in enumerate(plazas):
-        clat,clng = plaza.center
-        cache_key = f"{round(clat,2)}, {round(clng,2)}"
-        if cache_key not in cache:
-            print(f"  [county] looking up cluster {i + 1}/{len(plazas)}...", end="\r")
-            cache[cache_key] = lookup_county(clat,clng)
-            time.sleep(0.5)
-        plaza.county = cache[cache_key]
+        clat, clng = plaza.center
+        key = f"{round(clat, 1)},{round(clng, 1)}"
+        if key not in seen:
+            print(f"  [county] looking up {i+1}/{len(plazas)}...", end="\r")
+            seen[key] = lookup_county(clat, clng)
+            time.sleep(0.1) 
+        plaza.county = seen[key]
     print(" " * 50, end="\r")
+
 
 
 
@@ -855,10 +897,107 @@ def upload_map_to_github(html_path:str) -> str:
         print(f"  [warn] GitHub upload failed: {e}")
         print(f"  [warn] Falling back to local path.")
         return os.path.abspath(html_path)
+    
+def save_run_to_cache(display: str, lat: float, lng: float,
+                      radius_km: float, map_url: str,
+                      plazas: list, state: str) -> None:
+    sb = get_supabase()
+    if not sb:
+        return
+    try:
+        # ── Upsert city run ─────────────────────────────────────────────────
+        run = (sb.table("city_runs")
+                 .upsert({
+                     "city":      display,
+                     "display":   display,
+                     "lat":       lat,
+                     "lng":       lng,
+                     "radius_km": radius_km,
+                     "map_url":   map_url,
+                 }, on_conflict="city")
+                 .execute())
+        run_id = run.data[0]["id"]
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
+        saved   = 0
+        skipped = 0
+
+        for p in plazas:
+            # Support both Plaza objects and dicts
+            name    = p.label           if hasattr(p, "label")           else p.get("name", "")
+            address = p.display_address if hasattr(p, "display_address") else p.get("address", "-")
+            city    = p.display_city    if hasattr(p, "display_city")    else p.get("city", "-")
+            county  = p.county          if hasattr(p, "county")          else p.get("county", "-")
+            num_anchors  = len(p.anchors)  if hasattr(p, "anchors")      else p.get("num_anchors", 0)
+            anchor_names = p.anchor_names  if hasattr(p, "anchor_names") else p.get("anchor_names", "")
+            num_tenants  = len(p.tenants)  if hasattr(p, "tenants")      else p.get("num_tenants", 0)
+            tenant_names = p.tenant_names  if hasattr(p, "tenant_names") else p.get("tenant_names", "")
+
+            is_unnamed = (name == "Unnamed Retail Center")
+
+            # ── Dedup strategy ───────────────────────────────────────────────
+            # Named plazas:   match on name + city (same plaza may appear in
+            #                 overlapping city searches)
+            # Unnamed plazas: match on address + city (the name is meaningless
+            #                 for dedup — every unnamed plaza shares the same name)
+            #                 If address is also missing, always insert since we
+            #                 have no reliable way to identify it as a duplicate.
+
+            existing = None
+
+            if is_unnamed:
+                if address == "-":
+                    # No name, no address — can't dedup, always insert
+                    existing_data = []
+                else:
+                    result = (sb.table("plazas")
+                                .select("id, address")
+                                .eq("address", address)
+                                .eq("city", city)
+                                .limit(1)
+                                .execute())
+                    existing_data = result.data
+            else:
+                result = (sb.table("plazas")
+                            .select("id, address")
+                            .eq("name", name)
+                            .eq("city", city)
+                            .limit(1)
+                            .execute())
+                existing_data = result.data
+
+            if existing_data:
+                # Already exists — update if we now have a better address
+                existing_addr = existing_data[0].get("address", "-")
+                if address != "-" and existing_addr == "-":
+                    sb.table("plazas").update({
+                        "address":      address,
+                        "num_anchors":  num_anchors,
+                        "anchor_names": anchor_names,
+                        "num_tenants":  num_tenants,
+                        "tenant_names": tenant_names,
+                    }).eq("id", existing_data[0]["id"]).execute()
+                skipped += 1
+            else:
+                # New plaza — insert
+                sb.table("plazas").insert({
+                    "city_run_id":  run_id,
+                    "name":         name,
+                    "state":        state,
+                    "county":       county,
+                    "city":         city,
+                    "address":      address,
+                    "num_anchors":  num_anchors,
+                    "anchor_names": anchor_names,
+                    "num_tenants":  num_tenants,
+                    "tenant_names": tenant_names,
+                }).execute()
+                saved += 1
+
+        print(f"  [cache] {display}: {saved} new plazas saved, {skipped} already existed")
+
+    except Exception as e:
+        print(f"  [cache] Save failed: {e}")
+
  
 def main():
     parser = argparse.ArgumentParser(
@@ -926,6 +1065,8 @@ def main():
     print("\n  Uploading to GitHub...")
     map_url = upload_map_to_github(map_path)
     export_to_excel(plazas, display, args, map_url)
+    state = args.city.split(",")[1].strip() if "," in args.city else "-"
+    save_run_to_cache(display,lat,lng,args.search_km,map_url,plazas,state)
  
  
 if __name__ == "__main__":

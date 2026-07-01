@@ -6,3 +6,4 @@ PyGithub
 python-dotenv
 openpyxl
 gunicorn
+supabase
