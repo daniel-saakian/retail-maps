@@ -21,7 +21,7 @@
 <body>
 <div id='map'></div>
 <script>
-  var map = L.map('map').setView([33.11494703, -94.18234249], 12);
+  var map = L.map('map').setView([33.11494703000001, -94.18234249], 12);
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
@@ -70,7 +70,7 @@
       .addTo(map);
   }
 
-    addPlaza(33.11494703, -94.18234249, 289.7, 'Unnamed Retail Center', '201 Loop 59 Atlanta', 'Cass County', 'Atlanta', 2, 'Dollar Tree, Walmart Supercenter', 8, 'Anytime Fitness, Cash Store, Chicken Express, Exxon, Murphy USA, Stateline Fireworks, TC Fuels, Verizon', '#3498db');
+    addPlaza(33.11494703000001, -94.18234249, 289.7, 'Unnamed Retail Center', '201 Loop 59 Atlanta', 'Cass County', 'Atlanta', 2, 'Dollar Tree, Walmart Supercenter', 8, 'Anytime Fitness, Cash Store, Chicken Express, Exxon, Murphy USA, Stateline Fireworks, TC Fuels, Verizon', '#3498db');
     addStore(33.1002745, -94.215834, 'Cass County Cars', '3101 West Main Street', '#27ae60', 'Standalone / Not in Plaza', false);
   addStore(33.1160287, -94.1821565, 'Cash Store', '-', '#3498db', 'Unnamed Retail Center', false);
   addStore(33.1160947, -94.1821424, 'Verizon', '-', '#3498db', 'Unnamed Retail Center', false);
