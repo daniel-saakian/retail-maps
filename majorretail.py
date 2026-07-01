@@ -26,7 +26,7 @@ anchor_brands = [
     "home depot", "the home depot", "lowe's", "lowes", "best buy", "macy's", "macys", "nordstrom", "nordstrom rack", "bloomingdale's", 
     "bloomingdales", "dicks sporting goods", "dick's sporting", "dick's sporting goods", "dollar tree", "save mart", "grocery outlet",
     "winco", "bevmo", "bevmo!", "harbor freight", "homegoods", "home goods", "ross", "burlington", "tj maxx", "william-sonoma",
-    "petco", "h&m", "marshalls", "kohl's","ace hardware", "office depot", "big 5", "rite aid", "jcpenney"
+    "petco", "h&m", "marshalls", "kohl's","ace hardware", "office depot", "big 5", "rite aid", "jcpenney", "nike", "adidas"
 ]
 subbrand_noise = [
     "gasoline", "gas", "gas station", "fuel", "fuel station", "pharmacy", "garden center", "garden centre", "car wash", "tire center",
