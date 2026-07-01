@@ -36,7 +36,7 @@ subbrand_noise = [
 
 plaza_radius_mi = 0.18
 min_anchors_per_plaza = 1
-search_radius_km = 12
+search_radius_km = 5
 min_other_tenants = 1
 
 overpass_mirrors = [
