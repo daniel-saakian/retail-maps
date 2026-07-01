@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8' />
+  <title>Retail Centers – Atlanta, GA</title>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' />
+  <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
+  <style>
+    body { margin: 0; font-family: sans-serif; }
+    #map { height: 100vh; width: 100%; }
+    .legend {
+      background: white; padding: 10px 14px; border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); line-height: 1.8;
+      font-size: 13px;
+    }
+    .legend-dot { display: inline-block; width: 12px; height: 12px;
+                   border-radius: 50%; margin-right: 6px; }
+  </style>
+</head>
+<body>
+<div id='map'></div>
+<script>
+  var map = L.map('map').setView([33.11494703, -94.18234249], 12);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(map);
+
+  function addPlaza(lat, lng, radius_m, name, address, county, city, numAnchors, anchors, numTenants, tenants, color) {
+    L.circle([lat, lng], {
+      radius: radius_m,
+      color: color,
+      fillColor: color,
+      fillOpacity: 0.08,
+      weight: 2
+    }).addTo(map);
+
+    var popup = '<b>' + name + '</b><br>'
+      + (address !== '-' ? address + '<br>' : '')
+      + city + (county !== '-' ? ', ' + county + ' County' : '') + '<br>'
+      + '<br><b>' + numAnchors + ' anchor(s):</b><br>'
+      + anchors.split(', ').join('<br>')
+      + '<br><br><b>' + numTenants + ' other tenant(s):</b><br>'
+      + tenants.split(', ').join('<br>');
+
+    L.circleMarker([lat, lng], {
+      radius: 9,
+      color: '#fff',
+      fillColor: '#8e44ad',
+      fillOpacity: 1,
+      weight: 2
+    }).bindPopup(popup).bindTooltip(name, {permanent: false, direction: 'top'}).addTo(map);
+  }
+
+  function addStore(lat, lng, name, address, color, plaza, isAnchor) {
+    var size = isAnchor ? 11 : 9;
+    var icon = L.divIcon({
+      className: '',
+      html: '<div style="position:absolute;width:' + size + 'px;height:' + size + 'px;border-radius:50%;background:' + color + ';border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.4);top:50%;left:50%;transform:translate(-50%,-50%)' + (isAnchor ? ';outline:2px solid rgba(0,0,0,0.25)' : '') + '"></div>',
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2]
+    });
+    L.marker([lat, lng], {icon: icon})
+      .bindPopup('<b>' + name + '</b>' + (isAnchor ? '⚓' : '')+ '<br>' 
+        + '<i>' + plaza + '</i><br>'
+        + address)
+      .bindTooltip(name, {direction: 'top'})
+      .addTo(map);
+  }
+
+    addPlaza(33.11494703, -94.18234249, 289.7, 'Unnamed Retail Center', '201 Loop 59 Atlanta', 'Cass County', 'Atlanta', 2, 'Dollar Tree, Walmart Supercenter', 8, 'Anytime Fitness, Cash Store, Chicken Express, Exxon, Murphy USA, Stateline Fireworks, TC Fuels, Verizon', '#3498db');
+    addStore(33.1002745, -94.215834, 'Cass County Cars', '3101 West Main Street', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1160287, -94.1821565, 'Cash Store', '-', '#3498db', 'Unnamed Retail Center', false);
+  addStore(33.1160947, -94.1821424, 'Verizon', '-', '#3498db', 'Unnamed Retail Center', false);
+  addStore(33.1062332, -94.1964817, 'Whataburger', '2005 West Main Street Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1121785, -94.1603316, 'Family Dollar', '406 East Main Street Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1163428, -94.1808152, 'McDonald\'s', '200 Loop 59 Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1148326, -94.1814098, 'TC Fuels', '110 Loop 59 Atlanta', '#3498db', 'Unnamed Retail Center', false);
+  addStore(33.1148717, -94.181563, 'Exxon', '-', '#3498db', 'Unnamed Retail Center', false);
+  addStore(33.1151481, -94.1829264, 'Murphy USA', '205 Loop 59 Atlanta', '#3498db', 'Unnamed Retail Center', false);
+  addStore(33.1154257, -94.1848799, 'Walmart Supercenter', '201 Loop 59 Atlanta', '#f39c12', 'Unnamed Retail Center', true);
+  addStore(33.1062064, -94.1965909, 'Kim\'s', '2007 West Main Street Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.106462, -94.196642, 'Shell', '-', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1446507, -94.1598261, 'CEFCO', '309 US Highway 59 North Queen City', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1446163, -94.1596351, 'Exxon', '-', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1520068, -94.1545887, 'E-Z Mart', '901 US Highway 59 North Queen City', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1518183, -94.1542891, 'Shell', '-', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1515614, -94.154912, 'Shell', '-', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1452301, -94.1580705, 'Total Stop', '402 US Highway 59 North Queen City', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1452273, -94.158404, 'Valero', '-', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1813613, -94.1534434, 'Roses Butterflies Antique Mall', '16879 US Highway 59 North Queen City', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1491224, -94.154904, 'Dollar General', '710 US Highway 59 North Queen City', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1455661, -94.1580335, 'Jiles Collision & Automotive', '-', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.146253, -94.1546913, 'Queen City Funeral Home', '421 Loop 236 Queen City', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1483047, -94.1574143, 'Bronco Pawn & Gun', '605 US Highway 59 North Queen City', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1485719, -94.1586059, 'Wellborn\'s Extreme Auto Repair', '519 US Highway 59 North Queen City', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1434482, -94.1594778, 'Queen City Tire', '302 US Highway 59 North Queen City', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1285337, -94.1773453, 'DQ Grill & Chill', '701 Loop 59 Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1273438, -94.1779704, 'Rapid Lube', '607 Loop 59 Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.126215, -94.178584, 'Taco Bell', '501 Loop 59 Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1248487, -94.1777764, 'O\'Reilly Auto Parts', '528 Loop 59 Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1213977, -94.1787834, 'AutoZone', '408 Loop 59 Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1218062, -94.1803383, 'Aaron\'s', '411 Loop 59 Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1158278, -94.1807232, 'Ivan Smith Furniture', '126 Loop 59 Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.115447, -94.1812017, 'Chicken Express', '124 Loop 59 Atlanta', '#3498db', 'Unnamed Retail Center', false);
+  addStore(33.1140087, -94.1833299, 'Dollar Tree', '107 Loop 59 Atlanta', '#f39c12', 'Unnamed Retail Center', true);
+  addStore(33.1143761, -94.1816144, 'Anytime Fitness', '108 Loop 59 Atlanta', '#3498db', 'Unnamed Retail Center', false);
+  addStore(33.1114984, -94.1852191, 'Motel 6', '1100 West Main Street Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1122949, -94.1687941, 'Raines Auto Center', '401 South Louise Street Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1147887, -94.1687113, 'Exxon', '-', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1146623, -94.1687551, 'Star Mart', '201 West Main Street Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1151335, -94.1679573, 'Shell', '108 West Main Street Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.114987, -94.1680104, 'Shell', '-', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1138766, -94.1635025, 'Subway', '205 East Main Street Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1141028, -94.1669781, 'Hanner Funeral Home', '103 West Main Street Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1123085, -94.1616832, 'Flints Furniture & Appliances', '314 East Main Street Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1122825, -94.1614005, 'Cricket Wireless', '320 East Main Street Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1121395, -94.1609473, 'Brookshire\'s', '402 East Main Street Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1129368, -94.1621174, 'Cash Out Texas', '304 East Main Street Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1144365, -94.164158, 'Pretty Prints', '120 East Hiram Street Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1141408, -94.1645076, 'Atlanta Floral and Gifts', '113 East Main Street Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1140808, -94.1642827, 'Merle Norman', '119 East Main Street Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1140089, -94.164215, 'World Finance', '123 East Main Street Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1162177, -94.1627438, 'Price Hardware', '302 North Williams Street Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1163989, -94.1640196, 'Regions Bank', '307 North Williams Street Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1195115, -94.181738, 'Tractor Supply Company', '315 Loop 59 Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1188182, -94.1796021, 'Best Western Pineywoods Inn', '306 Loop 59 Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1223046, -94.1801349, 'ABC Auto Parts', '413 Loop 59 Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1218707, -94.178792, 'Domino\'s', '506 Loop 59 Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1204196, -94.1793586, 'Pizza Hut', '404 Loop 59 Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1207463, -94.1791393, 'Discount Wheel & Tire Pros', '406 Loop 59 Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1223799, -94.1786001, 'State Farm', '510 Loop 59 Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1182727, -94.1815896, 'Sonic', '301 Loop 59 Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1178283, -94.1817332, 'Burger King', '299 Loop 59 Atlanta', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.113237, -94.1822009, 'Stateline Fireworks', '106 Loop 59 Atlanta', '#3498db', 'Unnamed Retail Center', false);
+  addStore(33.1370695, -94.0597684, 'Kim\'s Convenience Store', '-', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1370444, -94.0599065, 'Exxon', '-', '#27ae60', 'Standalone / Not in Plaza', false);
+  addStore(33.1313245, -94.0612183, 'Dollar General', '-', '#27ae60', 'Standalone / Not in Plaza', false);
+
+  var legend = L.control({position: 'bottomright'});
+  legend.onAdd = function() {
+    var div = L.DomUtil.create('div', 'legend');
+    div.innerHTML = '<b>Retail Centers – Atlanta, GA</b><br>'
+      + '<span class="legend-dot" style="background:#e74c3c"></span> Named plaza<br>'
+      + '<span class="legend-dot" style="background:#3498db"></span> Unnamed plaza<br>'
+      + '<span class="legend-dot" style="background:#8e44ad"></span> Plaza center point<br>'
+      + '<span class="legend-dot" style="background:#f39c12"></span> Anchor store (in plaza)<br>'
+      + '<span class="legend-dot" style="background:#27ae60"></span> Standalone store<br>'
+      + 'Circle = plaza footprint &nbsp; ⚓ = anchor';
+    return div;
+  };
+  legend.addTo(map);
+</script>
+</body>
+</html>
