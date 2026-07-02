@@ -597,7 +597,11 @@ def js_escape(s:str) -> str:
 def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all_stores: list[Store], output_path = None) -> None:
     if output_path is None:
         slug = city_display.lower().replace(", ", "-").replace(" ", "-")
-        output_path = f"{slug}.html"
+        os.makedirs("maps", exist_ok=True)
+        output_path = os.path.join(
+            "maps",
+            f"{slug}.html"
+        )
     if not plazas:
         return
 
@@ -609,36 +613,54 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
     base_radius_m = radius_miles * 1609.34
 
     coord_to_color = {}
-    for p in plazas:
+    for plaza_id, p in enumerate(plazas):
         color = "#e74c3c" if p.mall_name else "#3498db"
         for s in p.all_stores:
-            coord_to_color[(round(s.lat,4), round(s.lng,4))] = (color,p.label)
+            coord_to_color[(round(s.lat,4), round(s.lng,4))] = {
+                "color": color,
+                "label": p.label,
+                "id": plaza_id
+            }
     store_js = []
     for s in all_stores:
         sname = js_escape(s.name)
         saddr = js_escape(s.address if s.address else "-")
-        key = (round(s.lat,4), round(s.lng,4))
+
+        key = (round(s.lat, 4), round(s.lng, 4))
 
         if key in coord_to_color:
-            color, plaza_label = coord_to_color[key]
+            info = coord_to_color[key]
+
+            color = info["color"]
+            plaza_label = info["label"]
+            plaza_id = info["id"]
+
             if s.is_anchor_store:
                 dot_color = "#f39c12"
             else:
                 dot_color = color
+
         else:
-            color = "#27ae60"
             plaza_label = "Standalone / Not in Plaza"
+            plaza_id = -1
             dot_color = "#27ae60"
 
-
-        plaza_label = js_escape(plaza_label)
         store_js.append(
-            f"  addStore({s.lat}, {s.lng}, '{sname}', '{saddr}', '{dot_color}', '{plaza_label}', {str(s.is_anchor_store).lower()});"
+            f"addStore("
+            f"{s.lat}, "
+            f"{s.lng}, "
+            f"'{sname}', "
+            f"'{saddr}', "
+            f"'{dot_color}', "
+            f"{plaza_id}, "
+            f"'{js_escape(plaza_label)}', "
+            f"{str(s.is_anchor_store).lower()}"
+            f");"
         )
     stores_code = "\n".join(store_js)
 
     plaza_js = []
-    for p in plazas:
+    for plaza_id,p in enumerate(plazas):
         clat, clng = p.center
         max_dist = max(
             (haversine_m(clat,clng,s.lat,s.lng) for s in p.all_stores),
@@ -654,9 +676,21 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
         color = "#e74c3c" if p.mall_name else "#3498db"
 
         plaza_js.append(
-            f"  addPlaza({clat}, {clng}, {plaza_radius_m:.1f}, '{label}', "
-            f"'{address}', '{county}', '{city}', {len(p.anchors)}, '{anchors_list}', "
-            f"{len(p.tenants)}, '{tenants_list}', '{color}');"
+            f"addPlaza("
+            f"{clat}, "
+            f"{clng}, "
+            f"{plaza_radius_m:.1f}, "
+            f"{plaza_id}, "
+            f"'{label}', "
+            f"'{address}', "
+            f"'{county}', "
+            f"'{city}', "
+            f"{len(p.anchors)}, "
+            f"'{anchors_list}', "
+            f"{len(p.tenants)}, "
+            f"'{tenants_list}', "
+            f"'{color}'"
+            f");"
         )
 
 
@@ -714,7 +748,7 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
     return countyLayers[county];
   }}
 
-  function addPlaza(lat, lng, radius_m, name, address, county, city, numAnchors, anchors, numTenants, tenants, color) {{
+  function addPlaza(lat, lng, radius_m, plazaId, name, address, county, city, numAnchors, anchors, numTenants, tenants, color) {{
     var popup = '<b>' + name + '</b><br>'
       + (address !== '-' ? address + '<br>' : '')
       + city + (county !== '-' ? ', ' + county + ' County' : '') + '<br>'
@@ -750,6 +784,7 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
     plazasData.push({{
         circle: circle,
         center: center,
+        id: plazaId,
         name: name,
         county: cleanCounty,
         numAnchors: numAnchors,
@@ -757,7 +792,7 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
     }});
   }}
 
-  function addStore(lat, lng, name, address, color, plaza, isAnchor) {{
+  function addStore(lat, lng, name, address, color, plazaId, plaza, isAnchor) {{
     var size = isAnchor ? 11 : 9;
     var icon = L.divIcon({{
       className: '',
@@ -778,6 +813,7 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
     
     storesData.push({{
       marker: marker,
+      plazaId: plazaId,
       plazaLabel: plaza,
       isAnchor: isAnchor
     }});
@@ -808,21 +844,31 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
     }});
       
     storesData.forEach(function(s) {{
-      var storeVisible = false;
-      if (s.plazaLabel === 'Standalone / Not in Plaza') {{
-        storeVisible = map.hasLayer(layerStandalone);
-      }} else {{
-          var parentPlaza = plazasData.find(function(p) {{return p.name === s.plazaLabel; }});
-          if (parentPlaza && parentPlaza.isActive) {{
-            storeVisible = s.isAnchor ? map.hasLayer(layerAnchors) : map.hasLayer(layerTenants);
-          }}
-      }}
+        var storeVisible = false;
 
-      if (storeVisible) {{
-          if (!map.hasLayer(s.marker)) s.marker.addTo(map);
-      }} else {{
-          if (map.hasLayer(s.marker)) map.removeLayer(s.marker);
-      }}
+        if (s.plazaId === -1) {{
+            // Standalone store
+            storeVisible = map.hasLayer(layerStandalone);
+
+        }} else {{
+            var parentPlaza = plazasData.find(function(p) {{
+                return p.id === s.plazaId;
+            }});
+
+            if (parentPlaza && parentPlaza.isActive) {{
+                storeVisible = s.isAnchor
+                    ? map.hasLayer(layerAnchors)
+                    : map.hasLayer(layerTenants);
+            }}
+        }}
+
+        if (storeVisible) {{
+            if (!map.hasLayer(s.marker))
+                s.marker.addTo(map);
+        }} else {{
+            if (map.hasLayer(s.marker))
+                map.removeLayer(s.marker);
+        }}
     }});
   }}
 
@@ -1047,7 +1093,7 @@ def upload_map_to_github(html_path:str) -> str:
                 auto_init = True,
             )
             time.sleep(2)
-        filename = os.path.basename(html_path)
+        filename = f"maps/{os.path.basename(html_path)}"
 
         with open(html_path, "r", encoding="utf-8") as f:
             content = f.read()
