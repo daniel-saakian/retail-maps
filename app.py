@@ -10,27 +10,17 @@ progress = {}
 
 def run_analysis(city, radius, min_tenants, search_km, slug):
     try:
-        progress[slug] = {"step": "1/5", "message": f"Geocoding {city}..."}
-        lat, lng, display = mr.geocode_city(city)
-        time.sleep(1)
-
-        # ── Check Supabase cache first ──────────────────────────────────────
+        # ── Check Supabase cache by city name FIRST — no Overpass needed ──
         progress[slug] = {"step": "1/5", "message": "Checking cache..."}
         sb = mr.get_supabase()
         if sb:
             try:
                 from datetime import datetime, timezone, timedelta
-                import math
                 cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
-                lat_delta = search_km / 111.0
-                lng_delta = search_km / (111.0 * math.cos(math.radians(lat)))
 
                 runs = (sb.table("city_runs")
                           .select("*")
-                          .gte("lat", lat - lat_delta)
-                          .lte("lat", lat + lat_delta)
-                          .gte("lng", lng - lng_delta)
-                          .lte("lng", lng + lng_delta)
+                          .ilike("city", f"%{city.split(',')[0].strip()}%")
                           .gte("ran_at", cutoff)
                           .order("ran_at", desc=True)
                           .limit(1)
@@ -43,7 +33,7 @@ def run_analysis(city, radius, min_tenants, search_km, slug):
                                 .eq("city_run_id", run["id"])
                                 .execute())
                     if cached.data:
-                        print(f"  [cache] HIT for {display} — {len(cached.data)} plazas")
+                        print(f"  [cache] HIT for {city} — {len(cached.data)} plazas")
                         progress[slug] = {
                             "step":    "done",
                             "message": f"Found {len(cached.data)} plazas (from cache)",
@@ -58,7 +48,12 @@ def run_analysis(city, radius, min_tenants, search_km, slug):
             except Exception as e:
                 print(f"  [cache] lookup failed: {e}")
 
-        # ── Cache miss — run full pipeline ──────────────────────────────────
+        # ── Cache miss — now do Overpass calls ──────────────────────────────
+        progress[slug] = {"step": "1/5", "message": f"Geocoding {city}..."}
+        time.sleep(2)
+        lat, lng, display = mr.geocode_city(city)
+        time.sleep(1)
+
         progress[slug] = {"step": "2/5", "message": "Querying OpenStreetMap for stores..."}
         store_elements = mr.run_overpass(mr.build_store_query(lat, lng, search_km))
 
@@ -81,7 +76,7 @@ def run_analysis(city, radius, min_tenants, search_km, slug):
         mr.attach_mall_names(plazas, mall_elements)
         plazas = mr.deduplicate_plaza_stores(plazas)
         plazas = mr.merge_same_name_plazas(plazas)
-        mr.attach_counties(plazas)  # now uses Supabase county cache internally
+        mr.attach_counties(plazas)
 
         progress[slug] = {"step": "5/5", "message": "Generating and uploading map..."}
         map_path = mr.generate_map(plazas, display, radius, stores,
