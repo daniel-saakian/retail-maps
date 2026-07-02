@@ -50,10 +50,10 @@ search_radius_km = 12
 min_other_tenants = 1
 
 overpass_mirrors = [
-    "https://overpass-api.de/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
     "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+    "https://overpass-api.de/api/interpreter",
 ]
 headers = {"User-Agent": "retailfinder/1.0"}
 

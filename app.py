@@ -62,6 +62,8 @@ def run_analysis(city, radius, min_tenants, search_km, slug):
         progress[slug] = {"step": "2/5", "message": "Querying OpenStreetMap for stores..."}
         store_elements = mr.run_overpass(mr.build_store_query(lat, lng, search_km))
 
+        time.sleep(2)
+
         progress[slug] = {"step": "3/5", "message": "Querying mall names..."}
         try:
             mall_elements = mr.run_overpass(mr.build_mall_query(lat, lng, search_km))
