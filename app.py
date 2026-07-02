@@ -32,8 +32,10 @@ def run_analysis(city, radius, min_tenants, search_km, slug):
                                 .select("*")
                                 .eq("city_run_id", run["id"])
                                 .execute())
+                    
+                    print(f"  [cache] plazas found: {len(cached.data)}")
                     if cached.data:
-                        print(f"  [cache] HIT — returning early, {len(cached.data)} plazas")
+                        print(f"  [cache] HIT — returning now")
                         progress[slug] = {
                             "step":    "done",
                             "message": f"Found {len(cached.data)} plazas (from cache)",
