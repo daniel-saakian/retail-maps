@@ -118,37 +118,102 @@ class Plaza:
         return ", ".join(sorted(set(s.name for s in self.tenants)))
 
 
-def geocode_city(city:str) -> tuple[float,float, str]:
+def geocode_city(city: str) -> tuple[float, float, str]:
     parts = [p.strip() for p in city.split(",")]
     city_name = parts[0]
-    state = parts[1].strip() if len(parts) >1 else ""
+    state = parts[1].strip() if len(parts) > 1 else ""
 
     query = f"""
 [out:json][timeout:30];
 (
     node["place"~"city|town"]["name"~"^{city_name}$",i];
 );
-out 5;
+out 20;
 """.strip()
-    
+
     elements = run_overpass(query)
 
     if not elements:
         raise ValueError(
-            f"City not found: '{city}'. \n"
-            "Use 'City, State' format such as 'Roseville, CA'."
+            f"City not found: '{city}'. "
+            "Use 'City, State' format such as 'Atlanta, GA'."
         )
-    chosen = elements[0]
+
+    # State abbreviation → full name mapping for broader matching
+    state_names = {
+        "AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas",
+        "CA": "California", "CO": "Colorado", "CT": "Connecticut", "DE": "Delaware",
+        "FL": "Florida", "GA": "Georgia", "HI": "Hawaii", "ID": "Idaho",
+        "IL": "Illinois", "IN": "Indiana", "IA": "Iowa", "KS": "Kansas",
+        "KY": "Kentucky", "LA": "Louisiana", "ME": "Maine", "MD": "Maryland",
+        "MA": "Massachusetts", "MI": "Michigan", "MN": "Minnesota", "MS": "Mississippi",
+        "MO": "Missouri", "MT": "Montana", "NE": "Nebraska", "NV": "Nevada",
+        "NH": "New Hampshire", "NJ": "New Jersey", "NM": "New Mexico", "NY": "New York",
+        "NC": "North Carolina", "ND": "North Dakota", "OH": "Ohio", "OK": "Oklahoma",
+        "OR": "Oregon", "PA": "Pennsylvania", "RI": "Rhode Island", "SC": "South Carolina",
+        "SD": "South Dakota", "TN": "Tennessee", "TX": "Texas", "UT": "Utah",
+        "VT": "Vermont", "VA": "Virginia", "WA": "Washington", "WV": "West Virginia",
+        "WI": "Wisconsin", "WY": "Wyoming", "DC": "District of Columbia",
+    }
+
+    chosen = elements[0]  # fallback
+
     if state:
+        state_upper = state.upper()
+        state_full  = state_names.get(state_upper, "").lower()
+
         for el in elements:
-            tags = el.get("tags",{})
-            st = tags.get("addr:state", "") or tags.get("is_in:state_code","")
-            if state.upper() in st.upper():
+            tags = el.get("tags", {})
+
+            # Check all state-related tags OSM uses
+            st_code = (tags.get("addr:state", "") or
+                       tags.get("is_in:state_code", "") or
+                       tags.get("ISO3166-2", "")).upper()
+            st_name = (tags.get("is_in:state", "") or
+                       tags.get("addr:state", "")).lower()
+
+            # Match by abbreviation (GA) or full name (Georgia)
+            code_match = state_upper in st_code
+            name_match = state_full and state_full in st_name
+
+            if code_match or name_match:
                 chosen = el
                 break
-    tags = chosen.get("tags",{})
-    name = tags.get("name",city_name)
-    state_tag = tags.get("addr:state") or tags.get("is_in:state_code") or state
+        else:
+            # No tag match found — try is_in query to verify location
+            # by checking which US state the coordinates fall in
+            for el in elements:
+                lat_c = el.get("lat")
+                lng_c = el.get("lon")
+                if lat_c is None or lng_c is None:
+                    continue
+                try:
+                    is_in = run_overpass(f"""
+[out:json][timeout:10];
+is_in({lat_c},{lng_c});
+out tags;
+""".strip())
+                    for area in is_in:
+                        area_tags = area.get("tags", {})
+                        area_code = (area_tags.get("ISO3166-2", "") or
+                                     area_tags.get("ref", "")).upper()
+                        area_name = area_tags.get("name", "").lower()
+                        if (state_upper in area_code or
+                                (state_full and state_full in area_name)):
+                            chosen = el
+                            break
+                    else:
+                        continue
+                    break
+                except Exception:
+                    continue
+
+    tags = chosen.get("tags", {})
+    name = tags.get("name", city_name)
+    state_tag = (tags.get("addr:state") or
+                 tags.get("is_in:state_code") or
+                 tags.get("ISO3166-2", "").replace("US-", "") or
+                 state)
     display = f"{name}, {state_tag}" if state_tag else name
     return chosen["lat"], chosen["lon"], display
 
@@ -627,50 +692,171 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
     maxZoom: 19
   }}).addTo(map);
 
+  // FIX 1: Explicitly initialize the tracking arrays
+  var plazasData = [];
+  var storesData = [];
+
+  var layerMultiAnchor = L.layerGroup().addTo(map);
+  var layerSingleAnchor = L.layerGroup().addTo(map);
+  var layerPlazaCenters = L.layerGroup().addTo(map);
+  var layerAnchors = L.layerGroup().addTo(map);
+  var layerTenants = L.layerGroup().addTo(map);
+  var layerStandalone = L.layerGroup().addTo(map);
+  var layerHighDensity = L.layerGroup().addTo(map);
+  var layerLowDensity = L.layerGroup().addTo(map);
+  var countyLayers = {{}};
+
+  function getOrCreateCountyLayer(county) {{
+    if (!county || county === '-') county = 'Unknown';
+    if (!countyLayers[county]) {{
+        countyLayers[county] = L.layerGroup().addTo(map);
+    }}
+    return countyLayers[county];
+  }}
+
   function addPlaza(lat, lng, radius_m, name, address, county, city, numAnchors, anchors, numTenants, tenants, color) {{
-    L.circle([lat, lng], {{
+    var popup = '<b>' + name + '</b><br>'
+      + (address !== '-' ? address + '<br>' : '')
+      + city + (county !== '-' ? ', ' + county + ' County' : '') + '<br>'
+      + '<br><b>' + numAnchors + ' anchor(s): </b><br>'
+      + anchors.split(', ').join('<br>')
+      + '<br><br><b>' + numTenants + ' other tenant(s):</b><br>'
+      + tenants.split(', ').join('<br>');
+    
+    var circle = L.circle([lat, lng], {{
       radius: radius_m,
       color: color,
       fillColor: color,
       fillOpacity: 0.08,
       weight: 2
-    }}).addTo(map);
+    }});
+    if (numAnchors > 1) {{
+      layerMultiAnchor.addLayer(circle);
+    }} else {{
+      layerSingleAnchor.addLayer(circle);
+    }}
 
-    var popup = '<b>' + name + '</b><br>'
-      + (address !== '-' ? address + '<br>' : '')
-      + city + (county !== '-' ? ', ' + county + ' County' : '') + '<br>'
-      + '<br><b>' + numAnchors + ' anchor(s):</b><br>'
-      + anchors.split(', ').join('<br>')
-      + '<br><br><b>' + numTenants + ' other tenant(s):</b><br>'
-      + tenants.split(', ').join('<br>');
+    var center = L.circleMarker([lat,lng], {{
+        radius: 9,
+        color: '#fff',
+        fillColor: '#8e44ad',
+        fillOpacity: 1,
+        weight: 2
+    }}).bindPopup(popup).bindTooltip(name, {{permanent: false, direction: 'top'}});
 
-    L.circleMarker([lat, lng], {{
-      radius: 9,
-      color: '#fff',
-      fillColor: '#8e44ad',
-      fillOpacity: 1,
-      weight: 2
-    }}).bindPopup(popup).bindTooltip(name, {{permanent: false, direction: 'top'}}).addTo(map);
+    var cleanCounty = (!county || county === '-') ? 'Unknown' : county;
+    getOrCreateCountyLayer(cleanCounty);
+
+    plazasData.push({{
+        circle: circle,
+        center: center,
+        name: name,
+        county: cleanCounty,
+        numAnchors: numAnchors,
+        numTenants: numTenants
+    }});
   }}
 
   function addStore(lat, lng, name, address, color, plaza, isAnchor) {{
     var size = isAnchor ? 11 : 9;
     var icon = L.divIcon({{
       className: '',
-      html: '<div style="position:absolute;width:' + size + 'px;height:' + size + 'px;border-radius:50%;background:' + color + ';border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.4);top:50%;left:50%;transform:translate(-50%,-50%)' + (isAnchor ? ';outline:2px solid rgba(0,0,0,0.25)' : '') + '"></div>',
+      html: '<div style="position:absolute;width:' + size + 'px;height:' + size + 'px;'
+          + 'border-radius:50%;background:' + color + ';border:2px solid white;'
+          + 'box-shadow:0 1px 3px rgba(0,0,0,0.4);top:50%;left:50%;'
+          + 'transform:translate(-50%,-50%)'
+          + (isAnchor ? ';outline:2px solid rgba(0,0,0,0.25)' : '')
+          + '"></div>',
       iconSize: [size, size],
       iconAnchor: [size/2, size/2]
     }});
-    L.marker([lat, lng], {{icon: icon}})
+    var marker = L.marker([lat, lng], {{icon: icon}})
       .bindPopup('<b>' + name + '</b>' + (isAnchor ? '⚓' : '')+ '<br>' 
         + '<i>' + plaza + '</i><br>'
         + address)
       .bindTooltip(name, {{direction: 'top'}})
-      .addTo(map);
+    
+    storesData.push({{
+      marker: marker,
+      plazaLabel: plaza,
+      isAnchor: isAnchor
+    }});
+  }}
+
+  function updateVisibility() {{
+    plazasData.forEach(function(p) {{
+      var anchorMatch = (p.numAnchors > 1) ? map.hasLayer(layerMultiAnchor): map.hasLayer(layerSingleAnchor);
+      var densityMatch = (p.numTenants >= 10) ? map.hasLayer(layerHighDensity) : map.hasLayer(layerLowDensity);
+      var countyLayer = countyLayers[p.county];
+      var countyMatch = countyLayer ? map.hasLayer(countyLayer) : true;
+
+      var plazaVisible = anchorMatch && densityMatch && countyMatch;
+      p.isActive = plazaVisible;
+
+      if (plazaVisible) {{
+        // FIX 2: Changed map.has() to map.hasLayer()
+        if (!map.hasLayer(p.circle)) p.circle.addTo(map);
+      }} else {{
+        if (map.hasLayer(p.circle)) map.removeLayer(p.circle);
+      }}
+
+      if (plazaVisible && map.hasLayer(layerPlazaCenters)) {{
+        if (!map.hasLayer(p.center)) p.center.addTo(map);
+      }} else {{
+        if (map.hasLayer(p.center)) map.removeLayer(p.center);
+      }}
+    }});
+      
+    storesData.forEach(function(s) {{
+      var storeVisible = false;
+      if (s.plazaLabel === 'Standalone / Not in Plaza') {{
+        storeVisible = map.hasLayer(layerStandalone);
+      }} else {{
+          var parentPlaza = plazasData.find(function(p) {{return p.name === s.plazaLabel; }});
+          if (parentPlaza && parentPlaza.isActive) {{
+            storeVisible = s.isAnchor ? map.hasLayer(layerAnchors) : map.hasLayer(layerTenants);
+          }}
+      }}
+
+      if (storeVisible) {{
+          if (!map.hasLayer(s.marker)) s.marker.addTo(map);
+      }} else {{
+          if (map.hasLayer(s.marker)) map.removeLayer(s.marker);
+      }}
+    }});
   }}
 
   {plazas_code}
   {stores_code}
+
+  map.on('overlayadd overlayremove', updateVisibility);
+  updateVisibility();
+
+  var overlays = {{
+    '🔴  Multi-anchor plazas (2+ anchors)': layerMultiAnchor,
+    '⭕  Single-anchor plazas': layerSingleAnchor,
+    '🟣  Plaza Center Points': layerPlazaCenters,
+    '🟡  Anchor Stores (in Plaza)': layerAnchors,
+    '🔵🔴  Tenants (In Plaza)': layerTenants,
+    '🟢  Standalone Stores': layerStandalone,
+    '━━━━━━━━━━━━━━': L.layerGroup(),
+    '🔥  High Density Plazas (10+ tenants)': layerHighDensity,
+    '🔹  Lower Density (< 10 tenants)': layerLowDensity
+  }};
+
+  var countyDivider = false;
+  for (var county in countyLayers) {{
+    if (!countyDivider) {{
+        overlays['━━━━━━━━━━━━━━ '] = L.layerGroup();
+        countyDivider = true;
+    }}
+    overlays['📍 ' + county] = countyLayers[county];
+  }}
+
+  L.control.layers(null, overlays, {{
+    position: 'topright',
+    collapsed: false,
+  }}).addTo(map);
 
   var legend = L.control({{position: 'bottomright'}});
   legend.onAdd = function() {{
@@ -681,7 +867,7 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
       + '<span class="legend-dot" style="background:#8e44ad"></span> Plaza center point<br>'
       + '<span class="legend-dot" style="background:#f39c12"></span> Anchor store (in plaza)<br>'
       + '<span class="legend-dot" style="background:#27ae60"></span> Standalone store<br>'
-      + 'Circle = plaza footprint &nbsp; ⚓ = anchor';
+      + '⚓ = anchor &nbsp; 🔥 = 10+ tenants';
     return div;
   }};
   legend.addTo(map);
@@ -934,13 +1120,7 @@ def save_run_to_cache(display: str, lat: float, lng: float,
 
             is_unnamed = (name == "Unnamed Retail Center")
 
-            # ── Dedup strategy ───────────────────────────────────────────────
-            # Named plazas:   match on name + city (same plaza may appear in
-            #                 overlapping city searches)
-            # Unnamed plazas: match on address + city (the name is meaningless
-            #                 for dedup — every unnamed plaza shares the same name)
-            #                 If address is also missing, always insert since we
-            #                 have no reliable way to identify it as a duplicate.
+
 
             existing = None
 
