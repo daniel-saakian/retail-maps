@@ -10,6 +10,8 @@ progress = {}
 
 def run_analysis(city, radius, min_tenants, search_km, slug):
     try:
+        import os
+        print(f"  [env] SUPABASE_URL set: {bool(os.getenv('SUPABASE_URL'))}, SUPABASE_KEY set: {bool(os.getenv('SUPABASE_KEY'))}")
         # ── Check Supabase cache by city name FIRST — no Overpass needed ──
         progress[slug] = {"step": "1/5", "message": "Checking cache..."}
         sb = mr.get_supabase()
