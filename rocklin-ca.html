@@ -28,6 +28,10 @@
     maxZoom: 19
   }).addTo(map);
 
+  // FIX 1: Explicitly initialize the tracking arrays
+  var plazasData = [];
+  var storesData = [];
+
   var layerMultiAnchor = L.layerGroup().addTo(map);
   var layerSingleAnchor = L.layerGroup().addTo(map);
   var layerPlazaCenters = L.layerGroup().addTo(map);
@@ -55,7 +59,7 @@
       + '<br><br><b>' + numTenants + ' other tenant(s):</b><br>'
       + tenants.split(', ').join('<br>');
     
-    var circle =L.circle([lat, lng], {
+    var circle = L.circle([lat, lng], {
       radius: radius_m,
       color: color,
       fillColor: color,
@@ -112,7 +116,7 @@
       marker: marker,
       plazaLabel: plaza,
       isAnchor: isAnchor
-      });
+    });
   }
 
   function updateVisibility() {
@@ -126,35 +130,36 @@
       p.isActive = plazaVisible;
 
       if (plazaVisible) {
-        if (!map.has(p.circle)) p.circle.addTo(map);
+        // FIX 2: Changed map.has() to map.hasLayer()
+        if (!map.hasLayer(p.circle)) p.circle.addTo(map);
       } else {
         if (map.hasLayer(p.circle)) map.removeLayer(p.circle);
       }
 
       if (plazaVisible && map.hasLayer(layerPlazaCenters)) {
-        if (map.hasLayer(p.center)) p.center.addTo(map);
+        if (!map.hasLayer(p.center)) p.center.addTo(map);
       } else {
         if (map.hasLayer(p.center)) map.removeLayer(p.center);
       }
     });
       
-      storesData.forEach(function(s) {
-        var storeVisible = false;
-        if (s.plazaLabel === 'Standalone / Not in Plaza') {
-          storeVisible = map.hasLayer(layerStandalone);
-        } else {
-            var parentPlaza = plazasData.find(function(p) {return p.name === s.plazaLabel; });
-            if (parentPlaza && parentPlaza.isActive) {
-              storeVisible = s.isAnchor ? map.hasLayer(layerAnchors) : map.hasLayer(layerTenants);
-            }
-        }
+    storesData.forEach(function(s) {
+      var storeVisible = false;
+      if (s.plazaLabel === 'Standalone / Not in Plaza') {
+        storeVisible = map.hasLayer(layerStandalone);
+      } else {
+          var parentPlaza = plazasData.find(function(p) {return p.name === s.plazaLabel; });
+          if (parentPlaza && parentPlaza.isActive) {
+            storeVisible = s.isAnchor ? map.hasLayer(layerAnchors) : map.hasLayer(layerTenants);
+          }
+      }
 
-        if (storeVisible) {
-            if (!map.hasLayer(s.marker)) s.marker.addTo(map);
-        } else {
-            if (map.hasLayer(s.marker)) map.removeLayer(s.marker);
-        }
-      });
+      if (storeVisible) {
+          if (!map.hasLayer(s.marker)) s.marker.addTo(map);
+      } else {
+          if (map.hasLayer(s.marker)) map.removeLayer(s.marker);
+      }
+    });
   }
 
     addPlaza(38.74423771351351, -121.2547712972973, 493.2, 'Rocky Ridge Plaza', '2030 Douglas Boulevard Roseville', 'Placer County', 'Roseville', 7, 'BevMo!, Big 5 Sporting Goods, Max Home Goods, Sprouts Farmers Market, TJ Maxx, Target, Walmart Supercenter', 67, '3 Monkeys, AAA, AT&T, Adam\'s Jewelers, Anytime Fitness, Aqua-Tots Swim Schools, Beauty Concepts, Beauty Solutions, Cell Phone Repair, Chevys, Cleaners, Club Pilates, Creative Nails & Spa, Crossroads Trading Co, Crumbl Cookies, Dog & Cat Health Food, Dunn-Edwards Paints, European Wax Center, Everlasting Gifts, Famous Footwear, Fastsigns, FedEx Office, Fleet Feet, Fringes Salon, GNC, GameStop, Great Clips, Hear USA, HearingLife, IconiQ, Jack in the Box, Jersey Mike\'s Subs, Jimmy John\'s, Lakeshore Learning, Lavish Locks, Learning Express Toys, Lendmark, Leslie\'s Pool Supplies, Level Posh Salon, Mark’s Hallmark, Noah\'s Bagels, Orangetheory Fitness, Panda Express, Panera Bread, Papa Murphy\'s, Perfect Brows Ink, Petroglyph Pottery Painting Store, Pick A Color, Pieology Pizzeria, Removery, Romano\'s Macaroni Grill, Roseville Nail Spa, Royal Spa & Massage, Salon Hermosa, Sport Clips, Starbucks, Sunrise Natural Foods, Supercuts, Tesla Supercharger, The Serpentarium, Togo\'s, U.S. Bank, Uptown Cheapskate, Verizon, Wells Fargo, West Coast Nutrition, Z’s Massage', '#e74c3c');
@@ -1250,7 +1255,7 @@
     overlays['📍 ' + county] = countyLayers[county];
   }
 
-  L.control.layers(null,overlays, {
+  L.control.layers(null, overlays, {
     position: 'topright',
     collapsed: false,
   }).addTo(map);
