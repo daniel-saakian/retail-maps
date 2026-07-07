@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8' />
+  <title>Retail Centers – Highland Park, IL</title>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' />
+  <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
+  <style>
+    body { margin: 0; font-family: sans-serif; }
+    #map { height: 100vh; width: 100%; }
+    .legend {
+      background: white; padding: 10px 14px; border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); line-height: 1.8;
+      font-size: 13px;
+    }
+    .legend-dot { display: inline-block; width: 12px; height: 12px;
+                   border-radius: 50%; margin-right: 6px; }
+  </style>
+</head>
+<body>
+<div id='map'></div>
+<script>
+  var map = L.map('map').setView([42.14636445349273, -87.82541353073606], 12);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(map);
+
+  // FIX 1: Explicitly initialize the tracking arrays
+  var plazasData = [];
+  var storesData = [];
+
+  var layerMultiAnchor = L.layerGroup().addTo(map);
+  var layerSingleAnchor = L.layerGroup().addTo(map);
+  var layerPlazaCenters = L.layerGroup().addTo(map);
+  var layerAnchors = L.layerGroup().addTo(map);
+  var layerTenants = L.layerGroup().addTo(map);
+  var layerStandalone = L.layerGroup().addTo(map);
+  var layerHighDensity = L.layerGroup().addTo(map);
+  var layerLowDensity = L.layerGroup().addTo(map);
+  var countyLayers = {};
+
+  function getOrCreateCountyLayer(county) {
+    if (!county || county === '-') county = 'Unknown';
+    if (!countyLayers[county]) {
+        countyLayers[county] = L.layerGroup().addTo(map);
+    }
+    return countyLayers[county];
+  }
+
+  function addPlaza(lat, lng, radius_m, plazaId, name, address, county, city, numAnchors, anchors, numTenants, tenants, color) {
+    var popup = '<b>' + name + '</b><br>'
+      + (address !== '-' ? address + '<br>' : '')
+      + city + (county !== '-' ? ', ' + county + ' County' : '') + '<br>'
+      + '<br><b>' + numAnchors + ' anchor(s): </b><br>'
+      + anchors.split(', ').join('<br>')
+      + '<br><br><b>' + numTenants + ' other tenant(s):</b><br>'
+      + tenants.split(', ').join('<br>');
+    
+    var circle = L.circle([lat, lng], {
+      radius: radius_m,
+      color: color,
+      fillColor: color,
+      fillOpacity: 0.08,
+      weight: 2
+    });
+    if (numAnchors > 1) {
+      layerMultiAnchor.addLayer(circle);
+    } else {
+      layerSingleAnchor.addLayer(circle);
+    }
+
+    var center = L.circleMarker([lat,lng], {
+        radius: 9,
+        color: '#fff',
+        fillColor: '#8e44ad',
+        fillOpacity: 1,
+        weight: 2
+    }).bindPopup(popup).bindTooltip(name, {permanent: false, direction: 'top'});
+
+    var cleanCounty = (!county || county === '-') ? 'Unknown' : county;
+    getOrCreateCountyLayer(cleanCounty);
+
+    plazasData.push({
+        circle: circle,
+        center: center,
+        id: plazaId,
+        name: name,
+        county: cleanCounty,
+        numAnchors: numAnchors,
+        numTenants: numTenants
+    });
+  }
+
+  function addStore(lat, lng, name, address, color, plazaId, plaza, isAnchor) {
+    var size = isAnchor ? 11 : 9;
+    var icon = L.divIcon({
+      className: '',
+      html: '<div style="position:absolute;width:' + size + 'px;height:' + size + 'px;'
+          + 'border-radius:50%;background:' + color + ';border:2px solid white;'
+          + 'box-shadow:0 1px 3px rgba(0,0,0,0.4);top:50%;left:50%;'
+          + 'transform:translate(-50%,-50%)'
+          + (isAnchor ? ';outline:2px solid rgba(0,0,0,0.25)' : '')
+          + '"></div>',
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2]
+    });
+    var marker = L.marker([lat, lng], {icon: icon})
+      .bindPopup('<b>' + name + '</b>' + (isAnchor ? '⚓' : '')+ '<br>' 
+        + '<i>' + plaza + '</i><br>'
+        + address)
+      .bindTooltip(name, {direction: 'top'})
+    
+    storesData.push({
+      marker: marker,
+      plazaId: plazaId,
+      plazaLabel: plaza,
+      isAnchor: isAnchor
+    });
+  }
+
+  function updateVisibility() {
+    plazasData.forEach(function(p) {
+      var anchorMatch = (p.numAnchors > 1) ? map.hasLayer(layerMultiAnchor): map.hasLayer(layerSingleAnchor);
+      var densityMatch = (p.numTenants >= 10) ? map.hasLayer(layerHighDensity) : map.hasLayer(layerLowDensity);
+      var countyLayer = countyLayers[p.county];
+      var countyMatch = countyLayer ? map.hasLayer(countyLayer) : true;
+
+      var plazaVisible = anchorMatch && densityMatch && countyMatch;
+      p.isActive = plazaVisible;
+
+      if (plazaVisible) {
+        // FIX 2: Changed map.has() to map.hasLayer()
+        if (!map.hasLayer(p.circle)) p.circle.addTo(map);
+      } else {
+        if (map.hasLayer(p.circle)) map.removeLayer(p.circle);
+      }
+
+      if (plazaVisible && map.hasLayer(layerPlazaCenters)) {
+        if (!map.hasLayer(p.center)) p.center.addTo(map);
+      } else {
+        if (map.hasLayer(p.center)) map.removeLayer(p.center);
+      }
+    });
+      
+    storesData.forEach(function(s) {
+        var storeVisible = false;
+
+        if (s.plazaId === -1) {
+            // Standalone store
+            storeVisible = map.hasLayer(layerStandalone);
+
+        } else {
+            var parentPlaza = plazasData.find(function(p) {
+                return p.id === s.plazaId;
+            });
+
+            if (parentPlaza && parentPlaza.isActive) {
+                storeVisible = s.isAnchor
+                    ? map.hasLayer(layerAnchors)
+                    : map.hasLayer(layerTenants);
+            }
+        }
+
+        if (storeVisible) {
+            if (!map.hasLayer(s.marker))
+                s.marker.addTo(map);
+        } else {
+            if (map.hasLayer(s.marker))
+                map.removeLayer(s.marker);
+        }
+    });
+  }
+
+  addPlaza(42.251513596875, -87.84051755312503, 321.5, 0, 'Unnamed Retail Center', '296 East Deerpath Lake Forest', 'Lake County', 'Lake Forest', 1, 'Walgreens', 31, 'BP, BP Shop, Bank of America, Chase, Club Pilates, Courtyard Wines, Dunkin\', Einstein Bros. Bagels, Evereve, Fred\'s Barber Shoppe, Gerhard\'s Elegant Eurpoean Desserts, J. McLaughlin, Kiddle\'s Sports, LBK Design Group, Lake Forest Auto Repair, Lake Forest Flowers, Lake Forest Pack & Ship, Lake Forest Post Office, Lululemon, M on the Square, PetPeople, Shell, Starbucks, TSE Cahmere, Talbots, Taylor Reese Salon, The Daily Grind, The Lake Forest Shop, Unicorn Designs, Williams-Sonoma, bluemercury', '#3498db');
+addPlaza(42.15001966500001, -87.79910832, 365.9, 1, 'Village Square of Northbrook', '145 Skokie Boulevard Northbrook', 'Cook County', 'Northbrook', 5, 'Bloomingdale\'s Outlet, Dick\'s Sporting Goods, Nordstrom Rack, TJ Maxx, Trader Joe\'s', 15, 'American Mattress, Bentley Northbrook, DSW, Fifth Third Bank, Le Nailspa, McDonald\'s, Napleton Cadillac of Northbrook, Rolls-Royce Motor Cars Northbrook, Saks Off 5th, Shell Recharge, T-Mobile, The Container Store, The Fresh Market, Verizon, uBreakiFix', '#e74c3c');
+addPlaza(42.08115563684211, -87.79809004736842, 289.7, 2, 'Glen Oak Plaza', '1407 Waukegan Road Glenview', 'Cook County', 'Glenview', 2, 'Trader Joe\'s, Walgreens', 17, 'Amoco, Arthur Murray Dance Center, Bank of America, Citibank, Coldwell Banker, Country Classics, Domino\'s, Dunkin\', Einstein Bros. Bagels, Fifth Third Bank, Goodwill, Huntington Bank, Orangetheory Fitness, PetSmart, Staples, Starbucks, Verizon', '#e74c3c');
+addPlaza(42.10714663333332, -87.80314180555555, 418.4, 3, 'Willow Festival', '1072 Willow Road Northbrook', 'Cook County', 'Northbrook', 4, 'Former Best Buy, HomeGoods, Lowe\'s, Whole Foods Market', 14, 'Andreas Hogue Salon, Art Post Gallery, Buffalo Wild Wings, Fifth Third Bank, Lazy Dog, North Shore Bedding, Northbrook Sheraton, Potbelly, REI, Smart Jewelers, Sport Clips, Starbucks, Tesla Supercharger, Ulta Beauty', '#e74c3c');
+addPlaza(42.15128024705882, -87.83560241764704, 342.3, 4, 'Deerbrook', '95 South Waukegan Road Deerfield', 'Cook County', 'Deerfield', 3, 'Marshalls, Office Depot, Walgreens', 14, 'BP Shop, Chick-fil-A, Hobby Lobby, Jewel-Osco, Kids Empire, MOD Pizza, Mattress Firm, Noodles & Company, Panera Bread, Shell, Sky Zone, Sleep Number, Starbucks, Subway', '#e74c3c');
+addPlaza(42.18696214705882, -87.80221025294117, 320.2, 5, 'Downtown Highland Park', '655 Elm Place Highland Park', 'Cook County', 'Highland Park', 1, 'Walgreens', 16, 'AT&T Highland Park Central Office, Chico\'s, Citibank, Dunkin\', Jamba, Landmark Renaissance Cinema, Madam Zuzu\'s, McDonald\'s, Orangetheory Fitness, Potbelly, Pottery Barn, Sherwin-Williams, Starbucks, Subway, Sunset Foods, Ultimate Paint Shop II', '#e74c3c');
+addPlaza(42.08937231249999, -87.82438489375001, 289.7, 6, 'The Glen Town Center', '1900 Tower Drive Glenview', 'Cook County', 'Glenview', 1, 'Dick\'s Sporting Goods', 15, 'Ben & Jerry\'s, Color Me Mine, Cookies by Design, GameStop, JoS. A. Bank, Landmark at the Glen, Noodles & Company, Notice, Potbelly, Pure Barre, Starbucks, Stretch Zone, Verizon, Von Maur, Yard House', '#e74c3c');
+addPlaza(42.139850025, -87.90967611875, 340.7, 7, 'Unnamed Retail Center', '10 North Milwaukee Avenue Wheeling', 'Cook County', 'Wheeling', 1, 'Walgreens', 15, 'Ara Cabinets 4U, Benihana, Chase, Dunkin\', Fresh Farms International Market, Great Clips, Jimmy John\'s, KFC, Liquor Barn, McDonald\'s, Panda Express, Popeyes, Russian School of Mathematics, Taco Bell, The UPS Store', '#3498db');
+addPlaza(42.12980842142857, -87.82709683571429, 316.1, 8, 'Meadow Plaza Shopping Center', '1941 Cherry Lane Northbrook', 'Cook County', 'Northbrook', 2, 'Dollar Tree, Northbrook Ace Hardware', 12, 'Advance Auto Parts, Chase, Coldwell Banker, Downtown Northbrook Post Office, Fifth Third Bank, Graeter\'s, Leonidas, Lou Malnati\'s Pizzeria, Sarpino\'s Pizzeria, Sherwin-Williams, Subway, Sunset Foods', '#e74c3c');
+addPlaza(42.108239133333335, -87.89118011666666, 328.7, 9, 'Pauwaukee Plaza', '610 Milwaukee Avenue Prospect Heights', 'Cook County', 'Prospect Heights', 1, 'Dollar Tree', 11, 'Boost Mobile, Dunkin\', Enterprise, Family Dollar, Fries Automotive Services, Holiday Inn Express & Suites Prospect Heights, Jimmy John\'s, McDonald\'s, Semeria Imports, Inc., Subway, Wheel-Inn Body & Motor Works', '#e74c3c');
+addPlaza(42.198899600000004, -87.86035309, 289.7, 10, 'Bannockburn Green', '2501 Waukegan Road Bannockburn', 'Lake County', 'Bannockburn', 1, 'Walgreens', 9, 'Heinen\'s Fine Foods, Jersey Mike\'s Subs, Mattress Firm, McDonald\'s, PNC Bank, Rosati\'s, Shell, Sport Clips, Starbucks', '#e74c3c');
+addPlaza(42.16664851, -87.84637269999999, 289.7, 11, 'Unnamed Retail Center', '780 Waukegan Road Deerfield', 'Cook County', 'Deerfield', 2, 'Walgreens, Whole Foods Market', 8, 'AT&T Deerfield Central Office, Chase, Fleet Feet, Mobil Mart, Old National Bank, Potbelly, Sweetgreen, U.S. Bank', '#3498db');
+addPlaza(42.08464558888889, -87.79815447777779, 289.7, 12, 'Glenvirw North Plaza', '1560 Waukegan Road Glenview', 'Cook County', 'Glenview', 1, 'John W. Weiss Ace Hardware', 8, 'FedEx Office, NAPA Auto Parts, Napleton Hyundai Glenview, Napleton Lincoln Glenview, Scandinavian Ski and Snowboard Shop, Subway, T-Mobile, Walker Bros.', '#e74c3c');
+addPlaza(42.10325987777778, -87.81228834444443, 289.7, 13, 'Willowcreek Center', '2241 Willow Road Glenview', 'Cook County', 'Glenview', 2, 'Kohl\'s, Target', 7, 'Aldi, First American Bank, Jersey Mike\'s Subs, Mattress Firm, Michaels, Panda Express, Steak \'n Shake', '#e74c3c');
+addPlaza(42.11671072222222, -87.74333737777778, 327.8, 14, 'Hubbard Woods Business District', '925 Green Bay Road Winnetka', 'Cook County', 'Winnetka', 1, 'Walgreens', 8, 'BP, BP Shop, CorePower Yoga, Dero, Graeter\'s, Green Bay Cycles, McDonald\'s, Winnetka Thrift Shop', '#e74c3c');
+addPlaza(42.201660366666665, -87.9331129888889, 338.1, 15, 'Village Green of Lincolnshire', '225 Milwaukee Avenue Lincolnshire', 'Lake County', 'Lincolnshire', 1, 'Walgreens', 8, 'Bank of America, Culver\'s, Dunkin\', Halsted Street Deli, Irv\'s Luggage, Marathon, PNC Bank, Starbucks', '#e74c3c');
+addPlaza(42.10152521111111, -87.77174011111111, 289.7, 16, 'Unnamed Retail Center', '1825 Willow Road Northfield', 'Cook County', 'Northfield', 1, 'Walgreens', 8, 'Bess Hardware & Sports, Chase, Dunkin\', Escape2 Salon & Spa, Former Mariano\'s Fresh Market, Northfield Post Office, Shell, Starbucks', '#3498db');
+addPlaza(42.154420775, -87.8362515625, 289.7, 17, 'Caldwell\'s Corners', '35 North Waukegan Road Deerfield', 'Cook County', 'Deerfield', 2, 'Dollar Tree, Planet Fitness', 6, 'Firestone, Jersey Mike\'s Subs, Just Tires, McDonald\'s, Nothing Bundt Cakes, Pet Supplies Plus', '#e74c3c');
+addPlaza(42.105015475, -87.8475153375, 289.7, 18, 'Plaza del Prado', '2727 Pfingsten Road Glenview', 'Cook County', 'Glenview', 1, 'Petco', 7, 'Bank of America, Chase, Einstein Bros. Bagels, Great Clips, Jewel-Osco, McDonald\'s, Starbucks', '#e74c3c');
+addPlaza(42.19092191428571, -87.8264228142857, 289.7, 19, 'Park Avenue Centre', '2099 Skokie Valley Road Highland Park', 'Cook County', 'Highland Park', 1, 'Target', 6, 'Denny\'s, Higland Park Ford, Menoni & Mocogni Landscaping Materials, Starbucks, Tesla Supercharger, Zen Leaf', '#e74c3c');
+addPlaza(42.133628571428574, -87.75851510000003, 289.7, 20, 'Unnamed Retail Center', '353 Park Avenue Glencoe', 'Cook County', 'Glencoe', 1, 'Walgreens', 6, 'BMO, Chase, Glencoe Post Office, Mobil, Mobil Mart, The Grand Food Center', '#3498db');
+addPlaza(42.20240668333333, -87.80955886666668, 289.7, 21, 'Unnamed Retail Center', '320 Waukegan Avenue Highwood', 'Cook County', 'Highwood', 1, 'Walgreens', 5, 'Frank Zanotti Tile & Stone Co, Highwood Post Office, NAPA Auto Parts, U.S. Bank, Windy City Dispensary', '#3498db');
+addPlaza(42.20078096666666, -87.83343471666666, 313.6, 22, 'Unnamed Retail Center', '1393 Half Day Road Highland Park', 'Cook County', 'Highland Park', 1, 'Mutual Ace Hardware', 5, 'Acura of Highland Park, Casey\'s General Store, M & I Motors, Mobil Mart, Taco Bell', '#3498db');
+addPlaza(42.13302716, -87.8218472, 289.7, 23, 'Northbrook Shopping Plaza', '1050 Waukegan Road Northbrook', 'Cook County', 'Northbrook', 1, 'Walgreens', 4, 'Bank of America, Domino\'s, Esther Flowers, George Garner Cyclery', '#e74c3c');
+addPlaza(42.1510519, -87.84407175000001, 289.7, 24, 'Deerfield Park Plaza', '655 Lake Cook Road Deerfield', 'Cook County', 'Deerfield', 1, 'The Home Depot', 3, 'Greenhouse Group, Jimmy John\'s, Public Storage', '#e74c3c');
+addPlaza(42.16552465, -87.786767, 289.7, 25, 'Unnamed Retail Center', '632 Roger Williams Avenue Highland Park', 'Cook County', 'Highland Park', 1, 'Walgreens', 1, 'Furry Finesse', '#3498db');
+  addStore(42.1008514, -87.7706069, 'Northfield Post Office', '1787 Orchard Lane Northfield', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(42.1517891, -87.8414837, 'Jimmy John\'s', '601 Lake Cook Road Deerfield', '#e74c3c', 24, 'Deerfield Park Plaza', false);
+addStore(42.1370292, -87.8836274, 'Fitness 19', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1157555, -87.846393, 'North Suburban YMCA', '2705 Techny Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1817865, -87.926751, 'DSW', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1816786, -87.9279514, 'Bath & Body Works', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1817379, -87.9270214, 'Chico\'s', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1816943, -87.9273396, 'LensCrafters', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1817058, -87.9281534, 'JoS. A. Bank', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2794917, -87.8441236, 'Activator Cycles', '79 East Scranton Avenue Lake Bluff', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1656621, -87.84477, 'Deerfield Cyclery', '705 Waukegan Road Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1343432, -87.7596396, 'Walgreens', '353 Park Avenue Glencoe', '#f39c12', 20, 'Unnamed Retail Center', true);
+addStore(42.1378769, -87.8494534, 'Rosati\'s', '2833 Dundee Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0917718, -87.8744595, 'Salon 2010', 'Milwaukee Avenue Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2512482, -87.8413239, 'PetPeople', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(42.2529249, -87.8403955, 'Einstein Bros. Bagels', '728 North Western Avenue Lake Forest', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(42.155951, -87.8457625, 'nanoHIFI', '155 N Pfingsten Rd', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1610366, -87.919867, '7-Eleven', '20502 North Milwaukee Avenue Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1148047, -87.7417568, 'McDonald\'s', '858 Green Bay Road Winnetka', '#e74c3c', 14, 'Hubbard Woods Business District', false);
+addStore(42.1277465, -87.7512711, 'Dero', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.132189, -87.826199, 'Sunset Foods', '1127 Church Street Northbrook', '#e74c3c', 8, 'Meadow Plaza Shopping Center', false);
+addStore(42.131235, -87.8251899, 'Downtown Northbrook Post Office', '1157 Church Street Northbrook', '#e74c3c', 8, 'Meadow Plaza Shopping Center', false);
+addStore(42.1307608, -87.8264886, 'Chase', '1901 Cherry Lane Northbrook', '#e74c3c', 8, 'Meadow Plaza Shopping Center', false);
+addStore(42.1990206, -87.9319049, 'Marathon', '435 Milwaukee Avenue Lincolnshire', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1819631, -87.9291523, 'Naf Naf Grill', '950 Milwaukee Avenue Lincolnshire', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1010279, -87.7994735, 'PNC Bank', '2550 Waukegan Road Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1694481, -87.9215681, 'Panera Bread', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0798334, -87.7632897, 'Family Pantry', '3534 Lake Avenue Wilmette', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0798469, -87.7626311, 'Jimmy John\'s', '3520 Lake Avenue Wilmette', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0798445, -87.7627833, 'Starbucks', '3520 Lake Avenue Wilmette', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2035987, -87.8084948, 'Frank Zanotti Tile & Stone Co', '6 Walker Avenue Highwood', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(42.2248505, -87.8739173, 'Starbucks', '840 South Waukegan Road Lake Forest', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2246976, -87.8744379, 'Jimmy John\'s', '840 South Waukegan Road Lake Forest', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.22526, -87.8722545, 'PostNet', '825 South Waukegan Road Lake Forest', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2251857, -87.8720567, 'Lake Forest True Value Hardware', '825 South Waukegan Road Lake Forest', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1803025, -87.9276694, 'T-Mobile', '275 Parkway Drive Lincolnshire', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.129143, -87.8267264, 'Lou Malnati\'s Pizzeria', '1326 Shermer Road Northbrook', '#e74c3c', 8, 'Meadow Plaza Shopping Center', false);
+addStore(42.1991369, -87.9320519, 'Dunkin\'', '435 Milwaukee Avenue Lincolnshire', '#e74c3c', 15, 'Village Green of Lincolnshire', false);
+addStore(42.0888112, -87.8245481, 'Yard House', '1880 Tower Drive Glenview', '#e74c3c', 6, 'The Glen Town Center', false);
+addStore(42.089279, -87.8251248, 'Dick\'s Sporting Goods', '1900 Tower Drive Glenview', '#f39c12', 6, 'The Glen Town Center', true);
+addStore(42.0884765, -87.8241819, 'Landmark at the Glen', '1850 Tower Drive Glenview', '#e74c3c', 6, 'The Glen Town Center', false);
+addStore(42.1476402, -87.8709946, 'Bath Fitter', '309 Era Drive Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1655332, -87.8473792, 'Potbelly', '740 Waukegan Road Deerfield', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(42.1555082, -87.837949, 'Nothing Bundt Cakes', '190 North Waukegan Road Deerfield', '#e74c3c', 17, 'Caldwell\'s Corners', false);
+addStore(42.1401584, -87.910149, 'Panda Express', '300 East Dundee Road Wheeling', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(42.1401553, -87.9103595, 'Jimmy John\'s', '250 East Dundee Road Wheeling', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(42.0823358, -87.756513, 'Five Guys', '3232 Lake Avenue Wilmette', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0808041, -87.756501, 'The Fresh Market', '3232 Lake Avenue Wilmette', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1870848, -87.8229368, 'Trek', '1925 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1802362, -87.9270426, 'Rooster\'s', 'Lincolnshire', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1803922, -87.9278088, 'FedEx Office', 'Lincolnshire', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1820441, -87.9290799, 'Poke Bros.', '950B North Milwaukee Avenue Lincolnshire', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1821165, -87.929024, 'Chipotle', '950 Milwaukee Avenue Lincolnshire', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1840522, -87.9280144, 'AT&T', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1845499, -87.9281347, 'T-Mobile', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1802947, -87.9274321, 'Skinfo', 'Lincolnshire', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1907139, -87.8273635, 'Starbucks', '2060 Skokie Valley Road Highland Park', '#e74c3c', 19, 'Park Avenue Centre', false);
+addStore(42.1506798, -87.8173353, 'California Pizza Kitchen', '1515 Lake Cook Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1174593, -87.7437571, 'Dero', '-', '#e74c3c', 14, 'Hubbard Woods Business District', false);
+addStore(42.1000972, -87.7701721, 'Escape2 Salon & Spa', '322 Happ Road Northfield', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(42.1670317, -87.8441391, 'Chipotle', '675 Deerfield Road Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1670516, -87.844284, 'Starbucks', '675 Deerfield Road Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1671192, -87.8438334, 'KidSnips Deerfield', '675 Deerfield Road Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1057512, -87.7361707, 'Dero', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0803639, -87.798031, 'Einstein Bros. Bagels', '1401 Waukegan Road Glenview', '#e74c3c', 2, 'Glen Oak Plaza', false);
+addStore(42.0804544, -87.798035, 'Starbucks', '1401 Waukegan Road Glenview', '#e74c3c', 2, 'Glen Oak Plaza', false);
+addStore(42.1524319, -87.8358039, 'Starbucks', '60 South Waukegan Road Deerfield', '#e74c3c', 4, 'Deerbrook', false);
+addStore(42.1520183, -87.8354392, 'Subway', '70 South Waukegan Road Deerfield', '#e74c3c', 4, 'Deerbrook', false);
+addStore(42.146802, -87.832141, 'Northwestern Medicine', 'Waukegan Road Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1048509, -87.8458394, 'Jewel-Osco', '2775 Pfingsten Road Glenview', '#e74c3c', 18, 'Plaza del Prado', false);
+addStore(42.2521123, -87.841243, 'bluemercury', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(42.1061575, -87.8020077, 'HomeGoods', '840 Willow Road Northbrook', '#f39c12', 3, 'Willow Festival', true);
+addStore(42.1070788, -87.8003607, 'Andreas Hogue Salon', '-', '#e74c3c', 3, 'Willow Festival', false);
+addStore(42.1083524, -87.8025175, 'Ulta Beauty', '936 Willow Road Northbrook', '#e74c3c', 3, 'Willow Festival', false);
+addStore(42.1066359, -87.8038334, 'Starbucks', '1036 Willow Road Northbrook', '#e74c3c', 3, 'Willow Festival', false);
+addStore(42.1024283, -87.8137653, 'Target', '2241 Willow Road Glenview', '#f39c12', 13, 'Willowcreek Center', true);
+addStore(42.1022556, -87.8115633, 'Kohl\'s', '2201 Willow Road Glenview', '#f39c12', 13, 'Willowcreek Center', true);
+addStore(42.102388, -87.8128092, 'Michaels', '2231 Willow Road Glenview', '#e74c3c', 13, 'Willowcreek Center', false);
+addStore(42.1044954, -87.8128912, 'Panda Express', '2145 Willow Road Glenview', '#e74c3c', 13, 'Willowcreek Center', false);
+addStore(42.1042653, -87.8129168, 'Jersey Mike\'s Subs', '2149 Willow Road Glenview', '#e74c3c', 13, 'Willowcreek Center', false);
+addStore(42.1047416, -87.814111, 'Chipotle', '2341 Willow Road Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1065182, -87.7516529, 'Dero', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2017875, -87.9336515, 'Irv\'s Luggage', '1322 Milwaukee Avenue Vernon Hills', '#e74c3c', 15, 'Village Green of Lincolnshire', false);
+addStore(42.203365, -87.9355847, 'Sam Martirano Salon & Spa', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1519143, -87.8353551, 'MOD Pizza', '70 South Waukegan Road Deerfield', '#e74c3c', 4, 'Deerbrook', false);
+addStore(42.1506695, -87.834647, 'Noodles & Company', '110 South Waukegan Road Deerfield', '#e74c3c', 4, 'Deerbrook', false);
+addStore(42.1523816, -87.8360015, 'Sleep Number', '60 South Waukegan Road Deerfield', '#e74c3c', 4, 'Deerbrook', false);
+addStore(42.1022718, -87.810919, 'Aldi', '2195 Willow Road Glenview', '#e74c3c', 13, 'Willowcreek Center', false);
+addStore(42.1300832, -87.8272065, 'Northbrook Ace Hardware', '1941 Cherry Lane Northbrook', '#f39c12', 8, 'Meadow Plaza Shopping Center', true);
+addStore(42.2518879, -87.8401699, 'Starbucks', '672 North Western Avenue Lake Forest', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(42.2520088, -87.8402377, 'Lululemon', '680 North Western Avenue Lake Forest', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(42.0811187, -87.7971265, 'Verizon', '1411 Waukegan Road Glenview', '#e74c3c', 2, 'Glen Oak Plaza', false);
+addStore(42.0808044, -87.797125, 'Country Classics', '-', '#e74c3c', 2, 'Glen Oak Plaza', false);
+addStore(42.154339, -87.8349247, 'Planet Fitness', '35 North Waukegan Road Deerfield', '#f39c12', 17, 'Caldwell\'s Corners', true);
+addStore(42.1501711, -87.8453025, 'Greenhouse Group', '105 South Pfingsten Road Deerfield', '#e74c3c', 24, 'Deerfield Park Plaza', false);
+addStore(42.1859869, -87.8016817, 'Landmark Renaissance Cinema', '1850 2nd Street Highland Park', '#e74c3c', 5, 'Downtown Highland Park', false);
+addStore(42.1351524, -87.7886769, 'Ruth\'s Chris Steak House', '933 Skokie Boulevard Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0807266, -87.7992943, 'Dunkin\'', '1410 Waukegan Road Glenview', '#e74c3c', 2, 'Glen Oak Plaza', false);
+addStore(42.0805474, -87.7993211, 'Domino\'s', '1410 Waukegan Road Glenview', '#e74c3c', 2, 'Glen Oak Plaza', false);
+addStore(42.1004735, -87.8006775, 'Giordano\'s Pizzeria', '2540 Waukegan Road Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1041534, -87.8472368, 'McDonald\'s', '2741 Pfingsten Road Glenview', '#e74c3c', 18, 'Plaza del Prado', false);
+addStore(42.1041593, -87.8463919, 'Great Clips', '-', '#e74c3c', 18, 'Plaza del Prado', false);
+addStore(42.1041514, -87.8480871, 'Petco', '2727 Pfingsten Road Glenview', '#f39c12', 18, 'Plaza del Prado', true);
+addStore(42.1328744, -87.7580077, 'Mobil Mart', '635 Vernon Avenue Glencoe', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(42.1541766, -87.8348539, 'Dollar Tree', '27 North Waukegan Road Deerfield', '#f39c12', 17, 'Caldwell\'s Corners', true);
+addStore(42.1337379, -87.8220158, 'Domino\'s', '1022 Waukegan Road Northbrook', '#e74c3c', 23, 'Northbrook Shopping Plaza', false);
+addStore(42.0825801, -87.7567748, 'Birkenstock', '3232 Lake Avenue Wilmette', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0810955, -87.7564486, 'Massage Envy', '3232 Lake Avenue Wilmette', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1074163, -87.7360854, 'Chase', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1167676, -87.743173, 'Walgreens', '925 Green Bay Road Winnetka', '#f39c12', 14, 'Hubbard Woods Business District', true);
+addStore(42.1200296, -87.7459168, 'Dunkin\'', '81 Green Bay Road Glencoe', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1200276, -87.7457855, 'Subway', '79 Green Bay Road Glencoe', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1191164, -87.7452892, 'Domino\'s', '1009 Green Bay Road Winnetka', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1189791, -87.7451927, 'The UPS Store', '1001 Green Bay Road Winnetka', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1342463, -87.758787, 'Chase', '332 Park Avenue Glencoe', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(42.1347017, -87.7588997, 'BMO', '333 Park Avenue Glencoe', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(42.1868976, -87.7989799, 'Chase', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1076542, -87.8905918, 'Family Dollar', '660 Milwaukee Avenue Prospect Heights', '#e74c3c', 9, 'Pauwaukee Plaza', false);
+addStore(42.1076144, -87.8908748, 'Subway', '684 Milwaukee Avenue Prospect Heights', '#e74c3c', 9, 'Pauwaukee Plaza', false);
+addStore(42.1537939, -87.8347012, 'Pet Supplies Plus', '9 North Waukegan Road Deerfield', '#e74c3c', 17, 'Caldwell\'s Corners', false);
+addStore(42.1456583, -87.8288856, 'Great Clips', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1520575, -87.8375746, 'Panera Bread', '16 South Waukegan Road Deerfield', '#e74c3c', 4, 'Deerbrook', false);
+addStore(42.080986, -87.7564382, 'Aveda', '3232 Lake Avenue Wilmette', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1067733, -87.8029344, 'Potbelly', '-', '#e74c3c', 3, 'Willow Festival', false);
+addStore(42.1068879, -87.8029364, 'Sport Clips', '-', '#e74c3c', 3, 'Willow Festival', false);
+addStore(42.1070646, -87.8029297, 'Art Post Gallery', '-', '#e74c3c', 3, 'Willow Festival', false);
+addStore(42.107178, -87.802841, 'North Shore Bedding', '-', '#e74c3c', 3, 'Willow Festival', false);
+addStore(42.1674917, -87.8460846, 'Fleet Feet', '800 North Waukegan Road Deerfield', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(42.1093725, -87.7746747, 'Fields Land Rover Northfield', '670 Frontage Road Northfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2648042, -87.8442908, 'Konradt\'s Florist', '1383 North Western Avenue Lake Forest', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2652746, -87.8444477, 'Reuland & Turnbough', '1407 North Western Avenue Lake Forest', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2648608, -87.8443096, 'Tiara Salon & Spa', '1385 North Western Avenue Lake Forest', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2644876, -87.844201, 'Forest and Found', '1363 North Western Avenue Lake Forest', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.264042, -87.8440561, 'Shaggy Dog Shop, Inc', '1339 North Western Avenue Lake Forest', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1045472, -87.8288263, 'Subway', '2691 Shermer Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2175083, -87.8205941, 'Mobil Mart', '1000 Sheridan Road Highwood', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0824269, -87.7970703, 'PetSmart', '1523 Waukegan Road Glenview', '#e74c3c', 2, 'Glen Oak Plaza', false);
+addStore(42.0826459, -87.7970327, 'Goodwill', '1511 Waukegan Road Glenview', '#e74c3c', 2, 'Glen Oak Plaza', false);
+addStore(42.0847496, -87.7977408, 'FedEx Office', '1623 Waukegan Road Glenview', '#e74c3c', 12, 'Glenvirw North Plaza', false);
+addStore(42.085299, -87.7977247, 'Subway', '1635 Waukegan Road Glenview', '#e74c3c', 12, 'Glenvirw North Plaza', false);
+addStore(42.0849924, -87.7977247, 'T-Mobile', '1629 Waukegan Road Glenview', '#e74c3c', 12, 'Glenvirw North Plaza', false);
+addStore(42.101343, -87.773147, 'Dunkin\'', '1900 Willow Road Northfield', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(42.1402154, -87.7944167, 'Hair Cuttery', '778 Skokie Boulevard Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1498495, -87.8357232, 'Sky Zone', '120 South Waukegan Road Deerfield', '#e74c3c', 4, 'Deerbrook', false);
+addStore(42.1676953, -87.8442405, 'Domino\'s', '636 Deerfield Road Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1668305, -87.843755, 'The UPS Store', '675 Deerfield Road Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1049403, -87.8141817, 'McAlister\'s Deli', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1017382, -87.7703307, 'Starbucks', '1801 Willow Road Northfield', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(42.1993487, -87.8330765, 'Mobil Mart', '-', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(42.1893602, -87.8252353, 'Shell', '1411 Park Avenue West Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2072975, -87.812189, 'Citgo', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1857966, -87.8014906, 'Pottery Barn', '1850 2nd Street Highland Park', '#e74c3c', 5, 'Downtown Highland Park', false);
+addStore(42.1855799, -87.8022523, 'Chico\'s', '1849 Green Bay Road Highland Park', '#e74c3c', 5, 'Downtown Highland Park', false);
+addStore(42.1856892, -87.8023382, 'Starbucks', '1849 Green Bay Road Highland Park', '#e74c3c', 5, 'Downtown Highland Park', false);
+addStore(42.1831094, -87.8050215, 'Jimmy John\'s', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1847193, -87.7999575, 'Dairy Queen', '600 Central Avenue Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1858144, -87.8009713, 'Orangetheory Fitness', '1835 2nd Street Highland Park', '#e74c3c', 5, 'Downtown Highland Park', false);
+addStore(42.1857687, -87.8023983, 'Jamba', '1849 Green Bay Road Highland Park', '#e74c3c', 5, 'Downtown Highland Park', false);
+addStore(42.1849537, -87.79949, 'Mathnasium', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1880138, -87.8031333, 'Subway', '1968 Second Street;2nd Street Highland Park', '#e74c3c', 5, 'Downtown Highland Park', false);
+addStore(42.1880591, -87.8029994, 'Sherwin-Williams', '1962 2nd Street Highland Park', '#e74c3c', 5, 'Downtown Highland Park', false);
+addStore(42.1061709, -87.8285063, 'Amazon Hub Locker', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2514342, -87.8401926, 'Fred\'s Barber Shoppe', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(42.2496889, -87.8394186, 'Lake Forest Flowers', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2519337, -87.8409418, 'Talbots', '247 Market Square Lake Forest', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(42.2519605, -87.8407822, 'J. McLaughlin', '261 Market Square Lake Forest', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(42.2519908, -87.8406427, 'The Lake Forest Shop', '265 Market Square Lake Forest', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(42.2520251, -87.8404784, 'Williams-Sonoma', '271 Market Square Lake Forest', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(42.2517933, -87.8405153, 'The Daily Grind', '1-MSC Market Square Lake Forest', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(42.251691, -87.8409224, 'Unicorn Designs', '659-A North Bank Lane Lake Forest', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(42.2524936, -87.8409467, 'Kiddle\'s Sports', '258 Market Square Lake Forest', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(42.2524844, -87.8410201, 'TSE Cahmere', '252 Market Square Lake Forest', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(42.252474, -87.8411192, 'Evereve', '248 Market Square Lake Forest', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(42.2519579, -87.8408617, 'M on the Square', '259 Market Square Lake Forest', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(42.2528014, -87.840353, 'Gerhard\'s Elegant Eurpoean Desserts', '720 North Western Avenue Lake Forest', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(42.253009, -87.8404131, 'Lake Forest Pack & Ship', '736 North Western Avenue Lake Forest', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(42.103503, -87.7712941, 'Chase', '400 Central Avenue Northfield', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(42.1091395, -87.7744862, 'Fields Jaguar Northfield', '670 Frontage Road Northfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1507414, -87.8396303, 'The Dog Stop', '495 Lake Cook Rd Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2548309, -87.8409493, 'Deerpath Carpet', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2092502, -87.9330392, 'Shell', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2118933, -87.8164911, 'AK Nail Studio', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1468294, -87.797878, 'Barks & Bows Dog Spa', '300 Skokie Boulevard Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1773219, -87.8216522, 'Redbox', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2018636, -87.8099958, 'Windy City Dispensary', '260 Green Bay Road Highwood', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(42.1084347, -87.7332932, 'Winnetka Congregational Church Rummage', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1279321, -87.8271987, 'Sarpino\'s Pizzeria', '1384 Meadow Road Northbrook', '#e74c3c', 8, 'Meadow Plaza Shopping Center', false);
+addStore(42.139371, -87.8653974, 'Red\'s Garden Center', '3460 Dundee Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1172387, -87.7443582, 'Graeter\'s', '940 Green Bay Road Winnetka', '#e74c3c', 14, 'Hubbard Woods Business District', false);
+addStore(42.1282537, -87.8274127, 'Graeter\'s', '1347 Shermer Road Northbrook', '#e74c3c', 8, 'Meadow Plaza Shopping Center', false);
+addStore(42.1277544, -87.8271391, 'Sherwin-Williams', '1398 Meadow Road Northbrook', '#e74c3c', 8, 'Meadow Plaza Shopping Center', false);
+addStore(42.1685006, -87.9205044, 'State Farm', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1689012, -87.9205527, 'Furniture Show', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1689251, -87.9207431, 'Subway', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1689231, -87.9213734, 'Flower 21', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.167031, -87.922648, 'Sunnyside', '830 North Milwaukee Avenue Buffalo Grove', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1672237, -87.9226248, 'Starbucks', '820 North Milwaukee Avenue Buffalo Grove', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1845873, -87.8017896, 'Anthropologie', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1202848, -87.745943, 'Binny\'s Beverage Depot', '85 Green Bay Road Glencoe', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2027667, -87.8096655, 'U.S. Bank', '-', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(42.1559376, -87.8030016, 'Binny\'s Beverage Depot', '153 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1556353, -87.8026422, 'Guitar Center', '143 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1551999, -87.8021594, 'Ulta Beauty', '135 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1549394, -87.8017625, 'LA Fitness', '135 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1305452, -87.8278163, 'Dollar Tree', '1957 Cherry Lane Northbrook', '#f39c12', 8, 'Meadow Plaza Shopping Center', true);
+addStore(42.1308197, -87.8279987, 'Advance Auto Parts', '1975 Cherry Lane Northbrook', '#e74c3c', 8, 'Meadow Plaza Shopping Center', false);
+addStore(42.1294432, -87.8283366, 'Fifth Third Bank', '1300 Meadow Road Northbrook', '#e74c3c', 8, 'Meadow Plaza Shopping Center', false);
+addStore(42.1302707, -87.8277626, 'Subway', '1951 Cherry Lane Northbrook', '#e74c3c', 8, 'Meadow Plaza Shopping Center', false);
+addStore(42.1301792, -87.8265664, 'Coldwell Banker', '1925 Cherry Lane Northbrook', '#e74c3c', 8, 'Meadow Plaza Shopping Center', false);
+addStore(42.1978466, -87.8606124, 'Heinen\'s Fine Foods', '2503 Waukegan Road Bannockburn', '#e74c3c', 10, 'Bannockburn Green', false);
+addStore(42.1569313, -87.8409862, 'Residence Inn Chicago Deerfield', '530 Lake Cook Road Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2500685, -87.8401183, 'Chase', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(42.2492242, -87.8397469, 'BP', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(42.1388723, -87.9083406, 'Fresh Farms International Market', '20 South Milwaukee Avenue Wheeling', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(42.088176, -87.7973538, 'Sherwin-Williams', '1835 Waukegan Road Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1002046, -87.8007012, 'The UPS Store', '2516 Waukegan Road Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1022336, -87.8122541, 'Mattress Firm', '2221 Willow Road Glenview', '#e74c3c', 13, 'Willowcreek Center', false);
+addStore(42.1502529, -87.8151249, 'Louis Vuitton', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1504604, -87.814813, 'Burberry', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1507065, -87.8150249, 'Tiffany & Company', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1501581, -87.8142772, 'Shell Recharge', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1500425, -87.8153368, 'Arhaus', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1505938, -87.8154767, 'Johnston & Murphy', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1499802, -87.8155167, 'Tumi', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1498942, -87.8159685, 'Lego', '2171 Northbrook Court Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1500662, -87.8160005, 'AT&T', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1504683, -87.8167698, 'Athleta', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1504575, -87.8169841, 'Giorgio Armani', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1498527, -87.8175199, 'Sephora', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1499861, -87.817412, 'Apple Store', '1056 Northbrook Court Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1500395, -87.8179477, 'Gap', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1502025, -87.8178958, 'Gap Kids', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.150413, -87.8171281, 'Prada', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1507509, -87.8154208, 'Max Mara', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0889885, -87.8239123, 'GameStop', '1865 Tower Drive Glenview', '#e74c3c', 6, 'The Glen Town Center', false);
+addStore(42.0894335, -87.8242217, 'Starbucks', '1895 Tower Drive Glenview', '#e74c3c', 6, 'The Glen Town Center', false);
+addStore(42.0902928, -87.8248022, 'JoS. A. Bank', '-', '#e74c3c', 6, 'The Glen Town Center', false);
+addStore(42.0907796, -87.8249203, 'Pure Barre', '-', '#e74c3c', 6, 'The Glen Town Center', false);
+addStore(42.0886855, -87.824378, 'Ben & Jerry\'s', '-', '#e74c3c', 6, 'The Glen Town Center', false);
+addStore(42.08836, -87.824055, 'Potbelly', '-', '#e74c3c', 6, 'The Glen Town Center', false);
+addStore(42.0793576, -87.8195895, 'H&R Block', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0799692, -87.8196525, 'Corner Bakery', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0797916, -87.8196831, 'Supercuts', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2515024, -87.84003, 'Walgreens', '296 East Deerpath Lake Forest', '#f39c12', 0, 'Unnamed Retail Center', true);
+addStore(42.1388583, -87.8475689, 'DQ Grill & Chill', '2760 Dundee Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1387111, -87.8464504, 'The UPS Store', '2720 Dundee Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1378897, -87.8491446, 'Subway', '2823 Dundee Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1378877, -87.8495627, 'Batteries Plus Bulbs', '2837 Dundee Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1370851, -87.8825919, 'Goodwill', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1377634, -87.8839008, 'Bank of America', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.137697, -87.8557277, 'BMO', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1372316, -87.8559852, 'Orangetheory Fitness', '3101 Dundee Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1371798, -87.8569132, 'School of Rock', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.144983, -87.8280229, 'Play It Again Sports', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1087692, -87.890602, 'Dunkin\'', '1204 Milwaukee Avenue Prospect Heights', '#e74c3c', 9, 'Pauwaukee Plaza', false);
+addStore(42.1087465, -87.8907581, 'Jimmy John\'s', '1204 Milwaukee Avenue Prospect Heights', '#e74c3c', 9, 'Pauwaukee Plaza', false);
+addStore(42.1399926, -87.9162668, 'Subway', '8 West Dundee Road Wheeling', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1399985, -87.9163929, 'Metro by T-Mobile', '10 West Dundee Road Wheeling', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1399985, -87.9165538, 'Domino\'s', '12 West Dundee Road Wheeling', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1386266, -87.9078712, 'The UPS Store', '82 South Milwaukee Avenue Wheeling', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(42.138919, -87.9091613, 'Great Clips', '263 East Dundee Road Wheeling', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(42.082099, -87.7997173, 'Orangetheory Fitness', '1464 Waukegan Road Glenview', '#e74c3c', 2, 'Glen Oak Plaza', false);
+addStore(42.0810678, -87.7992881, 'Coldwell Banker', '-', '#e74c3c', 2, 'Glen Oak Plaza', false);
+addStore(42.0835239, -87.7576683, 'The Great Escape', '3232 Lake Avenue Wilmette', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1406896, -87.9304417, 'Carnicerias Jimenez', '550 West Dundee Road Wheeling', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1567531, -87.8036333, 'Jacqueline\'s of Highland Park', '209 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1518694, -87.7916262, 'Butterfly & Blooms', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1404596, -87.8560315, 'AG Smart Garage', '661 Academy Drive Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1374936, -87.9264103, 'Cinergy Dine-In Cinemas', '401 West Dundee Road Wheeling', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.088921, -87.8238678, 'Notice', 'Tower Drive Glenview', '#e74c3c', 6, 'The Glen Town Center', false);
+addStore(42.0888553, -87.8238218, 'Color Me Mine', '1853 Tower Drive Glenview', '#e74c3c', 6, 'The Glen Town Center', false);
+addStore(42.0887518, -87.8237019, 'Noodles & Company', '-', '#e74c3c', 6, 'The Glen Town Center', false);
+addStore(42.0884363, -87.8233725, 'Verizon', '1825 Tower Drive Glenview', '#e74c3c', 6, 'The Glen Town Center', false);
+addStore(42.1991626, -87.9319429, 'Marathon', '435 Milwaukee Avenue Lincolnshire', '#e74c3c', 15, 'Village Green of Lincolnshire', false);
+addStore(42.1535975, -87.8030007, 'Midas', '60 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.153904, -87.8021239, 'AT&T', '59 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1539899, -87.8021667, 'GNC', '67 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1534514, -87.8029658, 'Hertz', '40 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0833016, -87.7572963, 'Road Runner Sports', '3232 Lake Avenue Wilmette', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1652936, -87.7814753, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1665382, -87.780233, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2537104, -87.8651227, 'Blink', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1644285, -87.7803594, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1656011, -87.7816731, 'Twigs and Cotton', 'Roger Williams Avenue', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1595432, -87.8267359, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.153081, -87.8360809, 'Shell', '2 North Waukegan Road Deerfield', '#e74c3c', 4, 'Deerbrook', false);
+addStore(42.1521501, -87.9135422, 'OKAY Cannabis', '781 North Milwaukee Avenue Wheeling', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1859771, -87.7978666, 'Paper Source', '490 Central Avenue Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.149466, -87.9292924, 'CreateOn', '500 Quail Hollow Drive Wheeling', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.165784, -87.7827538, 'The Chunky Scone', '733 St Johns Avenue Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1504909, -87.8167052, 'Monograms Today', '2142 Northbrook Court Drive Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1498105, -87.8011279, 'Bentley Northbrook', '100 Skokie Boulevard Northbrook', '#e74c3c', 1, 'Village Square of Northbrook', false);
+addStore(42.1500412, -87.8011708, 'Napleton Cadillac of Northbrook', '100 Skokie Boulevard Northbrook', '#e74c3c', 1, 'Village Square of Northbrook', false);
+addStore(42.1503793, -87.8013317, 'Rolls-Royce Motor Cars Northbrook', '100 Skokie Boulevard Northbrook', '#e74c3c', 1, 'Village Square of Northbrook', false);
+addStore(42.1505673, -87.799176, 'Shell Recharge', '-', '#e74c3c', 1, 'Village Square of Northbrook', false);
+addStore(42.1505056, -87.7991376, 'Shell Recharge', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1674346, -87.9237494, 'Panera Bread', '1549 Deerfield Parkway Buffalo Grove', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1674286, -87.9241061, 'European Wax Center', '1537 Deerfield Parkway Buffalo Grove', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1674311, -87.9239578, 'Great Clips', '1543 Deerfield Parkway Buffalo Grove', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1672619, -87.9228156, 'T-Mobile', '848 North Milwaukee Avenue Buffalo Grove', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1665753, -87.9221477, 'Verizon', '812 North Milwaukee Avenue Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1664521, -87.9221209, 'Tropical Smoothie Cafe', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1663368, -87.9220672, 'Potbelly', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1617601, -87.9205813, 'Minuteman Press', '20574 North Milwaukee Avenue Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1369985, -87.8576122, 'Kitchen Design Partners', '3159 Dundee Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0831615, -87.7570038, 'Big Blue Swim School', '3232 Lake Avenue Wilmette', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0829684, -87.7569422, 'Advocate NorthShore Pediatric Facility', '3232 Lake Avenue Wilmette', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1687468, -87.9253865, 'ChargePoint', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1070143, -87.8917855, 'Dollar Tree', '610 Milwaukee Avenue Prospect Heights', '#f39c12', 9, 'Pauwaukee Plaza', true);
+addStore(42.1077267, -87.8901064, 'Boost Mobile', '692 Milwaukee Avenue Prospect Heights', '#e74c3c', 9, 'Pauwaukee Plaza', false);
+addStore(42.2181241, -87.8210944, 'Flock Safety', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2179062, -87.8196134, 'Flock Safety', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2180999, -87.8194506, 'Flock Safety', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2158546, -87.8089322, 'Flock Safety', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2155115, -87.8088021, 'Flock Safety', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0903844, -87.8242655, 'Stretch Zone', '-', '#e74c3c', 6, 'The Glen Town Center', false);
+addStore(42.0914181, -87.8250021, 'Cookies by Design', '-', '#e74c3c', 6, 'The Glen Town Center', false);
+addStore(42.1389703, -87.9087264, 'Liquor Barn', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(42.2531693, -87.901853, 'McDonald\'s', 'I-94 Lake Forest Oasis Mettawa', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1050012, -87.8288348, 'Willow Liquors', '2657 Shermer Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1044536, -87.8289169, 'MB Spa Nail', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1043873, -87.8289635, 'Willow Cleaners', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.116072, -87.8283318, 'PXG Chicago North', '1955 Techny Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1148044, -87.7414425, 'CorePower Yoga', '850 Green Bay Road Winnetka', '#e74c3c', 14, 'Hubbard Woods Business District', false);
+addStore(42.1839521, -87.799542, 'GMM Nails', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1842311, -87.7996735, 'Allstate', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1839871, -87.7988881, 'Martinizing', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1885758, -87.8260204, 'Baskin-Robbins', '1990 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1370678, -87.7917378, 'Starbucks', '820 Skokie Boulevard Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1371687, -87.7918221, 'Potbelly', '816 Skokie Boulevard Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1389246, -87.793043, 'Chipotle', '786 Skokie Boulevard Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1387986, -87.7929463, 'Mattress Firm', '788 Skokie Boulevard Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2529538, -87.8415411, 'Club Pilates', '722 North Bank Lane Lake Forest', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(42.1022702, -87.7719851, 'Walgreens', '1825 Willow Road Northfield', '#f39c12', 16, 'Unnamed Retail Center', true);
+addStore(42.079853, -87.762497, 'Kenny The Kleener', '3520 Lake Avenue Wilmette', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0798451, -87.7634462, 'Hip Cat Records & Music Videos', '3540 Lake Avenue Wilmette', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1999766, -87.8324375, 'Casey\'s General Store', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1011443, -87.7518022, 'Flock Safety', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1161364, -87.7664039, 'Flock Safety', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1162812, -87.7664959, 'Flock Safety', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1669793, -87.8480823, 'Walgreens', '780 Waukegan Road Deerfield', '#f39c12', 11, 'Unnamed Retail Center', true);
+addStore(42.1979658, -87.8613283, 'Walgreens', '2501 Waukegan Road Bannockburn', '#f39c12', 10, 'Bannockburn Green', true);
+addStore(42.1553491, -87.8378106, 'Jersey Mike\'s Subs', '190 North Waukegan Road Deerfield', '#e74c3c', 17, 'Caldwell\'s Corners', false);
+addStore(42.1556626, -87.8380299, 'CycleBar', '190 North Waukegan Road Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1512581, -87.8338796, 'Walgreens', '95 South Waukegan Road Deerfield', '#f39c12', 4, 'Deerbrook', true);
+addStore(42.1523296, -87.8393895, 'Baskin-Robbins', '499 Lake Cook Road Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1666658, -87.8452427, 'Sweetgreen', '775 North Waukegan Road Deerfield', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(42.1846041, -87.8002961, 'New Balance', '610 Central Avenue Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1874283, -87.8230923, 'Foss Swim School', '1927 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1755687, -87.8224276, 'Huntington Learning Center', '1628 Deerfield Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.187615, -87.8028098, 'Walgreens', '655 Elm Place Highland Park', '#f39c12', 5, 'Downtown Highland Park', true);
+addStore(42.1094978, -87.8743574, 'Naf Naf Grill', '3818 Willow Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0796639, -87.7988629, 'Citibank', '1701 East Lake Avenue Glenview', '#e74c3c', 2, 'Glen Oak Plaza', false);
+addStore(42.1075175, -87.7358449, 'Charles Schwab', '598 Green Bay Road Winnetka', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.157122, -87.8809301, 'Bright Horizons', '1 Horizon Way Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0874114, -87.7974645, 'La Mode Hair Design & Spa', '1811 Waukegan Road', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1090963, -87.8915681, 'Enterprise', '99 East Palatine Road Prospect Heights', '#e74c3c', 9, 'Pauwaukee Plaza', false);
+addStore(42.2026594, -87.809337, 'Walgreens', '320 Waukegan Avenue Highwood', '#f39c12', 21, 'Unnamed Retail Center', true);
+addStore(42.0809827, -87.7971474, 'Trader Joe\'s', '1407 Waukegan Road Glenview', '#f39c12', 2, 'Glen Oak Plaza', true);
+addStore(42.0806559, -87.7969425, 'Walgreens', '1403 Waukegan Road Glenview', '#f39c12', 2, 'Glen Oak Plaza', true);
+addStore(42.1329404, -87.8220435, 'Walgreens', '1050 Waukegan Road Northbrook', '#f39c12', 23, 'Northbrook Shopping Plaza', true);
+addStore(42.1287087, -87.8273142, 'Leonidas', '-', '#e74c3c', 8, 'Meadow Plaza Shopping Center', false);
+addStore(42.1047472, -87.8288362, 'Rainbo Sports', '2665 Shermer Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.10774, -87.8025, 'Tesla Supercharger', '840 Willow Road Northbrook', '#e74c3c', 3, 'Willow Festival', false);
+addStore(42.1141994, -87.8103563, 'Bright Horizons', '1101 Techny Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0811738, -87.756454, 'KidSnips', '3232 Skokie Boulevard Wilmette', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0826374, -87.7566219, 'Kriser\'s Natural Pet', '3232 Lake Avenue Wilmette', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1378902, -87.8497096, 'Buffalo Wild Wings', '2841 Dundee Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1672533, -87.9229631, 'Solidcore', '1561 Deerfield Parkway Buffalo Grove', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1852062, -87.7998965, 'Dairy Queen', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1852715, -87.7998571, 'Smart Jewler', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1845931, -87.800778, 'Secret World Books', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0888402, -87.8387825, 'Aqualux Auto Spa', '1822 Pickwick Avenue Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2633431, -87.8962725, 'Stage Right, Inc.', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0790891, -87.7988633, 'Arthur Murray Dance Center', '1328 Waukegan Road Glenview', '#e74c3c', 2, 'Glen Oak Plaza', false);
+addStore(42.1221068, -87.8285762, 'Busey Bank', '1707 Shermer Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1000224, -87.7992148, 'Vitalant', '2510 Waukegan Road Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1000283, -87.7993728, 'Panera Bread', '2512 Waukegan Road Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1398619, -87.9124136, 'Taco Bell', '150 East Dundee Road Wheeling', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(42.1399767, -87.9124148, 'KFC', '150 East Dundee Road Wheeling', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(42.1667641, -87.8824384, 'Ray\'s Auto', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1786015, -87.8194659, 'Accessorize Me', '1442 Old Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.133381, -87.901428, 'RE/MAX', '401 South Milwaukee Avenue Wheeling', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1424573, -87.9089356, 'Russian School of Mathematics', '125 North Milwaukee Avenue Wheeling', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(42.1688391, -87.9205009, 'Anytime Fitness', '1127 North Milwaukee Avenue Riverwoods', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1986896, -87.8586083, 'Sport Clips', '2563 Waukegan Road', '#e74c3c', 10, 'Bannockburn Green', false);
+addStore(42.1987552, -87.8586204, 'Jersey Mike\'s Subs', '2565 Waukegan Road Bannockburn', '#e74c3c', 10, 'Bannockburn Green', false);
+addStore(42.1984094, -87.8591568, 'Rosati\'s', '2539 Waukegan Road Bannockburn', '#e74c3c', 10, 'Bannockburn Green', false);
+addStore(42.1995354, -87.8599031, 'Mattress Firm', '-', '#e74c3c', 10, 'Bannockburn Green', false);
+addStore(42.1701197, -87.9217587, 'Orangetheory Fitness', '2037 North Milwaukee Avenue Riverwoods', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1702387, -87.9217989, 'Jimmy John\'s', '2047 North Milwaukee Avenue Riverwoods', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1700362, -87.9217416, 'The UPS Store', '203 North Milwaukee Avenue Riverwoods', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1697877, -87.9216665, 'Sarpino\'s Pizzeria', '2017 North Milwaukee Avenue Riverwoods', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1818727, -87.9439234, 'U-Haul', '15948 West Aptakisic Road Lincolnshire', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1978473, -87.9324723, 'BP Shop', '490 Milwaukee Avenue Lincolnshire', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1372965, -87.790731, 'Real Seal Basement Waterproofing & Foundation Repair', '801 Skokie Boulevard Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1509719, -87.8378888, 'Kids Empire', '405 Lake Cook Road Deerfield', '#e74c3c', 4, 'Deerbrook', false);
+addStore(42.0878656, -87.8109625, 'The Twisted Trunk', '1828 Johns Drive Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0770591, -87.7992377, 'The Lamp Shader', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1509516, -87.8432251, 'The Home Depot', '655 Lake Cook Road Deerfield', '#f39c12', 24, 'Deerfield Park Plaza', true);
+addStore(42.0801614, -87.8193131, 'Wells Fargo', '1380 Patriot Boulevard Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1093668, -87.8215058, 'Costco', '2900 Patriot Boulevard Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', true);
+addStore(42.1079354, -87.8234904, 'The Home Depot', '2850 Patriot Boulevard Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', true);
+addStore(42.1625854, -87.8775706, 'Chicago Marriott Suites Deerfield', '2 Parkway N Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1061674, -87.8891284, 'Holiday Inn Express & Suites Prospect Heights', '600 Milwaukee Avenue Prospect Heights', '#e74c3c', 9, 'Pauwaukee Plaza', false);
+addStore(42.1529649, -87.8014979, 'Fidelity Investments', '1 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1000571, -87.7714169, 'Former Mariano\'s Fresh Market', '1822 Willow Road Northfield', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(42.078619, -87.8193926, 'Jewel-Osco', '1340 Patriot Boulevard Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1065553, -87.8007089, 'Whole Foods Market', '840 Willow Road Northbrook', '#f39c12', 3, 'Willow Festival', true);
+addStore(42.1369819, -87.8819345, 'VASA Fitness', '4125 Dundee Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1082843, -87.8072774, 'Northbrook Sheraton', '-', '#e74c3c', 3, 'Willow Festival', false);
+addStore(42.1080293, -87.8010249, 'REI', '888 Willow Road Northbrook', '#e74c3c', 3, 'Willow Festival', false);
+addStore(42.1092868, -87.8018168, 'Chase', '2370 Waukegan Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1068234, -87.805459, 'Former Best Buy', '1072 Willow Road Northbrook', '#f39c12', 3, 'Willow Festival', true);
+addStore(42.1061736, -87.8036606, 'Buffalo Wild Wings', '-', '#e74c3c', 3, 'Willow Festival', false);
+addStore(42.1081776, -87.8027981, 'Smart Jewelers', '-', '#e74c3c', 3, 'Willow Festival', false);
+addStore(42.1083524, -87.8041962, 'Lowe\'s', '1000 Willow Road Northbrook', '#f39c12', 3, 'Willow Festival', true);
+addStore(42.1061575, -87.8056027, 'Fifth Third Bank', '-', '#e74c3c', 3, 'Willow Festival', false);
+addStore(42.1062176, -87.8029639, 'Lazy Dog', '-', '#e74c3c', 3, 'Willow Festival', false);
+addStore(42.1884801, -87.8240467, 'Muller Subaru', '1350 Park Avenue West Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1893281, -87.8253352, 'Shell', '1411 Park Avenue West Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1335604, -87.8219537, 'Esther Flowers', '1028 Waukegan Road Northbrook', '#e74c3c', 23, 'Northbrook Shopping Plaza', false);
+addStore(42.1520596, -87.8215696, 'P.F. Chang\'s', '1819 Northbrook Court Drive Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1519439, -87.8196016, 'Crate & Barrel', '1775 Lake Cook Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1521448, -87.8221023, 'Citibank', '1825 Lake Cook Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1521571, -87.8114091, 'Bank of America', '1535 Lake Cook Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1827268, -87.9286343, 'The Cheesecake Factory', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1818117, -87.9286005, 'Fleming\'s', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1490043, -87.7929985, 'The Wheelbarrow', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1325674, -87.8202078, 'George Garner Cyclery', '1111 Waukegan Road Northbrook', '#e74c3c', 23, 'Northbrook Shopping Plaza', false);
+addStore(42.2523558, -87.9004007, 'Mobil', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2536453, -87.902317, 'Mobil', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1672755, -87.8823545, 'Mobil', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1671008, -87.8823893, 'Mobil Mart', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1534646, -87.8019621, 'Thorntons', '55 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1535953, -87.8016267, 'Thorntons', '55 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2137915, -87.9369567, 'Life Time', '680 Woodlands Parkway Vernon Hills', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1995446, -87.8917529, 'Homewood Suites', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2031459, -87.935278, 'Starbucks', '1240 East US Highway 45 Vernon Hills', '#e74c3c', 15, 'Village Green of Lincolnshire', false);
+addStore(42.2039764, -87.933814, 'PNC Bank', '1250 Milwaukee Avenue Vernon Hills', '#e74c3c', 15, 'Village Green of Lincolnshire', false);
+addStore(42.2016364, -87.9326589, 'Walgreens', '225 Milwaukee Avenue Lincolnshire', '#f39c12', 15, 'Village Green of Lincolnshire', true);
+addStore(42.2382858, -87.9033093, 'Costco', '25901 Riverwoods Road Mettawa', '#27ae60', -1, 'Standalone / Not in Plaza', true);
+addStore(42.2534075, -87.9025184, '7-Eleven', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2525905, -87.9002015, '7-Eleven', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.252262, -87.9001042, 'Mobil', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2426682, -87.9025488, 'Hilton Garden Inn Lake Forest Mettawa', '26225 Riverwoods Boulevard Mettawa', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1120211, -87.9070805, 'Citgo', 'South Wolf Road Prospect Heights', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1091076, -87.8908684, 'McDonald\'s', '1200 Milwaukee Avenue Prospect Heights', '#e74c3c', 9, 'Pauwaukee Plaza', false);
+addStore(42.1089191, -87.8919162, 'Wheel-Inn Body & Motor Works', '871 East Palatine Road Prospect Heights', '#e74c3c', 9, 'Pauwaukee Plaza', false);
+addStore(42.1090193, -87.8922255, 'Semeria Imports, Inc.', '851 East Palatine Road Prospect Heights', '#e74c3c', 9, 'Pauwaukee Plaza', false);
+addStore(42.1090346, -87.8937362, 'Fries Automotive Services', '81 East Palatine Road Prospect Heights', '#e74c3c', 9, 'Pauwaukee Plaza', false);
+addStore(42.2113723, -87.9356519, 'Extended Stay America - Chicago - Vernon Hills - Lincolnshire', '675 Woodlands Parkway Vernon Hills', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2102974, -87.9349373, 'Phillips 66', '860 Milwaukee Avenue Vernon Hills', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2103597, -87.9346241, 'Phillips 66', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2095365, -87.932957, 'Ernie\'s Wrecker Service, Inc', '909 S Milwaukee Avenue Vernon Hills', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2434558, -87.9031739, 'Residence Inn by Marriott Chicago Lake Forest/Mettawa', '26325 Riverwoods Boulevard Mettawa', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1498858, -87.9122047, 'Cooper\'s Hawk', '583 North Milwaukee Avenue', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1594702, -87.9169418, 'Gerber Collision & Glass', '20445 North Milwaukee Avenue Buffalo Grove', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1021147, -87.7720463, 'Walgreens', '1825 Willow Road Northfield', '#27ae60', -1, 'Standalone / Not in Plaza', true);
+addStore(42.2782226, -87.867836, 'Knauz Body Shop', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1662599, -87.8480938, 'Whole Foods Market', '760 Waukegan Road Deerfield', '#f39c12', 11, 'Unnamed Retail Center', true);
+addStore(42.166879, -87.8479817, 'Walgreens', '780 Waukegan Road Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', true);
+addStore(42.1667549, -87.8459247, 'Chase', '770 North Waukegan Road Deerfield', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(42.140019, -87.9213498, 'Wheeling Post Office', '250 West Dundee Road Wheeling', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1398871, -87.9147718, 'AT&T', '50 East Dundee Road Wheeling', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1393763, -87.9091535, 'Chase', '253 East Dundee Road Wheeling', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(42.1402726, -87.9089574, 'Walgreens', '10 North Milwaukee Avenue Wheeling', '#f39c12', 7, 'Unnamed Retail Center', true);
+addStore(42.1393204, -87.9070133, 'Ara Cabinets 4U', '39 South Milwaukee Avenue Wheeling', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(42.1079686, -87.827164, 'UPS Northbrook', '2525 Shermer Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1195248, -87.8958033, 'Midas', '1044 South Milwaukee Avenue Wheeling', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1213932, -87.8966437, 'MAACO', '1026 South Milwaukee Avenue Wheeling', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0804421, -87.7541522, 'Chalet Nursery', '3132 Lake Avenue Wilmette', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2755482, -87.8668569, 'Land Rover at Lake Bluff', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2692093, -87.8661923, 'Kunes Lakes Chevorlet', '1 Sherwood Terrace Lake Bluff', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1098799, -87.8757873, 'LA Fitness', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1122655, -87.8717454, 'AT&T', '2305 Sander Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1234884, -87.8974858, 'CubeSmart', '1004 South Milwaukee Avenue Wheeling', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1096085, -87.8747964, 'Starbucks', '3840 Willow Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1512958, -87.8462757, 'Public Storage', '125 South Pfingsten Road Deerfield', '#e74c3c', 24, 'Deerfield Park Plaza', false);
+addStore(42.150509, -87.8646697, 'Embassy Suites by Hilton Chicago North Shore Deerfield', '1445 Lake Cook Road Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1438569, -87.8561074, 'FedEx Ship Center', '525 Academy Drive Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1978615, -87.9324174, 'BP', '490 Milwaukee Avenue Lincolnshire', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1641082, -87.921151, 'Speedway', '1010 North Milwaukee Avenue Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1963897, -87.924225, 'Lincolnshire Marriott Resort', '10 Marriott Drive Lincolnshire', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1940881, -87.9334066, 'SpringHill Suites Chicago Lincolnshire', '300 Marriott Drive Lincolnshire', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0808111, -87.8207134, 'Glenview Post Office', '1400 Patriot Boulevard Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1016188, -87.8820447, 'Hilton Chicago/Northbrook', '2855 Milwaukee Avenue Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1818596, -87.944241, 'U-Haul', '15948 West Aptakisic Road Lincolnshire', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1875792, -87.8029594, 'Walgreens', '655 Elm Place Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', true);
+addStore(42.1842847, -87.8022462, 'Anthropologie', '1780 Green Bay Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2525565, -87.841571, 'Lake Forest Post Office', '230 Northgate Street Lake Forest', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(42.1513196, -87.7996569, 'American Mattress', '51 Skokie Boulevard Northbrook', '#e74c3c', 1, 'Village Square of Northbrook', false);
+addStore(42.151146, -87.798893, 'The Container Store', '101 Skokie Boulevard Northbrook', '#e74c3c', 1, 'Village Square of Northbrook', false);
+addStore(42.1508491, -87.7986813, 'Saks Off 5th', '127A Skokie Boulevard Northbrook', '#e74c3c', 1, 'Village Square of Northbrook', false);
+addStore(42.1504374, -87.7983506, 'Bloomingdale\'s Outlet', '145 Skokie Boulevard Northbrook', '#f39c12', 1, 'Village Square of Northbrook', true);
+addStore(42.150082, -87.7981018, 'The Fresh Market', '163 Skokie Boulevard Northbrook', '#e74c3c', 1, 'Village Square of Northbrook', false);
+addStore(42.1497065, -87.7978544, 'DSW', '181 Skokie Boulevard Northbrook', '#e74c3c', 1, 'Village Square of Northbrook', false);
+addStore(42.1493279, -87.7976738, 'Nordstrom Rack', '199 Skokie Boulevard Northbrook', '#f39c12', 1, 'Village Square of Northbrook', true);
+addStore(42.1469359, -87.7959849, 'Party City', '307 Skokie Boulevard Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1473823, -87.79622, 'PetSmart', '291 Skokie Boulevard Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1478545, -87.7965844, 'Dick\'s Sporting Goods', '275 Skokie Boulevard Northbrook', '#f39c12', 1, 'Village Square of Northbrook', true);
+addStore(42.0798075, -87.7622012, 'Dairy Queen', '3510 Lake Avenue Wilmette', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1193748, -87.7454823, 'Coldwell Banker', '45 Green Bay Road Glencoe', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.104761, -87.8225162, 'Northwestern Medicine Glenview Outpatient Center', '2701 Patriot Boulevard Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1064926, -87.8249455, 'Fields Chrysler Jeep Dodge RAM', '2800 Patriot Boulevard Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2537369, -87.9026205, 'Mobil', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1060849, -87.8300473, 'PNC Bank', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.093075, -87.7234883, '7-Eleven', '88 Green Bay Road Winnetka', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1051987, -87.7355546, 'Winnetka Post Office', '512 Chestnut Street Winnetka', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2223661, -87.8735721, 'Fifth Third Bank', '990 South Waukegan Road Lake Forest', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2233702, -87.8737961, 'CIBC', '620 South Waukegan Road Lake Forest', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2243253, -87.871975, 'Sunset Foods', '825 South Waukegan Road Lake Forest', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1943397, -87.9314996, 'Walker Brothers Pancake House', '200 Marriott Drive Lincolnshire', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1965325, -87.8846312, 'La Quinta Inn', '2000 Lakeside Drive Bannockburn', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1995493, -87.8613098, 'PNC Bank', '2595 Waukegan Road Bannockburn', '#e74c3c', 10, 'Bannockburn Green', false);
+addStore(42.1920125, -87.8253438, 'Target', '2099 Skokie Valley Road Highland Park', '#f39c12', 19, 'Park Avenue Centre', true);
+addStore(42.190582, -87.826021, 'Denny\'s', '2063 Skokie Valley Road Highland Park', '#e74c3c', 19, 'Park Avenue Centre', false);
+addStore(42.1898654, -87.8246745, 'Higland Park Ford', '1333 Park Avenue West Highland Park', '#e74c3c', 19, 'Park Avenue Centre', false);
+addStore(42.1897412, -87.8232279, 'Gerber Collision & Glass', '1325 Park Avenue West Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1878035, -87.8236987, 'Muller Volkswagen', '1340 Park Avenue West Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1996329, -87.8619416, 'Shell', '1301 Half Day Road Bannockburn', '#e74c3c', 10, 'Bannockburn Green', false);
+addStore(42.1862733, -87.7985342, 'Chase', '513 Central Avenue Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1873694, -87.7992486, 'Bank of America', '1921 St Johns Avenue Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.201361, -87.8075889, 'NAPA Auto Parts', '2679 Waukegan Avenue Highland Park', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(42.2021365, -87.8090064, 'U.S. Bank', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2025132, -87.8093979, 'Walgreens', '320 Waukegan Avenue Highwood', '#27ae60', -1, 'Standalone / Not in Plaza', true);
+addStore(42.2059166, -87.811381, 'Pazzo di Vino', '524 Sheridan Road Highwood', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1720426, -87.8244738, 'Kelly & Spalding Funeral Home', '1787 Deerfield Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1713897, -87.8246244, 'Starbucks', '1833 Deerfield Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2021907, -87.8122712, 'Highwood Post Office', '130 Highwood Avenue Highwood', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(42.207248, -87.8120883, 'Citgo', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1840222, -87.8058257, 'Highland Park Post Office', '833 Central Avenue Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1864443, -87.8006401, 'Madam Zuzu\'s', '1876 1st Street Highland Park', '#e74c3c', 5, 'Downtown Highland Park', false);
+addStore(42.1859855, -87.8010798, 'Potbelly', '1845 2nd Street Highland Park', '#e74c3c', 5, 'Downtown Highland Park', false);
+addStore(42.1848969, -87.8004421, 'The Original Pancake House', '620 Central Avenue Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1903101, -87.827245, 'Zen Leaf', '2030 Skokie Valley Road Highland Park', '#e74c3c', 19, 'Park Avenue Centre', false);
+addStore(42.1917052, -87.8279593, 'Menoni & Mocogni Landscaping Materials', '2160 Skokie Valley Road Highland Park', '#e74c3c', 19, 'Park Avenue Centre', false);
+addStore(42.1943005, -87.8298428, 'Porsche Exchange', '2300 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1955736, -87.8307291, 'Audi Exchange', '2490 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.196432, -87.8312001, 'Audi', '2490 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1976207, -87.8321488, 'Audi Exchange', '2490 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1980255, -87.8322179, 'Audi Exchange', '2490 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1986139, -87.8324862, 'Wendy\'s', '2560 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1990194, -87.8328226, 'Taco Bell', '2566 Skokie Valley Road Highland Park', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(42.1994124, -87.833019, 'Casey\'s General Store', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1885876, -87.8259348, 'Dunkin\'', '1990 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2012383, -87.8345455, 'Mutual Ace Hardware', '1393 Half Day Road Highland Park', '#f39c12', 22, 'Unnamed Retail Center', true);
+addStore(42.2028517, -87.8352085, 'M & I Motors', '-', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(42.1840654, -87.8004994, 'BMO', '1746 2nd Street Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1842417, -87.802525, 'Shaevitz Kosher Market', '712 Central Avenue Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.184878, -87.8028197, 'BP Shop', '695 Central Avenue Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1853985, -87.8031874, 'Sunset Foods', '1812 Green Bay Road Highland Park', '#e74c3c', 5, 'Downtown Highland Park', false);
+addStore(42.188462, -87.803309, 'Dunkin\'', '1996 2nd Street Highland Park', '#e74c3c', 5, 'Downtown Highland Park', false);
+addStore(42.1892488, -87.8029962, 'Citibank', '2011 2nd Street Highland Park', '#e74c3c', 5, 'Downtown Highland Park', false);
+addStore(42.191171, -87.8031919, 'Shell', '2135 Green Bay Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1913867, -87.8032803, 'Shell', '2135 Green Bay Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1894639, -87.8023449, 'Ultimate Paint Shop II', '2050 1st Street Highland Park', '#e74c3c', 5, 'Downtown Highland Park', false);
+addStore(42.1886582, -87.8018462, 'McDonald\'s', '1988 1st Street Highland Park', '#e74c3c', 5, 'Downtown Highland Park', false);
+addStore(42.1834733, -87.7985826, 'ORT Resale Shop', '1710 1st Street Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0806311, -87.7971239, 'Walgreens', '1403 Waukegan Road Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', true);
+addStore(42.0819727, -87.7971356, 'Staples', '1509 Waukegan Road Glenview', '#e74c3c', 2, 'Glen Oak Plaza', false);
+addStore(42.0813286, -87.7979715, 'Huntington Bank', '1441 Waukegan Road Glenview', '#e74c3c', 2, 'Glen Oak Plaza', false);
+addStore(42.166302, -87.8447339, 'Old National Bank', '725 Waukegan Road Deerfield', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(42.1655178, -87.8445757, 'Kay Foot Spa', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1650765, -87.8440473, 'Shell', '655 North Waukegan Road Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1652835, -87.8452011, 'Mobil Mart', '700 North Waukegan Road Deerfield', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(42.1649546, -87.8449134, 'Mobil Mart', '650 North Waukegan Road Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1676593, -87.8449292, 'U.S. Bank', '700 Deerfield Road Deerfield', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(42.1334712, -87.7583321, 'The Grand Food Center', '341 Hazel Avenue Glencoe', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(42.1079739, -87.7358222, 'The Grand Food Center', '606 Green Bay Road Winnetka', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.133, -87.7577338, 'Glencoe Post Office', '336 Hazel Avenue Glencoe', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(42.1045091, -87.8206249, 'Staybridge Suites Chicago - Glenview', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2026685, -87.9326849, 'Bank of America', '-', '#e74c3c', 15, 'Village Green of Lincolnshire', false);
+addStore(42.105531, -87.7344851, 'Lakeside Foods', '800 Elm Street Winnetka', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1060073, -87.7349771, 'Peet\'s Coffee', '817 Elm Street Winnetka', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1060069, -87.734795, 'The Book Stall', '811 Elm Street Winnetka', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1068877, -87.7353917, 'Starbucks', '566 Chestnut Street Winnetka', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.15335, -87.8456738, 'Portillo\'s', '700 Lake Cook Road Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0803743, -87.7988388, 'Bank of America', '1400 Waukegan Road Glenview', '#e74c3c', 2, 'Glen Oak Plaza', false);
+addStore(42.0996746, -87.8010274, 'Jewel-Osco', '2502 Waukegan Road Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1048172, -87.811886, 'First American Bank', '2101 Willow Road Glenview', '#e74c3c', 13, 'Willowcreek Center', false);
+addStore(42.1041837, -87.8115902, 'Steak \'n Shake', '2121 Willow Road Glenview', '#e74c3c', 13, 'Willowcreek Center', false);
+addStore(42.2092147, -87.9331751, 'Ernie\'s Shell', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.208837, -87.9327858, 'Shell', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2089931, -87.9328869, 'Ernie\'s Shell', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2034117, -87.9337163, 'Halsted Street Deli', '1260 Milwaukee Avenue Vernon Hills', '#e74c3c', 15, 'Village Green of Lincolnshire', false);
+addStore(42.1496389, -87.8168141, 'AMC DINE-IN Northbrook Court 14', '1524 Lake Cook Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1508217, -87.8143846, 'Neiman Marcus', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1503202, -87.8163432, 'Northbrook Court', '1515 Lake Cook Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1390284, -87.8821019, 'Chase', '4200 Dundee Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1381405, -87.8807102, 'BP', '4095 Dundee Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1378287, -87.880708, 'BP', '4095 Dundee Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1396332, -87.7942819, 'Mariano\'s Fresh Market', '784 Skokie Boulevard Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1558272, -87.9157435, 'True North Shell', '185 North Milwaukee Avenue Buffalo Grove', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0882689, -87.8398837, 'Public Storage', '3320 West Lake Avenue Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0780192, -87.79823, 'Associated Bank', '1301 Waukegan Road Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0825864, -87.7979225, 'Fifth Third Bank', '1529 Waukegan Road Glenview', '#e74c3c', 2, 'Glen Oak Plaza', false);
+addStore(42.0836486, -87.7988822, 'John W. Weiss Ace Hardware', '1560 Waukegan Road Glenview', '#f39c12', 12, 'Glenvirw North Plaza', true);
+addStore(42.1062378, -87.8286513, 'BP Shop', '1998 Willow Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1059879, -87.8286912, 'BP', '1998 Willow Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2733435, -87.873232, 'Ferrari Lake Forest', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.086972, -87.797719, 'Taco Bell', '1757 Waukegan Road Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0866706, -87.7977024, 'Culver\'s', '1727 Waukegan Road Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0859531, -87.7976726, 'NAPA Auto Parts', '1723 Waukegan Road Glenview', '#e74c3c', 12, 'Glenvirw North Plaza', false);
+addStore(42.0883325, -87.7985955, 'Burger King', '1834 Waukegan Road Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.098422, -87.817309, 'Knowledge Beginnings', '2401 Compass Road Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1039193, -87.8160479, 'Goodwill', '2740 Old Willow Road Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0830485, -87.7979851, 'Amoco', '1533 Waukegan Road Glenview', '#e74c3c', 2, 'Glen Oak Plaza', false);
+addStore(42.0841779, -87.7979339, 'Walker Bros.', '1615 Waukegan Road Glenview', '#e74c3c', 12, 'Glenvirw North Plaza', false);
+addStore(42.084414, -87.7977535, 'Scandinavian Ski and Snowboard Shop', '1621 Waukegan Road Glenview', '#e74c3c', 12, 'Glenvirw North Plaza', false);
+addStore(42.2611599, -87.8648246, 'Northwestern Medicine Lake Forest Health & Fitness Center', '1200 North Westmoreland Road Lake Forest', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0891075, -87.8131645, 'Gerber Collision & Glass', '1904 Lehigh Avenue Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1330432, -87.82203, 'Walgreens', '1050 Waukegan Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', true);
+addStore(42.1523604, -87.8394116, 'Dunkin\'', '499 Lake Cook Road Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1523307, -87.8384688, 'PNC Bank', '401 Lake Cook Road Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1052234, -87.8477794, 'Einstein Bros. Bagels', '2797 Pfingsten Road Glenview', '#e74c3c', 18, 'Plaza del Prado', false);
+addStore(42.1052986, -87.8484792, 'Chase', '-', '#e74c3c', 18, 'Plaza del Prado', false);
+addStore(42.1061894, -87.8478705, 'Starbucks', '2760 Willow Road Glenview', '#e74c3c', 18, 'Plaza del Prado', false);
+addStore(42.1072166, -87.8484554, 'Walgreens', '2871 Phingsten Road Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', true);
+addStore(42.1060974, -87.8484384, 'Bank of America', '-', '#e74c3c', 18, 'Plaza del Prado', false);
+addStore(42.1206617, -87.7460523, 'Benjamin Moore', '107 Green Bay Road Glencoe', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1641689, -87.8454693, 'Deerfield Post Office', '707 Osterman Avenue Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1102017, -87.802606, 'Phillips 66', '2300 Waukegan Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1675555, -87.8480555, 'AT&T Deerfield Central Office', '812 Deerfield Road Deerfield', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(42.1091287, -87.8726778, 'AT&T', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1110957, -87.8725625, 'Mariano\'s Fresh Market', '2323 Capital Drive Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1019464, -87.7736498, 'Bess Hardware & Sports', '1875 Willow Road Northfield', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(42.165296, -87.845005, 'Exxon', '700 North Waukegan Road Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1649681, -87.8447161, 'Mobil', '650 North Waukegan Road Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1649491, -87.8441529, 'Shell', '655 North Waukegan Road Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1101417, -87.8022632, 'Phillips 66', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1995975, -87.8621951, 'Shell', '1301 Half Day Road Bannockburn', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1863717, -87.8020958, 'AT&T Highland Park Central Office', '1866 2nd Street Highland Park', '#e74c3c', 5, 'Downtown Highland Park', false);
+addStore(42.1053153, -87.8289001, 'Mobil', '1999 Willow Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1052841, -87.828831, 'Mobil Mart', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0911887, -87.7989919, 'Fields Lexus Glenview', '2000 Waukegan Road Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2494491, -87.8394108, 'BP', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2501967, -87.8396689, 'Chase', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2482484, -87.8396018, 'Wenban Funeral Home', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2510364, -87.839863, 'Dunkin\'', '620 North Western Avenue Lake Forest', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(42.2492397, -87.8398157, 'Lake Forest Auto Repair', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(42.2493142, -87.8396434, 'BP Shop', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(42.1390428, -87.9276315, 'Burger King', '425 West Dundee Road Wheeling', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1391013, -87.9259398, 'Starbucks', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2550793, -87.84145, 'The Fresh Market', '850 North Western Avenue Lake Forest', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2557419, -87.8416751, 'Jewel-Osco', '890 North Western Avenue Lake Forest', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2554208, -87.8412874, 'Lake City Cleaners', '866 North Western Avenue Lake Forest', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2544724, -87.8409407, 'BMO', '824 North Western Avenue Lake Forest', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2540053, -87.8409724, 'Bank of America', '780 North Western Avenue Lake Forest', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(42.084518, -87.7989405, 'Napleton Hyundai Glenview', '1620 Waukegan Road Glenview', '#e74c3c', 12, 'Glenvirw North Plaza', false);
+addStore(42.0840577, -87.7990174, 'Napleton Lincoln Glenview', '1610 Waukegan Road Glenview', '#e74c3c', 12, 'Glenvirw North Plaza', false);
+addStore(42.0793427, -87.7619071, 'Shell', '3501 Lake Avenue Wilmette', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.092266, -87.798515, 'Bredemann Ford in Glenview', '2038 Waukegan Road Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1559098, -87.9153571, 'Shell', '185 North Milwaukee Avenue Buffalo Grove', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1390668, -87.7914995, 'Greenhouse Northbrook', '755 Skokie Boulevard Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1789436, -87.8197278, 'Elevele Highland Park', '1460A Old Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1248053, -87.8289431, 'Northbrook Barber Shop', '1519 Shermer Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.150491, -87.9113837, 'The Westin Chicago North Shore', '601 North Milwaukee Avenue Wheeling', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1692255, -87.9241369, 'Woodman\'s Markets', '1550 Deerfield Parkway Buffalo Grove', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1390281, -87.8392364, 'Northbrook Post Office', '2460 Dundee Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1393104, -87.8654633, 'Red\'s Garden Center', '3460 Dundee Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.156541, -87.916104, 'Speedway', '201 North Milwaukee Avenue Buffalo Grove', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.106693, -87.7353933, 'Scissors Edge', 'Chestnut Street Winnetka', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1640462, -87.9214475, 'Speedway', '1010 North Milwaukee Avenue Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1539477, -87.8706631, 'Hyatt Regency Deerfield', '1750 Lake Cook Road Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1671406, -87.9195529, 'CubeSmart', '3725 Deerfield Road Riverwoods', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1684561, -87.9258723, 'Woodman\'s Oil Change', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1674362, -87.9244011, 'Chase', '1525 Deerfield Parkway Buffalo Grove', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1703189, -87.9236293, 'Extended Stay America', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2000174, -87.9322185, 'Culver\'s', '405 Milwaukee Avenue Lincolnshire', '#e74c3c', 15, 'Village Green of Lincolnshire', false);
+addStore(42.198318, -87.9327823, 'McDonald\'s', '450 Milwaukee Avenue Lincolnshire', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1502154, -87.8167884, 'Northbrook Court', '1515 Lake Cook Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.157963, -87.8051326, 'Chase', '255 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1168605, -87.7431097, 'Walgreens', '925 Green Bay Road Winnetka', '#27ae60', -1, 'Standalone / Not in Plaza', true);
+addStore(42.1829034, -87.8228013, 'Williams Ski and Patio', '1672 Old Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1381182, -87.8818984, 'Culver\'s', '4105 Dundee Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1812613, -87.9267239, 'Shell', '1000 North Milwaukee Avenue Lincolnshire', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1812501, -87.9270865, 'Circle K', '1000 North Milwaukee Avenue Lincolnshire', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.181115, -87.9272978, 'Circle K', '1000 North Milwaukee Avenue Lincolnshire', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1514532, -87.8368587, 'Jewel-Osco', '16 South Waukegan Road Deerfield', '#e74c3c', 4, 'Deerbrook', false);
+addStore(42.1509212, -87.8364744, 'Marshalls', '94 South Waukegan Road Deerfield', '#f39c12', 4, 'Deerbrook', true);
+addStore(42.1486682, -87.8348147, 'Hobby Lobby', '200 Waukegan Road Deerfield', '#e74c3c', 4, 'Deerbrook', false);
+addStore(42.1915274, -87.9344649, 'Home2 Suites by Hilton Lincolnshire Chicago', '350 Knightsbridge Parkway Lincolnshire', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1043152, -87.7342132, 'AT&T Winnetka Central Office', '794 Oak Street Winnetka', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1269706, -87.8303376, 'AT&T Northbrook Central Office', '2029 Walters Avenue Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.091532, -87.87415, 'H Mart', '3385 Milwaukee Avenue Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1115994, -87.7761955, 'Fields Volvo Northfield', '770 Frontage Road Northfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1566759, -87.9156525, 'Speedway', '201 North Riverwalk Drive Buffalo Grove', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1566076, -87.915882, 'Speedway', '201 Milwaukee Avenue Buffalo Grove', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1476095, -87.7912543, 'Model Railroad Garden', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1541472, -87.8909336, 'Holiday Inn Express & Suites Chicago-Deerfield/Lincolnshire', '2600 Lake Cook Road Riverwoods', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1490967, -87.7897853, 'The Garden Shop', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1776577, -87.8217358, 'Jewel-Osco', '1600 Deerfield Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2799491, -87.844697, 'Lake Bluff Post Office', '26 East Scranton Avenue Lake Bluff', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1747728, -87.8198096, 'Extra Space Storage', '1610 Old Deerfield Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1052653, -87.8283532, 'Dunkin\'', '1945 Willow Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0811389, -87.8167842, 'Vi at The Glen', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1496427, -87.8339727, 'Mattress Firm', '210 South Waukegan Road Deerfield', '#e74c3c', 4, 'Deerbrook', false);
+addStore(42.1495838, -87.8354521, 'Office Depot', '134 South Waukegan Road Deerfield', '#f39c12', 4, 'Deerbrook', true);
+addStore(42.148668, -87.7981751, 'Verizon', '235 Skokie Boulevard Northbrook', '#e74c3c', 1, 'Village Square of Northbrook', false);
+addStore(42.1498912, -87.7992973, 'T-Mobile', '141 Skokie Boulevard Northbrook', '#e74c3c', 1, 'Village Square of Northbrook', false);
+addStore(42.243507, -87.899061, 'The Forester a Hyatt Place Hotel', '200 North Field Drive Lake Forest', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2027506, -87.8624128, 'Mariano\'s Fresh Market', '2999 Waukegan Road Bannockburn', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0799152, -87.7619682, 'Hong King Auto Service', '3500 Lake Avenue Wilmette', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1657816, -87.7871965, 'Furry Finesse', '737 Broadview Avenue Highland Park', '#3498db', 25, 'Unnamed Retail Center', false);
+addStore(42.1652677, -87.7863375, 'Walgreens', '632 Roger Williams Avenue Highland Park', '#f39c12', 25, 'Unnamed Retail Center', true);
+addStore(42.0900835, -87.8259824, 'Von Maur', '1960 Tower Drive Glenview', '#e74c3c', 6, 'The Glen Town Center', false);
+addStore(42.170636, -87.8251833, 'BP', '1881 Deerfield Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.179422, -87.8533989, 'BP Shop', '1460 North Waukegan Road Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1794823, -87.8532536, 'BP', '1460 North Waukegan Road Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1142815, -87.828378, 'StorageMart', '2121 Shermer Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1249602, -87.829703, '7-Eleven', '1512 Shermer Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2057387, -87.8129537, 'Poeta\'s Italian Food Mart', '520 Green Bay Road Highwood', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1186666, -87.7455705, 'Winnetka Thrift Shop', '992 Green Bay Road Winnetka', '#e74c3c', 14, 'Hubbard Woods Business District', false);
+addStore(42.2175465, -87.8205125, 'Mobil', '1000 Sheridan Road Highwood', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2170057, -87.8202291, 'Starbucks', '950 Sheridan Road Highwood', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2153501, -87.8190523, 'McDonald\'s', '894 Sheridan Road Highwood', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2003725, -87.8320341, 'Casey\'s General Store', '1333 Half Day Road Highland Park', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(42.2018552, -87.8329211, 'Acura of Highland Park', '2699 Skokie Valley Road Highland Park', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(42.1506381, -87.7984972, 'Trader Joe\'s', '127 Skokie Boulevard Northbrook', '#f39c12', 1, 'Village Square of Northbrook', true);
+addStore(42.1515945, -87.7996375, 'TJ Maxx', '47 Skokie Boulevard Northbrook', '#f39c12', 1, 'Village Square of Northbrook', true);
+addStore(42.1519577, -87.8000588, 'Le Nailspa', '39 Skokie Boulevard Northbrook', '#e74c3c', 1, 'Village Square of Northbrook', false);
+addStore(42.1485909, -87.7981062, 'uBreakiFix', '239 Skokie Boulevard Northbrook', '#e74c3c', 1, 'Village Square of Northbrook', false);
+addStore(42.1980778, -87.8612055, 'Walgreens', '2501 Waukegan Road Bannockburn', '#27ae60', -1, 'Standalone / Not in Plaza', true);
+addStore(42.1752994, -87.8199475, 'Craftwood Lumber and Hardware', '1590 Old Deerfield Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1580175, -87.7754869, 'Festival Shop', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1469254, -87.8335507, 'Red Roof Inn', '340 Waukegan Road Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1531035, -87.8360219, 'Shell', '2 North Waukegan Road Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1517649, -87.8340685, 'Chick-fil-A', '75 South Waukegan Road Deerfield', '#e74c3c', 4, 'Deerbrook', false);
+addStore(42.1371228, -87.9050393, 'Kolssak Funeral Home Ltd.', '189 South Milwaukee Avenue Wheeling', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1616391, -87.9188548, 'Extra Space Storage', '991 North Milwaukee Avenue Wheeling', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1611043, -87.9189445, 'Wheeling Sale Barn', '971 North Milwaukee Avenue Wheeling', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1704644, -87.9410833, 'StorageMart', '847 Deerfield Parkway Buffalo Grove', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1392799, -87.9152126, 'BP Shop', '11 East Dundee Road Wheeling', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1392204, -87.9150782, 'BP', '11 East Dundee Road Wheeling', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.139109, -87.914749, 'BP', '11 East Dundee Road Wheeling', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1535167, -87.835347, 'Just Tires', '25 North Waukegan Road Deerfield', '#e74c3c', 17, 'Caldwell\'s Corners', false);
+addStore(42.1354491, -87.7884388, 'Renaissance North Shore', '933 Skokie Boulevard Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1398966, -87.915215, 'Jiffy Lube', '10 East Dundee Road Wheeling', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1394298, -87.9101998, 'Popeyes', '235 East Dundee Road Wheeling', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(42.1393376, -87.9106284, 'Dunkin\'', '215 East Dundee Road Wheeling', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(42.1401434, -87.9111635, 'McDonald\'s', '188 East Dundee Road Wheeling', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(42.1047063, -87.8887517, 'Motel 6 Prospect Heights', '540 Milwaukee Avenue Prospect Heights', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1417225, -87.90933, 'Benihana', '150 North Milwaukee Avenue Wheeling', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(42.1190888, -87.8961038, 'Shell', '1048 South Milwaukee Avenue Wheeling', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.119067, -87.8957228, 'Shell', '1048 South Milwaukee Avenue Wheeling', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1671482, -87.9209575, 'Thorntons', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.16715, -87.9205667, 'Thorntons', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0814288, -87.757117, 'Wayfair Edens Plaza', '3232 Lake Avenue Wilmette', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1524061, -87.8772742, 'J. Alexander\'s', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1391044, -87.9150906, 'BP', '11 East Dundee Road Wheeling', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1340828, -87.7874287, 'Dania Furnture', '1001 Skokie Boulevard Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1295188, -87.7879711, 'Life Time', '1100 Skokie Boulevard Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1375915, -87.7921665, 'Mobil Mart', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1377338, -87.792017, 'Mobil', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1332002, -87.7892178, 'The Lock Up', '990 Skokie Boulevard Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1244741, -87.7838631, 'Northbrook Toyota', '1530 Frontage Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1223397, -87.7827371, 'Autohaus on Edens', '1600 Frontage Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1181454, -87.7800889, 'CarMax', '2000 Frontage Road Glencoe', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.117254, -87.7799958, 'Mini of Glencoe', '2100 Frontage Road Glencoe', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1133899, -87.777133, 'The Lock Up', '800 Frontage Road Northfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1104601, -87.7752556, 'Fields BMW Northfield', '700 Frontage Road Northfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1019204, -87.7730584, 'Shell', '1855 Willow Road Northfield', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(42.1017746, -87.7730176, 'Shell', '1855 Willow Road Northfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0815963, -87.7658241, 'Pro Self Storage', '3626 Lake Avenue Wilmette', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2772875, -87.8691497, 'Knauz Ineos Grenadier', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1491908, -87.8002896, 'McDonald\'s', '200 Skokie Boulevard Northbrook', '#e74c3c', 1, 'Village Square of Northbrook', false);
+addStore(42.1483408, -87.7995021, 'Fifth Third Bank', '240 Skokie Boulevard Northbrook', '#e74c3c', 1, 'Village Square of Northbrook', false);
+addStore(42.2000897, -87.8320301, 'Casey\'s General Store', '1333 Half Day Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1089264, -87.8758389, 'BP', 'Willow Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1086676, -87.8758102, 'BP Shop', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1085784, -87.875872, 'BP', 'Willow Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1530502, -87.8034601, 'Shell', '10 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1529805, -87.8031073, 'Shell', '10 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1529528, -87.8027403, 'Shell', '10 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1542499, -87.8038875, 'Burger King', '90 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1610266, -87.8084411, 'Gregory Hyundai', '490 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.162435, -87.8095234, 'Mueller Honda', '550 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.170716, -87.8254066, 'BP Shop', '1881 Deerfield Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1541341, -87.8371161, 'McDonald\'s', '50 North Waukegan Road Deerfield', '#e74c3c', 17, 'Caldwell\'s Corners', false);
+addStore(42.1530966, -87.8352062, 'BP Shop', '1 North Waukegan Road Deerfield', '#e74c3c', 4, 'Deerbrook', false);
+addStore(42.1643408, -87.8443798, 'BankFinancial', '630 North Waukegan Road Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1990202, -87.8616555, 'McDonald\'s', '2587 Waukegan Road Bannockburn', '#e74c3c', 10, 'Bannockburn Green', false);
+addStore(42.189459, -87.8564427, 'Metro Self Storage', '2021 Waukegan Road Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1545486, -87.83731, 'Firestone', '120 North Waukegan Road Deerfield', '#e74c3c', 17, 'Caldwell\'s Corners', false);
+addStore(42.2044771, -87.8362631, 'Caliber Collision', '2868 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2063942, -87.8376495, 'Lexus of Highland Park', '2930 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1972368, -87.8317693, 'Audi Exchange', '2490 Skokie Valley Road Highland Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1055906, -87.7340746, 'BMO', '520 Green Bay Road Winnetka', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0971845, -87.7988461, 'Enterprise', '2300 Waukegan Road Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1407115, -87.7942033, 'PNC Bank', '774 Skokie Boulevard Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1409373, -87.794328, 'Panera Bread', '772 Skokie Boulevard Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1327632, -87.7582058, 'Mobil', '635 Vernon Avenue Glencoe', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(42.1072824, -87.7362572, 'Chase', '845 Spruce Street Winnetka', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1055873, -87.7349334, 'Citibank', '814 Elm Street Winnetka', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1114127, -87.7388627, 'Victor Hlavacek Florist', '746 Green Bay Road Winnetka', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1158127, -87.7424478, 'BP', '1025 Tower Road Winnetka', '#e74c3c', 14, 'Hubbard Woods Business District', false);
+addStore(42.1159793, -87.7424251, 'BP Shop', '1025 Tower Road Winnetka', '#e74c3c', 14, 'Hubbard Woods Business District', false);
+addStore(42.1062491, -87.7349301, 'Evereve', '551 Chestnut Street Winnetka', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2721574, -87.8725943, 'Pasquesi\'s Home & Garden', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2506296, -87.8421917, 'Shell', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(42.2505008, -87.8397184, 'Courtyard Wines', '590 North Western Avenue Lake Forest', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(42.2496693, -87.8395259, 'Lake Forest Flowers', '546 North Western Avenue Lake Forest', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(42.249758, -87.8395728, 'Taylor Reese Salon', '560 North Western Avenue Lake Forest', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(42.2497454, -87.8396919, 'LBK Design Group', '297 East Illinois Road Lake Forest', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(42.0938244, -87.7246815, 'Byline Bank', '100 Green Bay Road Winnetka', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0830435, -87.7979117, 'Amoco', '1533 Waukegan Road Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1323297, -87.8230152, 'Bank of America', '1160 Shermer Road Northbrook', '#e74c3c', 23, 'Northbrook Shopping Plaza', false);
+addStore(42.0934764, -87.7230562, 'Tala Coffee Roasters', '93 Green Bay Road Winnetka', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.104967, -87.7898814, 'Shell', '469 Sunset Ridge Road Northfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1047506, -87.7898957, 'Shell', '469 Sunset Ridge Road Northfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1690116, -87.9227294, 'Tesla Supercharger', '1550 Deerfield Parkway Buffalo Grove', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2767968, -87.8685837, 'Karl Knauz BMW', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2779204, -87.8692172, 'Knauz Continental Autos', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.137817, -87.8488686, 'Chase', '2801 Dundee Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1379871, -87.8478859, 'Dunkin\'', '2775 Dundee Road Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1120482, -87.9072057, 'Citgo', 'South Wolf Road Prospect Heights', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1404692, -87.7923996, 'Morton\'s The Steakhouse', '699 Skokie Boulevard Northbrook', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1630501, -87.8434358, 'Shake Shack', '560 North Waukegan Road Deerfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.0868866, -87.8485304, 'Extra Space Storage', '3701 West Lake Avenue Glenview', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1188011, -87.7459475, 'CIBC', '1000 Green Bay Road Winnetka', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.119385, -87.746168, 'Bank of America', '1010 Green Bay Road Winnetka', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1188632, -87.7451054, 'Green Bay Cycles', '999 Green Bay Road Winnetka', '#e74c3c', 14, 'Hubbard Woods Business District', false);
+addStore(42.1912643, -87.8263526, 'Tesla Supercharger', '2099 Skokie Valley Road Highland Park', '#e74c3c', 19, 'Park Avenue Centre', false);
+addStore(42.1244174, -87.8981276, 'Public Storage', '990 South Milwaukee Avenue Wheeling', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1443166, -87.9106366, 'Scooter\'s Coffee', '310 North Milwaukee Avenue Wheeling', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.2016319, -87.8631026, 'Wells Fargo', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(42.1995916, -87.8603947, 'Starbucks', '-', '#e74c3c', 10, 'Bannockburn Green', false);
+
+  map.on('overlayadd overlayremove', updateVisibility);
+  updateVisibility();
+
+  var overlays = {
+    '🔴  Multi-anchor plazas (2+ anchors)': layerMultiAnchor,
+    '⭕  Single-anchor plazas': layerSingleAnchor,
+    '🟣  Plaza Center Points': layerPlazaCenters,
+    '🟡  Anchor Stores (in Plaza)': layerAnchors,
+    '🔵🔴  Tenants (In Plaza)': layerTenants,
+    '🟢  Standalone Stores': layerStandalone,
+    '━━━━━━━━━━━━━━': L.layerGroup(),
+    '🔥  High Density Plazas (10+ tenants)': layerHighDensity,
+    '🔹  Lower Density (< 10 tenants)': layerLowDensity
+  };
+
+  var countyDivider = false;
+  for (var county in countyLayers) {
+    if (!countyDivider) {
+        overlays['━━━━━━━━━━━━━━ '] = L.layerGroup();
+        countyDivider = true;
+    }
+    overlays['📍 ' + county] = countyLayers[county];
+  }
+
+  L.control.layers(null, overlays, {
+    position: 'topright',
+    collapsed: false,
+  }).addTo(map);
+
+  var legend = L.control({position: 'bottomright'});
+  legend.onAdd = function() {
+    var div = L.DomUtil.create('div', 'legend');
+    div.innerHTML = '<b>Retail Centers – Highland Park, IL</b><br>'
+      + '<span class="legend-dot" style="background:#e74c3c"></span> Named plaza<br>'
+      + '<span class="legend-dot" style="background:#3498db"></span> Unnamed plaza<br>'
+      + '<span class="legend-dot" style="background:#8e44ad"></span> Plaza center point<br>'
+      + '<span class="legend-dot" style="background:#f39c12"></span> Anchor store (in plaza)<br>'
+      + '<span class="legend-dot" style="background:#27ae60"></span> Standalone store<br>'
+      + '⚓ = anchor &nbsp; 🔥 = 10+ tenants';
+    return div;
+  };
+  legend.addTo(map);
+</script>
+</body>
+</html>
