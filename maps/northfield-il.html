@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8' />
+  <title>Retail Centers – Northfield, IL</title>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' />
+  <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
+  <style>
+    body { margin: 0; font-family: sans-serif; }
+    #map { height: 100vh; width: 100%; }
+    .legend {
+      background: white; padding: 10px 14px; border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); line-height: 1.8;
+      font-size: 13px;
+    }
+    .legend-dot { display: inline-block; width: 12px; height: 12px;
+                   border-radius: 50%; margin-right: 6px; }
+  </style>
+</head>
+<body>
+<div id='map'></div>
+<script>
+  var map = L.map('map').setView([44.439347807625275, -93.18082456416123], 12);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(map);
+
+  // FIX 1: Explicitly initialize the tracking arrays
+  var plazasData = [];
+  var storesData = [];
+
+  var layerMultiAnchor = L.layerGroup().addTo(map);
+  var layerSingleAnchor = L.layerGroup().addTo(map);
+  var layerPlazaCenters = L.layerGroup().addTo(map);
+  var layerAnchors = L.layerGroup().addTo(map);
+  var layerTenants = L.layerGroup().addTo(map);
+  var layerStandalone = L.layerGroup().addTo(map);
+  var layerHighDensity = L.layerGroup().addTo(map);
+  var layerLowDensity = L.layerGroup().addTo(map);
+  var countyLayers = {};
+
+  function getOrCreateCountyLayer(county) {
+    if (!county || county === '-') county = 'Unknown';
+    if (!countyLayers[county]) {
+        countyLayers[county] = L.layerGroup().addTo(map);
+    }
+    return countyLayers[county];
+  }
+
+  function addPlaza(lat, lng, radius_m, plazaId, name, address, county, city, numAnchors, anchors, numTenants, tenants, color) {
+    var popup = '<b>' + name + '</b><br>'
+      + (address !== '-' ? address + '<br>' : '')
+      + city + (county !== '-' ? ', ' + county + ' County' : '') + '<br>'
+      + '<br><b>' + numAnchors + ' anchor(s): </b><br>'
+      + anchors.split(', ').join('<br>')
+      + '<br><br><b>' + numTenants + ' other tenant(s):</b><br>'
+      + tenants.split(', ').join('<br>');
+    
+    var circle = L.circle([lat, lng], {
+      radius: radius_m,
+      color: color,
+      fillColor: color,
+      fillOpacity: 0.08,
+      weight: 2
+    });
+    if (numAnchors > 1) {
+      layerMultiAnchor.addLayer(circle);
+    } else {
+      layerSingleAnchor.addLayer(circle);
+    }
+
+    var center = L.circleMarker([lat,lng], {
+        radius: 9,
+        color: '#fff',
+        fillColor: '#8e44ad',
+        fillOpacity: 1,
+        weight: 2
+    }).bindPopup(popup).bindTooltip(name, {permanent: false, direction: 'top'});
+
+    var cleanCounty = (!county || county === '-') ? 'Unknown' : county;
+    getOrCreateCountyLayer(cleanCounty);
+
+    plazasData.push({
+        circle: circle,
+        center: center,
+        id: plazaId,
+        name: name,
+        county: cleanCounty,
+        numAnchors: numAnchors,
+        numTenants: numTenants
+    });
+  }
+
+  function addStore(lat, lng, name, address, color, plazaId, plaza, isAnchor) {
+    var size = isAnchor ? 11 : 9;
+    var icon = L.divIcon({
+      className: '',
+      html: '<div style="position:absolute;width:' + size + 'px;height:' + size + 'px;'
+          + 'border-radius:50%;background:' + color + ';border:2px solid white;'
+          + 'box-shadow:0 1px 3px rgba(0,0,0,0.4);top:50%;left:50%;'
+          + 'transform:translate(-50%,-50%)'
+          + (isAnchor ? ';outline:2px solid rgba(0,0,0,0.25)' : '')
+          + '"></div>',
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2]
+    });
+    var marker = L.marker([lat, lng], {icon: icon})
+      .bindPopup('<b>' + name + '</b>' + (isAnchor ? '⚓' : '')+ '<br>' 
+        + '<i>' + plaza + '</i><br>'
+        + address)
+      .bindTooltip(name, {direction: 'top'})
+    
+    storesData.push({
+      marker: marker,
+      plazaId: plazaId,
+      plazaLabel: plaza,
+      isAnchor: isAnchor
+    });
+  }
+
+  function updateVisibility() {
+    plazasData.forEach(function(p) {
+      var anchorMatch = (p.numAnchors > 1) ? map.hasLayer(layerMultiAnchor): map.hasLayer(layerSingleAnchor);
+      var densityMatch = (p.numTenants >= 10) ? map.hasLayer(layerHighDensity) : map.hasLayer(layerLowDensity);
+      var countyLayer = countyLayers[p.county];
+      var countyMatch = countyLayer ? map.hasLayer(countyLayer) : true;
+
+      var plazaVisible = anchorMatch && densityMatch && countyMatch;
+      p.isActive = plazaVisible;
+
+      if (plazaVisible) {
+        // FIX 2: Changed map.has() to map.hasLayer()
+        if (!map.hasLayer(p.circle)) p.circle.addTo(map);
+      } else {
+        if (map.hasLayer(p.circle)) map.removeLayer(p.circle);
+      }
+
+      if (plazaVisible && map.hasLayer(layerPlazaCenters)) {
+        if (!map.hasLayer(p.center)) p.center.addTo(map);
+      } else {
+        if (map.hasLayer(p.center)) map.removeLayer(p.center);
+      }
+    });
+      
+    storesData.forEach(function(s) {
+        var storeVisible = false;
+
+        if (s.plazaId === -1) {
+            // Standalone store
+            storeVisible = map.hasLayer(layerStandalone);
+
+        } else {
+            var parentPlaza = plazasData.find(function(p) {
+                return p.id === s.plazaId;
+            });
+
+            if (parentPlaza && parentPlaza.isActive) {
+                storeVisible = s.isAnchor
+                    ? map.hasLayer(layerAnchors)
+                    : map.hasLayer(layerTenants);
+            }
+        }
+
+        if (storeVisible) {
+            if (!map.hasLayer(s.marker))
+                s.marker.addTo(map);
+        } else {
+            if (map.hasLayer(s.marker))
+                map.removeLayer(s.marker);
+        }
+    });
+  }
+
+  addPlaza(44.45407504509805, -93.16198459803923, 523.5, 0, 'River Park Mall', '670 Water Street South Northfield', 'Rice County', 'Northfield', 2, 'Ace Hardware, Walgreens', 49, 'Allure Salon, Ameriprise Financial, Anytime Fitness, Bissell, Bread People, Caribou Coffee, Clothes Closet, Cooper Tire Service, Country Inn & Suites, Diesel, Downtown Mini Storage, Downtown Tobacco, Dufour\'s Cleaners, Edward Jones, Elite Auto Care, Family Fare, Family Hair, Farmstead Bike Shop, Fate Furnishings, Forget-Me-Not, Great Clips of Northfield, Groundwire Coffee Roasters, Just Food Co-Op, Kinship Collective Tattoo, Kwik Trip, Kwik Trip Car Wash, Lisa\'s Alterations & Tailloring, Little Free Library, Luis Enrique Salon, Mother Goose of Northfield, Municipal Liquor Store, NAPA Auto Parts, Northfield Farmers Market, Paisley Gardens, Redbox, River Park Mall, Sissy\'s On 7th, Starbucks, Sterling Pharmacy, Subway, Taco Bell, The Secret Attic, Thrifty Parrot, UPS, Used-A-Bit Shoppe, Verizon, Wells Fargo, Willie\'s Shoe Services, Witt Bros. Service', '#e74c3c');
+addPlaza(44.43420657777777, -93.18832424444444, 289.7, 1, 'Unnamed Retail Center', '2323 Highway 3 South Northfield', 'Rice County', 'Northfield', 1, 'Dollar Tree', 8, 'Applebee\'s, Arby\'s, Castrol Premium Lube Express, Cub Foods, Maurices, Starbucks, United States Post Office, Wings Financial Credit Union', '#3498db');
+addPlaza(44.4297618, -93.19216485, 289.7, 2, 'Unnamed Retail Center', '611 Stafford Road North Dundas', 'Rice County', 'Dundas', 1, 'ALDI', 1, 'Firehouse Liquor', '#3498db');
+  addStore(44.4744248, -93.2904695, 'Lakes Natural Gas', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4574093, -93.1614554, 'Jerry\'s Hair Shop', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4570992, -93.162024, 'Salon Synergy', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4593133, -93.1619673, 'Holiday Stationstore', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4275839, -93.1950409, 'Cartime Auto Center', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4490484, -93.1682939, 'Casey\'s', '521 West Woodley Street', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4704974, -93.2955098, 'Flying J Travel Center', '8051 Bagley Avenue Northfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4571035, -93.1622075, 'State Farm', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4569694, -93.1615664, 'Nevaeh Salon', '307 Water Street South', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4572023, -93.1594816, 'Farm Bureau Financial Services', '301 Division Street South', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4568961, -93.1601062, 'Northfield Yarn', '314 Division Street South Northfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4561007, -93.1594588, 'Domino\'s', '110 4th Street East Northfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4566463, -93.1581526, 'Seven Gables Books & Antiques', '313 Washington Street', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4549802, -93.160632, 'Luis Enrique Salon', '103 5th Street West', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4548897, -93.160908, 'The Secret Attic', '113 5th Street West', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4548696, -93.1613873, 'Forget-Me-Not', '501 Water Street South', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4541925, -93.1604484, 'Dufour\'s Cleaners', '528 Division Street', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4538695, -93.1623371, 'Used-A-Bit Shoppe', '624 Water Street South', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4524162, -93.1598568, 'Witt Bros. Service', '701 DIvision Street South', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4533532, -93.1624602, 'Ace Hardware', '670 Water Street South Northfield', '#f39c12', 0, 'River Park Mall', true);
+addStore(44.4531551, -93.1624149, 'Great Clips of Northfield', '200 7th Street West', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4525721, -93.1593328, 'NAPA Auto Parts', '108 7th Street East', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4525376, -93.162074, 'Wells Fargo', '700 Water Street South', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4515128, -93.1599166, 'Mother Goose of Northfield', '801 Division Street South', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4545143, -93.1658278, 'Redbox', '-', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4550389, -93.1748615, 'Carquest', '950 5th Street West', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4439448, -93.1758255, 'Snap Fitness', '1500 Clinton Lane', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4593924, -93.1620926, 'U.S. Bank', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4441823, -93.1754071, 'Pizza Hut', '1500 CLinton Lane Northfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4359093, -93.1883031, 'Castrol Premium Lube Express', '1930 Honey Locust Drive', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.4380083, -93.1879384, 'Northfield Auto Body', '1802 Cannon Road', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4336879, -93.185906, 'Starbucks', '2323 Highway 3 South Northfield', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.4380657, -93.1829001, 'Papa Murphy\'s', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4554851, -93.1603598, 'Antiques of Northfield', '416 Division Street', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4526384, -93.1598562, 'Cooper Tire Service', 'Division Street', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4577639, -93.1591556, 'Dero', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4566299, -93.159859, 'Tom\'s Downtown Bicycles', '321 Division Street South', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4567825, -93.1597259, 'Desi Diner', '321 Division Street South', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4603282, -93.1612022, 'Brick Oven Bakery (BOB)', '158 Water Street North', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.451998, -93.1621743, 'Wells Fargo', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4524761, -93.1624354, 'Wells Fargo', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4564117, -93.1605348, 'FedEx', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4564251, -93.1605568, 'UPS', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4611256, -93.1559993, 'Dero', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4704689, -93.294588, 'Subway', '8051 Bagley Avenue Northfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4553231, -93.160018, 'Aldrich Technology Consulting', '427 Division Street', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4552345, -93.1600171, 'Downtown Tobacco', '429 Division Street', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4552561, -93.1604391, 'Farmstead Bike Shop', '422 Division Street', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4553694, -93.1600202, 'Soulstice Boutique', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4294447, -93.1972049, 'MGM Liquors', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4291473, -93.1973566, 'Slumberland Furniture', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4280311, -93.1991028, 'AT&T', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.427182, -93.1986999, 'Kwik Trip', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4287196, -93.198034, 'Behr\'s USA Flooring', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4546105, -93.1615473, 'Lisa\'s Alterations & Tailloring', '-', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4542101, -93.1613115, 'Elite Auto Care', '-', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4561142, -93.1588073, 'Linda Dal Massage Therapy', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4569442, -93.1635115, 'Edward Jones', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4553447, -93.1654412, 'Bread People', '-', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.448651, -93.1723772, 'New Wave Laundromat', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4487298, -93.1723037, 'Healing Massage LLC', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4487666, -93.1722595, 'Robert\'s Ent. Salon', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4488112, -93.1722209, 'Farmers Insurance', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4489846, -93.1720185, 'ARI Nails', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4440423, -93.1759227, 'Chuck & Don\'s', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.456918, -93.1620115, 'Eagles Club', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4509751, -93.168035, 'Doggie Walk Bags', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4510639, -93.1699735, 'Doggie Walk Bags', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4535486, -93.1593279, 'Starbucks', '601 Division Street Northfield', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4536434, -93.1594761, 'Bissell', '-', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4308861, -93.2071376, 'Almen\'s Glass & Lock', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4518426, -93.1628279, 'Little Free Library', '-', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4538708, -93.1608856, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4579575, -93.1623159, 'Grism\'s Sweet Corn', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4341088, -93.1612042, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4450005, -93.1466199, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4388375, -93.1529193, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4515264, -93.1578454, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4378099, -93.168431, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4379828, -93.1685586, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4376768, -93.1683088, 'Doggie Walk Bags', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4504559, -93.1522825, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4464032, -93.1540507, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4464772, -93.1540485, 'Little Free Pantry', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4676411, -93.1655634, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4545559, -93.1600277, 'Kinship Collective Tattoo', '-', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4547899, -93.1600122, 'Fate Furnishings', '-', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4547281, -93.1600129, 'Edward Jones', '-', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4552303, -93.1598928, 'All American E-Juice', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4556477, -93.1595051, 'Marketplace @416', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4558532, -93.1600314, 'Northside Board Shop', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4559772, -93.1600152, 'Monarch', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4568755, -93.1596661, 'The Sketchy Artist', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4569205, -93.1595681, 'Petalina', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4570046, -93.1595609, 'The Bearded Mermaid', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4570845, -93.1595578, 'Coiffure Salon', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4575665, -93.1596832, 'Homebody Refill Market', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4574298, -93.1597613, 'Little Joy Coffee', '300 Division Street', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4569543, -93.1600779, 'Content Bookstore', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4568722, -93.160227, 'The Measuring Cup: A Kitchen Collection', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4565442, -93.1607683, 'Bridge Square Barber Shop', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4565983, -93.1608012, 'Cottage Tearoom & Fare', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4546176, -93.1613316, 'Thrifty Parrot', '-', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4548484, -93.1619943, 'Family Hair', '-', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4530096, -93.1605536, 'Groundwire Coffee Roasters', '-', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4531226, -93.1606961, 'Anytime Fitness', '618 Division Street South Northfield', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4531097, -93.1609064, 'Allure Salon', '-', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.456427, -93.1595682, 'Northfield Framing & Fine Art Printing', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4559288, -93.1605023, 'Northfield Olive Oils & Vinegars', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4559313, -93.1606344, 'Fine Fettle', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4556792, -93.1603796, 'Bread People', '410 Division Street South', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4555539, -93.1603739, 'Aquatic Pets', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4601859, -93.1612675, 'RE/MAX', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4420079, -93.169582, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.43965, -93.1739655, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4678134, -93.1622826, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.471949, -93.1687293, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4400201, -93.1411907, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.437633, -93.1451956, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4303463, -93.1838291, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4722017, -93.1717061, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4525756, -93.1602922, 'UPS', '-', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4776591, -93.1732617, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4316938, -93.1960438, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4317161, -93.1960866, 'Doggie Walk Bags', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4611675, -93.1825644, 'Dero', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4700474, -93.295818, 'CAT Scale', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4598021, -93.1613397, 'Jersey Mike\'s Subs', '118 Water Street North Northfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4443755, -93.1502114, 'Girl Scouts', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4529519, -93.1637147, 'Northfield Farmers Market', '-', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4540108, -93.1623394, 'Clothes Closet', '-', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4575185, -93.1596982, 'Untamed Salon', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.5432472, -93.1568932, 'Castle Rock Pit Stop', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4705059, -93.2948284, 'Flying J Travel Center', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4453151, -93.1613624, 'Bierman, Benson, & Langehough Funeral Home & Crematory', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4397279, -93.1828981, 'Perkins', '1401 Riverview Drive', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4560989, -93.1798333, 'Acorn Self-Storage', '1260 5th Street West', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.435262, -93.1883957, 'Arby\'s', '2220 Gleason Court Northfield', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.4336657, -93.185556, 'Target', '2323 Highway 3 South Northfield', '#27ae60', -1, 'Standalone / Not in Plaza', true);
+addStore(44.4324844, -93.1872297, 'Cub Foods', '2423 Highway 3 S Northfield', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.4323343, -93.1893149, 'Applebee\'s', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.4557801, -93.1609481, 'United States Post Office', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4362746, -93.1886794, 'United States Post Office', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.456045, -93.159874, 'Rare Pair', '401 Division Street', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4554709, -93.1612477, 'Ameriprise Financial', '-', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4558919, -93.1598623, 'Champion Sports', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4536165, -93.1625623, 'River Park Mall', '-', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.455775, -93.1598841, 'The Goat', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4575058, -93.1598101, 'Nutting Block', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4554603, -93.1597596, 'McClaughry Building', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.45361, -93.1591365, 'Family Fare', '601 Division Street South', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4387709, -93.1842779, 'Apple Chevrolet Buick Northfield', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4553109, -93.1611064, 'Municipal Liquor Store', '-', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4530294, -93.1610952, 'Sissy\'s On 7th', '-', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.452338, -93.1605723, 'Sterling Pharmacy', '-', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4542977, -93.1659002, 'Walgreens', '401 5th Street West', '#f39c12', 0, 'River Park Mall', true);
+addStore(44.4544476, -93.1671431, 'Kwik Trip', '500 Laurel Court Northfield', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4720298, -93.1562527, 'Convenience Car Care', '32995 Northfield Boulevard Northfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4719461, -93.1531997, 'John Deere', '32980 Northfield Boulevard Northfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4543814, -93.1621849, 'Just Food Co-Op', '516 Water Street South Northfield', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4267983, -93.195683, 'America\'s Mattress', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4266376, -93.2005028, 'Menards', '100 Schilling Drive South Dundas', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4496688, -93.1604825, 'Northfield Auto Care', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4501635, -93.1708241, 'Culver\'s', '960 Highway 3 South Northfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4554258, -93.1655198, 'Caribou Coffee', '400 5th Street West #C', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4552899, -93.1655198, 'Verizon', '-', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4553251, -93.1648941, 'Subway', '416 Highway 3 Northfield', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4555818, -93.1645633, 'Taco Bell', '410 South Highway 3 Northfield', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4563237, -93.1642, 'Country Inn & Suites', '300 South Highway 3 Northfield', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4687572, -93.1598991, 'Dairy Queen', '900 Highway 3 Northfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4486716, -93.1701049, 'McDonald\'s', '1101 South Highway 3 Northfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.449008, -93.1692953, 'Advance Auto Parts', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4494877, -93.1715444, 'O\'Reilly Auto Parts', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.5358566, -93.2003519, 'Lorence\'s Berry Farm', '28556 Foliage Avenue Northfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4296263, -93.1924121, 'Firehouse Liquor', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.4335787, -93.1902281, 'Maurices', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.434386, -93.1893101, 'Dollar Tree', '-', '#f39c12', 1, 'Unnamed Retail Center', true);
+addStore(44.4591717, -93.1607154, 'Fairfield Inn & Suites', '114 2nd Street West Northfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4314864, -93.2064031, 'Kings Color & Chrome', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4308166, -93.2070327, 'Martha\'s Eats & Treats', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4546277, -93.1605349, 'Downtown Mini Storage', '-', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4545159, -93.1598412, 'Willie\'s Shoe Services', '-', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4549067, -93.1595246, 'Mercado Local', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4445721, -93.1776729, 'AmericInn by Wyndham Northfield', '1320 Bollenbacher Drive Northfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4298973, -93.1919176, 'ALDI', '611 Stafford Road North Dundas', '#f39c12', 2, 'Unnamed Retail Center', true);
+addStore(44.4543565, -93.1677066, 'Kwik Trip Car Wash', '-', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4575529, -93.1629792, 'Max Shine Auto Detailing', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.427262, -93.1985813, 'Kwik Trip', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4275546, -93.198277, 'Kwik Trip', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4270878, -93.1980936, 'Diesel', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4546623, -93.16723, 'Diesel', '-', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4546137, -93.1667451, 'Kwik Trip', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4537044, -93.1605349, 'Paisley Gardens', '-', '#e74c3c', 0, 'River Park Mall', false);
+addStore(44.4492879, -93.1680962, 'Casey\'s', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4491651, -93.1688894, 'City Image Salon', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4480561, -93.1705918, 'Speedway', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4482506, -93.1707887, 'Speedway', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4470261, -93.1704923, 'Northfield Ford/Chrysler', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4466402, -93.1721864, 'Do it Best', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4463245, -93.1725642, 'Raider Auto', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4466273, -93.1749729, 'Edward Jones', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4469548, -93.1755087, 'Southgate Mini Storage', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.445782, -93.1756726, 'Bierman Home Furnishings', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4430791, -93.1787927, 'Cenex', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4433517, -93.1788977, 'Diesel', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.441698, -93.1807633, 'Northfield Rent N Save', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4322229, -93.1990658, 'Grandma\'s TLC', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4693231, -93.1596963, 'Blue Bird Autowerks Transmission', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4483236, -93.1727116, 'Tobaccofield', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4445324, -93.1750566, 'Big O Tires', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4194807, -93.1619375, 'Seeds Farm', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4272528, -93.098911, 'Red Barn Farm General Store', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4641605, -93.2053967, 'Bridgewater Produce', '4706 Lonsdale Boulevard East Northfield', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4288322, -93.2082468, 'Benjamin Moore - Young\'s Paint Center', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4276272, -93.2084151, 'Danco Accessory Center', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4267731, -93.2119889, 'Junk Truck MN', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4250208, -93.2124329, 'Paper, Inc.', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4212398, -93.2149515, 'A&J Storage Dundas', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4213698, -93.2149092, 'A&J Storage Dundas', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4214619, -93.2147418, 'A&J Storage Dundas', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4585786, -93.1624645, 'Farmers Insurance', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.4699626, -93.1593576, 'Dollar General', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(44.433942, -93.1875512, 'Wings Financial Credit Union', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+
+  map.on('overlayadd overlayremove', updateVisibility);
+  updateVisibility();
+
+  var overlays = {
+    '🔴  Multi-anchor plazas (2+ anchors)': layerMultiAnchor,
+    '⭕  Single-anchor plazas': layerSingleAnchor,
+    '🟣  Plaza Center Points': layerPlazaCenters,
+    '🟡  Anchor Stores (in Plaza)': layerAnchors,
+    '🔵🔴  Tenants (In Plaza)': layerTenants,
+    '🟢  Standalone Stores': layerStandalone,
+    '━━━━━━━━━━━━━━': L.layerGroup(),
+    '🔥  High Density Plazas (10+ tenants)': layerHighDensity,
+    '🔹  Lower Density (< 10 tenants)': layerLowDensity
+  };
+
+  var countyDivider = false;
+  for (var county in countyLayers) {
+    if (!countyDivider) {
+        overlays['━━━━━━━━━━━━━━ '] = L.layerGroup();
+        countyDivider = true;
+    }
+    overlays['📍 ' + county] = countyLayers[county];
+  }
+
+  L.control.layers(null, overlays, {
+    position: 'topright',
+    collapsed: false,
+  }).addTo(map);
+
+  var legend = L.control({position: 'bottomright'});
+  legend.onAdd = function() {
+    var div = L.DomUtil.create('div', 'legend');
+    div.innerHTML = '<b>Retail Centers – Northfield, IL</b><br>'
+      + '<span class="legend-dot" style="background:#e74c3c"></span> Named plaza<br>'
+      + '<span class="legend-dot" style="background:#3498db"></span> Unnamed plaza<br>'
+      + '<span class="legend-dot" style="background:#8e44ad"></span> Plaza center point<br>'
+      + '<span class="legend-dot" style="background:#f39c12"></span> Anchor store (in plaza)<br>'
+      + '<span class="legend-dot" style="background:#27ae60"></span> Standalone store<br>'
+      + '⚓ = anchor &nbsp; 🔥 = 10+ tenants';
+    return div;
+  };
+  legend.addTo(map);
+</script>
+</body>
+</html>
