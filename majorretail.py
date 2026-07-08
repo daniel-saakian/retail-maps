@@ -36,7 +36,7 @@ anchor_brands = [
     "home depot", "the home depot", "lowe's", "lowes", "best buy", "macy's", "macys", "nordstrom", "nordstrom rack", "bloomingdale's", 
     "bloomingdales", "dicks sporting goods", "dick's sporting", "dick's sporting goods", "dollar tree", "save mart", "grocery outlet",
     "winco", "bevmo", "bevmo!", "harbor freight", "homegoods", "home goods", "ross", "burlington", "tj maxx", "william-sonoma",
-    "petco", "h&m", "marshalls", "kohl's","ace hardware", "office depot", "big 5", "rite aid", "jcpenney", "nike", "adidas"
+    "petco", "h&m", "marshalls", "kohl's","ace hardware", "office depot", "big 5", "rite aid", "jcpenney", "nike", "adidas", "aldi", "mariano's", "jewel-osco"
 ]
 subbrand_noise = [
     "gasoline", "gas", "gas station", "fuel", "fuel station", "pharmacy", "garden center", "garden centre", "car wash", "tire center",
@@ -75,6 +75,7 @@ class Plaza:
     mall_name: str = ""
     mall_address: str = ""
     county: str=""
+    scores: dict = field(default_factory=dict)
 
     @property
     def all_stores(self):
@@ -118,7 +119,7 @@ class Plaza:
         return ", ".join(sorted(set(s.name for s in self.tenants)))
 
 
-def geocode_city(city: str) -> tuple[float, float, str]:
+def geocode_city(city: str) -> tuple[float, float, str, str, str]:
     parts = [p.strip() for p in city.split(",")]
     city_name = parts[0]
     state = parts[1].strip() if len(parts) > 1 else ""
@@ -214,8 +215,43 @@ out tags;
                  tags.get("is_in:state_code") or
                  tags.get("ISO3166-2", "").replace("US-", "") or
                  state)
+    try:
+        fips_elements=run_overpass(f"""
+[out:json][timeout:10];
+is_in({chosen["lat"]},{chosen["lon"]});
+out tags;
+""".strip())
+        state_fips = "-"
+        county_fips = "-"
+        for el in fips_elements:
+            tags = el.get("tags",{})
+            if tags.get("admin_level") == "4":
+                state_fips = tags.get("ref:fips:state","-")
+            if tags.get("admin_level") == "6":
+                county_fips = tags.get("ref:fips", "-")
+    except Exception:
+        state_fips = "-"
+        county_fips = "-"
+
     display = f"{name}, {state_tag}" if state_tag else name
     return chosen["lat"], chosen["lon"], display
+
+def get_fips_from_coords(lat:float,lng:float) -> tuple[str,str]:
+    try:
+        url = "https://geocoding.geo.census.gov/geocoder/geographies/coordinates"
+        params = {
+            "x": lng,
+            "y": lat,
+            "benchmark": "Public_AR_Current",
+            "vintage": "Current_Current",
+            "format": "json",
+        }
+        r= requests.get(url,params=params,timeout=30).json()
+        geo=r["result"]["geographies"]["2020 Census Blocks"][0]
+        return geo["STATE"],geo["COUNTY"]
+    except Exception as e:
+        print(f"  [fips] lookup failed: {e}")
+        return "-","-"
 
 def build_store_query(lat:float,lng:float,radius_km:float) -> str:
     radius_m = int(radius_km * 1000)
@@ -259,6 +295,12 @@ def run_overpass(query: str, retries: int = 3) -> list:
                 if resp.status_code == 400:
                     print(f"\n  [Overpass 400] Query:\n{query}\n  Response: {resp.text[:300]}")
                     resp.raise_for_status()
+                if resp.status_code == 429:
+                    wait = 10 * (attempt + 1)
+                    print(f"  [warn] {mirror} rate limited (429), waiting {wait}s...")
+                    time.sleep(wait)
+                    last_error = RuntimeError(f"HTTP 429 from {mirror}")
+                    continue  # ← try next attempt, then next mirror
                 if resp.status_code in (502, 503, 504):
                     wait = 3 * (attempt + 1)
                     print(f"  [warn] {mirror} returned {resp.status_code}, waiting {wait}s...")
@@ -274,6 +316,12 @@ def run_overpass(query: str, retries: int = 3) -> list:
                 time.sleep(wait)
                 continue
             except requests.exceptions.HTTPError as e:
+                if "429" in str(e):
+                    wait = 10 * (attempt + 1)
+                    print(f"  [warn] {mirror} rate limited, waiting {wait}s...")
+                    time.sleep(wait)
+                    last_error = e
+                    continue  # ← don't raise, try next mirror
                 raise RuntimeError(f"Overpass query failed: {e}") from e
         print(f"  [warn] {mirror} exhausted, moving to next mirror...")
     raise RuntimeError(f"All Overpass mirrors failed. Last error: {last_error}")
@@ -585,7 +633,49 @@ def attach_counties(plazas: list[Plaza]) -> None:
         plaza.county = seen[key]
     print(" " * 50, end="\r")
 
+def score_plazas(plazas:list, state_fips: str, county_fips: str) -> None:
+    try:
+        from pull_demographics import profile_from_coords
+        from scoring import score_profile
+    except ImportError as e:
+        print(f" [scoring] skipping - missing dependency: {e}")
+        return
+    neutral_inputs = {
+        "1 mi competitors": 2,
+        "3 mi competitors": 4,
+        "End Cap": 0.5,
+        "In Line": 0.5,
+        "Visibility": 0.85,
+    }
 
+    total = len(plazas)
+    seen: dict[str,dict] = {}
+    for i, plaza in enumerate(plazas):
+        clat,clng = plaza.center
+        key = f"{round(clat,3)},{round(clng,3)}"
+
+        print(f"  [scoring] {i+1}/{total} {plaza.label[:45]}...", end ="\r")
+
+        if key in seen:
+            plaza.scores = seen[key]
+            continue
+        try:
+            profile = profile_from_coords(clat,clng,state_fips,county_fips)
+            result = score_profile(profile,neutral_inputs)
+            plaza.scores = {
+                "score_all_locations": result["vs_all_locations"]["final_score"],
+                "score_above_avg": result["vs_above_average"]["final_score"],
+                "score_above_950k": result["vs_above_950k"]["final_score"],
+                "aggregate_score": result["aggregate"]["aggregate_score"],
+            }
+            seen[key] = plaza.scores
+        except Exception as e:
+            import traceback
+            print(f"\n  [scoring] {plaza.label}: {e}")
+            traceback.print_exc()
+            plaza.scores = {}
+    print(" " * 60, end ="\r")
+    print(f"  [scoring] Done - {len(seen)} unique locations scored")
 
 
 
@@ -965,7 +1055,7 @@ def print_results(plazas: list[Plaza], city_display: str, args) -> None:
 
     print(tabulate(
         table_rows,
-        headers=["Plaza / Property Name", "State", "County", "City", "Address", "# Anchors", "Anchor Names", "# Tenants", "Other Tenants"],
+        headers=["Plaza / Property Name", "State", "County", "City", "Address", "# Anchors", "Anchor Names", "# Tenants", "Other Tenants", "Sourdough Score"],
         tablefmt="simple",
     ))
     print()
@@ -986,7 +1076,7 @@ def export_to_excel(plazas, city_display, args, map_url, output_path = os.path.e
     ws = wb.create_sheet(title=tab_name)
 
 
-    ws.merge_cells("A1:I1")
+    ws.merge_cells("A1:J1")
     title_cell = ws["A1"]
     title_cell.value = "test"
     title_cell.font = Font(name = "Arial", bold = True, size = 16, color = "FFFFFF")
@@ -994,7 +1084,7 @@ def export_to_excel(plazas, city_display, args, map_url, output_path = os.path.e
     title_cell.alignment = Alignment(horizontal = "center", vertical = "center")
     ws.row_dimensions[1].height = 32
 
-    ws.merge_cells("A2:I2")
+    ws.merge_cells("A2:J2")
     map_cell = ws["A2"]
     
     map_cell.hyperlink = map_url
@@ -1045,6 +1135,7 @@ def export_to_excel(plazas, city_display, args, map_url, output_path = os.path.e
             plaza.anchor_names,
             len(plaza.tenants),
             plaza.tenant_names,
+            round(plaza.scores.get("aggregate_score",0),1) if plaza.scores else "-",
         ]
         for col, value in enumerate(data, 1):
             cell = ws.cell(row=row, column = col, value = value)
@@ -1192,16 +1283,17 @@ def save_run_to_cache(display: str, lat: float, lng: float,
                 existing_data = result.data
 
             if existing_data:
-                # Already exists — update if we now have a better address
                 existing_addr = existing_data[0].get("address", "-")
+                update_payload = {}
                 if address != "-" and existing_addr == "-":
-                    sb.table("plazas").update({
-                        "address":      address,
-                        "num_anchors":  num_anchors,
-                        "anchor_names": anchor_names,
-                        "num_tenants":  num_tenants,
-                        "tenant_names": tenant_names,
-                    }).eq("id", existing_data[0]["id"]).execute()
+                    update_payload["address"] = address
+                # Always update score if we have one
+                score_val = p.scores.get("aggregate_score") if hasattr(p, "scores") and p.scores else None
+                if score_val is not None:
+                    update_payload["aggregate_score"] = score_val
+                if update_payload:
+                    sb.table("plazas").update(update_payload).eq("id", existing_data[0]["id"]).execute()
+                
                 skipped += 1
             else:
                 # New plaza — insert
@@ -1216,6 +1308,7 @@ def save_run_to_cache(display: str, lat: float, lng: float,
                     "anchor_names": anchor_names,
                     "num_tenants":  num_tenants,
                     "tenant_names": tenant_names,
+                    "aggregate_score": p.scores.get("aggregate_score") if hasattr(p,"scores") and p.scores else None,
                 }).execute()
                 saved += 1
 
@@ -1230,29 +1323,28 @@ def main():
         description="Find major retail centers in a city using OpenStreetMap."
     )
     parser.add_argument("city", help='City to search, e.g. "Roseville, CA"')
-    parser.add_argument(
-        "--radius", type=float, default=plaza_radius_mi,
-        help=f"Cluster radius in miles (default: {plaza_radius_mi})"
-    )
-    parser.add_argument(
-        "--min-anchors", type=int, default=min_anchors_per_plaza,
-        help=f"Minimum anchor stores per cluster (default: {min_anchors_per_plaza})"
-    )
-    parser.add_argument(
-        "--min-tenants", type=int, default=min_other_tenants,
-        help=f"Minimum other (non-anchor) tenants required to confirm a real plaza (default: {min_other_tenants})"
-    )
-    parser.add_argument(
-        "--search-km", type=float, default=search_radius_km,
-        help=f"Search radius from city center in km (default: {search_radius_km})"
-    )
+    parser.add_argument("--radius", type=float, default=plaza_radius_mi)
+    parser.add_argument("--min-anchors", type=int, default=min_anchors_per_plaza)
+    parser.add_argument("--min-tenants", type=int, default=min_other_tenants)
+    parser.add_argument("--search-km", type=float, default=search_radius_km)
+    parser.add_argument("--lat", type=float, default=None,
+                        help="Latitude to bypass geocoding (e.g. 42.1072)")
+    parser.add_argument("--lng", type=float, default=None,
+                        help="Longitude to bypass geocoding (e.g. -87.7352)")
     args = parser.parse_args()
- 
+
     print(f"\n  Searching for major retail centers in: {args.city}")
- 
+
     print("  [1/5] Geocoding city...")
-    lat, lng, display = geocode_city(args.city)
-    print(f"        → {display} ({lat:.4f}, {lng:.4f})")
+    if args.lat and args.lng:
+        # Bypass geocoding — use provided coordinates directly
+        lat, lng, display = args.lat, args.lng, args.city
+        print(f"        → Using provided coordinates: ({lat}, {lng})")
+    else:
+        lat, lng, display = geocode_city(args.city)
+        print(f"        → {display} ({lat:.4f}, {lng:.4f})")
+    state_fips,county_fips = get_fips_from_coords(lat,lng)
+    print(f"     -> FIPS: state={state_fips}, county = {county_fips}")    
     time.sleep(1)
  
     print("  [2/5] Querying OpenStreetMap for stores (may take 10–20s)...")
@@ -1285,6 +1377,9 @@ def main():
  
     print(f"  [5/5] Looking up counties for {len(plazas)} plazas...")
     attach_counties(plazas)
+
+    print(f"  Scoring {len(plazas)} plazas...")
+    score_plazas(plazas,state_fips,county_fips)
  
     print_results(plazas, display, args)
     map_path = generate_map(plazas, display, args.radius, stores)
