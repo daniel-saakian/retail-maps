@@ -52,9 +52,9 @@
 
   function addPlaza(lat, lng, radius_m, plazaId, name, address, county, city, numAnchors, anchors, numTenants, tenants, color, leasingHtml) {
     var popup = '<b>' + name + '</b><br>'
+      + leasingHtml
       + (address !== '-' ? address + '<br>' : '')
       + city + (county !== '-' ? ', ' + county + ' County' : '') + '<br>'
-      + leasingHtml
       + '<br><b>' + numAnchors + ' anchor(s): </b><br>'
       + anchors.split(', ').join('<br>')
       + '<br><br><b>' + numTenants + ' other tenant(s):</b><br>'
