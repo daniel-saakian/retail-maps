@@ -54,11 +54,11 @@
     var popup = '<b>' + name + '</b><br>'
       + (address !== '-' ? address + '<br>' : '')
       + city + (county !== '-' ? ', ' + county + ' County' : '') + '<br>'
+      + leasingHtml
       + '<br><b>' + numAnchors + ' anchor(s): </b><br>'
       + anchors.split(', ').join('<br>')
       + '<br><br><b>' + numTenants + ' other tenant(s):</b><br>'
-      + tenants.split(', ').join('<br>')
-      + leasingHtml;
+      + tenants.split(', ').join('<br>');
     
     var circle = L.circle([lat, lng], {
       radius: radius_m,
@@ -79,7 +79,7 @@
         fillColor: '#8e44ad',
         fillOpacity: 1,
         weight: 2
-    }).bindPopup(popup).bindTooltip(name, {permanent: false, direction: 'top'});
+    }).bindPopup(popup, {maxHeight: 320, autoPanPadding: [20, 20]}).bindTooltip(name, {permanent: false, direction: 'top'});
 
     var cleanCounty = (!county || county === '-') ? 'Unknown' : county;
     getOrCreateCountyLayer(cleanCounty);
