@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8' />
+  <title>Retail Centers – Lincoln, CA</title>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' />
+  <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
+  <style>
+    body { margin: 0; font-family: sans-serif; }
+    #map { height: 100vh; width: 100%; }
+    .legend {
+      background: white; padding: 10px 14px; border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); line-height: 1.8;
+      font-size: 13px;
+    }
+    .legend-dot { display: inline-block; width: 12px; height: 12px;
+                   border-radius: 50%; margin-right: 6px; }
+  </style>
+</head>
+<body>
+<div id='map'></div>
+<script>
+  var map = L.map('map').setView([38.87513258024745, -121.29585558564294], 12);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(map);
+
+  var plazasData = [];
+  var storesData = [];
+
+  var layerMultiAnchor = L.layerGroup().addTo(map);
+  var layerSingleAnchor = L.layerGroup().addTo(map);
+  var layerPlazaCenters = L.layerGroup().addTo(map);
+  var layerAnchors = L.layerGroup().addTo(map);
+  var layerTenants = L.layerGroup().addTo(map);
+  var layerStandalone = L.layerGroup().addTo(map);
+  var layerHighDensity = L.layerGroup().addTo(map);
+  var layerLowDensity = L.layerGroup().addTo(map);
+  var countyLayers = {};
+
+  function getOrCreateCountyLayer(county) {
+    if (!county || county === '-') county = 'Unknown';
+    if (!countyLayers[county]) {
+        countyLayers[county] = L.layerGroup().addTo(map);
+    }
+    return countyLayers[county];
+  }
+
+  function addPlaza(lat, lng, radius_m, plazaId, name, address, county, city, numAnchors, anchors, numTenants, tenants, color, leasingHtml) {
+    var popup = '<b>' + name + '</b><br>'
+      + (address !== '-' ? address + '<br>' : '')
+      + city + (county !== '-' ? ', ' + county + ' County' : '') + '<br>'
+      + leasingHtml
+      + '<br><b>' + numAnchors + ' anchor(s): </b><br>'
+      + anchors.split(', ').join('<br>')
+      + '<br><br><b>' + numTenants + ' other tenant(s):</b><br>'
+      + tenants.split(', ').join('<br>');
+    
+    var circle = L.circle([lat, lng], {
+      radius: radius_m,
+      color: color,
+      fillColor: color,
+      fillOpacity: 0.08,
+      weight: 2
+    });
+    if (numAnchors > 1) {
+      layerMultiAnchor.addLayer(circle);
+    } else {
+      layerSingleAnchor.addLayer(circle);
+    }
+
+    var center = L.circleMarker([lat,lng], {
+        radius: 9,
+        color: '#fff',
+        fillColor: '#8e44ad',
+        fillOpacity: 1,
+        weight: 2
+    }).bindPopup(popup, {maxHeight: 320, autoPanPadding: [20, 20]}).bindTooltip(name, {permanent: false, direction: 'top'});
+
+    var cleanCounty = (!county || county === '-') ? 'Unknown' : county;
+    getOrCreateCountyLayer(cleanCounty);
+
+    plazasData.push({
+        circle: circle,
+        center: center,
+        id: plazaId,
+        name: name,
+        county: cleanCounty,
+        numAnchors: numAnchors,
+        numTenants: numTenants
+    });
+  }
+
+  function addStore(lat, lng, name, address, color, plazaId, plaza, isAnchor) {
+    var size = isAnchor ? 11 : 9;
+    var icon = L.divIcon({
+      className: '',
+      html: '<div style="position:absolute;width:' + size + 'px;height:' + size + 'px;'
+          + 'border-radius:50%;background:' + color + ';border:2px solid white;'
+          + 'box-shadow:0 1px 3px rgba(0,0,0,0.4);top:50%;left:50%;'
+          + 'transform:translate(-50%,-50%)'
+          + (isAnchor ? ';outline:2px solid rgba(0,0,0,0.25)' : '')
+          + '"></div>',
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2]
+    });
+    var marker = L.marker([lat, lng], {icon: icon})
+      .bindPopup('<b>' + name + '</b>' + (isAnchor ? '⚓' : '')+ '<br>' 
+        + '<i>' + plaza + '</i><br>'
+        + address)
+      .bindTooltip(name, {direction: 'top'})
+    
+    storesData.push({
+      marker: marker,
+      plazaId: plazaId,
+      plazaLabel: plaza,
+      isAnchor: isAnchor
+    });
+  }
+
+  function updateVisibility() {
+    plazasData.forEach(function(p) {
+      var anchorMatch = (p.numAnchors > 1) ? map.hasLayer(layerMultiAnchor): map.hasLayer(layerSingleAnchor);
+      var densityMatch = (p.numTenants >= 10) ? map.hasLayer(layerHighDensity) : map.hasLayer(layerLowDensity);
+      var countyLayer = countyLayers[p.county];
+      var countyMatch = countyLayer ? map.hasLayer(countyLayer) : true;
+
+      var plazaVisible = anchorMatch && densityMatch && countyMatch;
+      p.isActive = plazaVisible;
+
+      if (plazaVisible) {
+        // FIX 2: Changed map.has() to map.hasLayer()
+        if (!map.hasLayer(p.circle)) p.circle.addTo(map);
+      } else {
+        if (map.hasLayer(p.circle)) map.removeLayer(p.circle);
+      }
+
+      if (plazaVisible && map.hasLayer(layerPlazaCenters)) {
+        if (!map.hasLayer(p.center)) p.center.addTo(map);
+      } else {
+        if (map.hasLayer(p.center)) map.removeLayer(p.center);
+      }
+    });
+      
+    storesData.forEach(function(s) {
+        var storeVisible = false;
+
+        if (s.plazaId === -1) {
+            // Standalone store
+            storeVisible = map.hasLayer(layerStandalone);
+
+        } else {
+            var parentPlaza = plazasData.find(function(p) {
+                return p.id === s.plazaId;
+            });
+
+            if (parentPlaza && parentPlaza.isActive) {
+                storeVisible = s.isAnchor
+                    ? map.hasLayer(layerAnchors)
+                    : map.hasLayer(layerTenants);
+            }
+        }
+
+        if (storeVisible) {
+            if (!map.hasLayer(s.marker))
+                s.marker.addTo(map);
+        } else {
+            if (map.hasLayer(s.marker))
+                map.removeLayer(s.marker);
+        }
+    });
+  }
+
+  addPlaza(38.871747087179486, -121.296397574359, 360.5, 0, 'Unnamed Retail Center', '39 Lincoln Boulevard Lincoln', 'Placer County', 'Lincoln', 3, 'Big 5 Sporting Goods, Lowe\'s, Raley\'s', 36, 'A&W, Anytime Fitness, Arco, Artistic Nails, Bank of America, Baskin-Robbins, Boutique Hair Parlor, California Sun, Champ Cuts, Chase, Coinstar, Cozy Nails, Dog & Cat Health Food, Domino\'s, Enterprise, Epic Sports Cards, Family Massage, Fresh Cleaners, Goodwill Donation Xpress, Hotworx, Jamba, KFC, La Belle Nails, LabCorp, Lincoln Medical Supplies, Mountain Mike\'s, My Dog\'s Spot, PNC Bank, Quick Quack Car Wash, Rustic Mule Grazing, Saladworks, Subway, Taco Bell, Twisted Eyebrow Threading, Wingstop, ampm', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.89242050571429, -121.29254711714287, 289.7, 1, 'Unnamed Retail Center', '401 Lincoln Boulevard Lincoln', 'Placer County', 'Lincoln', 1, 'Dollar Tree', 34, 'Alma\'s Bridal Boutique, Annie’s K-9 Grooming, Back To Life Auto, Bank of America, Barber Eclipse Shop, Bless Your Heart Market, Chevron, Clinton\'s Custom Cycles, Dr Razz Smoke Shop, ExtraMile, FedEx, FieldHaven Marketplace, Fotos Market, George\'s Friendly Auto Service, Gerber Collision & Glass, Goodi Goodi Gumdrops, H&R Block, House Maroe, J & J Auto Glass, Lincoln Automotive Center, Lincoln Florist & Gifts, Lincoln Gun Exchange, Lovely Nails, Panadería La Michoacana, Primo Water, Riebes Auto Parts, Rustic Crown Market, Sacramento Valley Golf Cars, Salted Heaven, State Farm, The Hen House, The Wild Arch Studio, Tile Liquidators Floor & Design, Tires Direct', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.88818147692307, -121.2925813615385, 337.4, 2, 'Unnamed Retail Center', '255 Lincoln Boulevard Lincoln', 'Placer County', 'Lincoln', 1, 'Walmart Neighborhood Market', 25, '7-Eleven, About New Auto Dealership, Ace Body Shop & Towing, AmeriGas, At Last Hair Salon, Beautiful Massage, Blessed, Burger King, CALottery, Chevron, Coin Shop, Coinstar, Farmers Insurance, LavishLips XOXO, Legion, Lincoln New & Used Tires, McDonald\'s, Mi alegria Mexican antojitos, Milleniumn Smoke Shop, Shell, Smoke Station US, The Beauty Lounge, The Best Massage, U.S. Bank, Zebra Town Liquor', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.87831810952382, -121.29443515238093, 289.7, 3, 'Unnamed Retail Center', '67 Lincoln Boulevard Lincoln', 'Placer County', 'Lincoln', 1, 'Safeway', 20, '9Round, Amazon Hub Locker, AmeriGas, Brockway Hair Salon, California Nails, Coinstar, DMV Now, Elm Cleaner, Golden 1 Credit Union, Great Clips, Jack in the Box, Lincoln Jewelers, Papa Murphy\'s, Redbox, Round Table Pizza, Sourdough & Co., Starbucks, The UPS Store, Western Union, Woof Gang Bakery & Grooming', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.873617118750005, -121.30292516249999, 289.7, 4, 'Unnamed Retail Center', '113 Ferrari Ranch Road Lincoln', 'Placer County', 'Lincoln', 2, 'Ross, Sprouts Farmers Market', 14, 'AT&T, Beauty By Thread, Carl\'s Jr., Frozen Yogurt, Habit Burger & Grill, In-N-Out Burger, Mattress Firm, O\'Reilly Auto Parts, Panda Express, Philly Nail & Spa, Starbucks, Togo\'s, Ulta Beauty, Vibrance Medical Spa', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.87042808888889, -121.30407552222222, 289.7, 5, 'Unnamed Retail Center', '950 Groveland Lane Lincoln', 'Placer County', 'Lincoln', 3, 'TJ Maxx, Target, The Home Depot', 6, 'Banfield Pet Hospital, Holiday Inn Express, PetSmart, PetSmart Grooming, Starbucks, Tesla Supercharger', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.851063579999995, -121.28790111999999, 312.5, 6, 'Unnamed Retail Center', '835 Twelve Bridges Drive Lincoln', '-', 'Lincoln', 1, 'Walgreens', 4, 'Columbia Bank, Nielson Fine Floors, Raceday Cycle & Multisport, Your CBD Store, Lincoln', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.875284674999996, -121.29598167500001, 289.7, 7, 'Unnamed Retail Center', '53 Lincoln Boulevard Lincoln', 'Placer County', 'Lincoln', 1, 'Dollar Tree', 3, 'Lincoln Laundry, McDonald\'s, Verizon', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+  addStore(38.8498861, -121.286283, 'Your CBD Store, Lincoln', '835 Twelve Bridges Drive Lincoln', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(38.8508395, -121.285213, 'Chevron', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.874087, -121.2948285, 'Lowe\'s', '51 Lincoln Boulevard Lincoln', '#f39c12', 0, 'Unnamed Retail Center', true);
+addStore(38.8509215, -121.287111, 'Columbia Bank', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(38.8790468, -121.2942152, 'Sourdough & Co.', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.8787712, -121.2937325, 'California Nails', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.8787827, -121.2939815, 'Brockway Hair Salon', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.8924208, -121.293105, 'Dollar Tree', '-', '#f39c12', 1, 'Unnamed Retail Center', true);
+addStore(38.889489, -121.2932041, '7-Eleven', '320 Lincoln Boulevard Lincoln', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.8895486, -121.2926485, 'The Best Massage', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.8897916, -121.2929905, 'Mi alegria Mexican antojitos', '350 Lincoln Boulevard Lincoln', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.8787771, -121.2938527, '9Round', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.8888925, -121.2930635, 'McDonald\'s', '290 G Street Lincoln', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.8882784, -121.293018, 'Shell', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.8894125, -121.2930538, 'Chevron', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.8907991, -121.2925646, 'Lincoln Automotive Center', '401 Lincoln Boulevard Lincoln', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8910347, -121.2925362, 'Riebes Auto Parts', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8911852, -121.2930242, 'Goodi Goodi Gumdrops', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8919655, -121.292658, 'The Hen House', '505 Lincoln Boulevard', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8920438, -121.2926471, 'Lincoln Florist & Gifts', '509 Lincoln Boulevard Lincoln', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8921026, -121.2926498, 'Barber Eclipse Shop', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8922591, -121.2926288, 'Rustic Crown Market', '531 Lincoln Boulevard Lincoln', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.892575, -121.2926269, 'Clinton\'s Custom Cycles', '555 Lincoln Boulevard Lincoln', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8914149, -121.2926167, 'Tires Direct', '491 Lincoln Boulevard Lincoln', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8924571, -121.2926291, 'Alma\'s Bridal Boutique', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8927567, -121.2930559, 'Gerber Collision & Glass', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8919517, -121.2923974, 'Bless Your Heart Market', '660 5th Street', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8934046, -121.2926464, 'State Farm', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8859046, -121.2925294, 'AutoZone', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8863831, -121.2930494, 'Zebra Town Liquor', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.8791365, -121.2944732, 'Round Table Pizza', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.8786528, -121.2941673, 'Great Clips', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.8786135, -121.294191, 'The UPS Store', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.8978957, -121.3225354, 'Subway', '2290 Nicolaus Road Lincoln', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8750164, -121.3024615, 'Frozen Yogurt', 'Ferrari Ranch Road Lincoln', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8750327, -121.3026745, 'Togo\'s', '107 Ferrari Ranch Road Lincoln', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8723364, -121.3028192, 'Philly Nail & Spa', '127 Ferrari Ranch Road Lincoln', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8724614, -121.3028974, 'Mattress Firm', '127 Ferrari Ranch Road Lincoln', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8729797, -121.3031871, 'Starbucks', '129 Ferrari Ranch Road Lincoln', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8730505, -121.3032737, 'AT&T', '129 Ferrari Ranch Road Lincoln', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8844887, -121.2927306, 'Bayabelle', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8854467, -121.2925822, 'Little Caesars', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8936613, -121.2926418, 'Dr Razz Smoke Shop', '631 Lincoln Boulevard Lincoln', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8927407, -121.2748825, 'Taylor Morrison', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8709821, -121.2984342, 'KFC', '35 Lincoln Boulevard Lincoln', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.8709433, -121.2982853, 'A&W', '35 Lincoln Boulevard Lincoln', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.8712411, -121.2978381, 'Taco Bell', '37 Lincoln Boulevard Lincoln', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.8703268, -121.2987295, 'Wells Fargo', '33 Lincoln Boulevard Lincoln', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8710853, -121.296723, 'Jamba', '825 South State Highway 65 Lincoln', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.8714304, -121.2955283, 'Domino\'s', '751 Sterling Parkway Lincoln', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.8690241, -121.2966435, 'Firestone', '951 Sterling Parkway Lincoln', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8714787, -121.2964709, 'Baskin-Robbins', '820 Sterling Parkway Lincoln', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.8708743, -121.2958983, 'Subway', '731 Sterling Parkway Lincoln', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.8502544, -121.2871841, 'Raceday Cycle & Multisport', '825 Fieldstone Drive Lincoln', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(38.8886126, -121.2920923, 'Coinstar', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.85193, -121.2883397, 'Walgreens', '-', '#f39c12', 6, 'Unnamed Retail Center', true);
+addStore(38.87833, -121.2944563, 'AmeriGas', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.8784593, -121.2943297, 'Amazon Hub Locker', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.878105, -121.2942907, 'Starbucks', '405 SR-65 Lincoln', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8782375, -121.294423, 'Redbox', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.8782789, -121.2944041, 'Coinstar', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.8781558, -121.2944505, 'Western Union', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.8781211, -121.294466, 'DMV Now', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.8699931, -121.3039466, 'Starbucks', '950 Groveland Lane Lincoln', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.8711736, -121.2967122, 'Saladworks', '820 Sterling Parkway Lincoln', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.8713575, -121.2965842, 'California Sun', '820 Sterling Parkway Lincoln', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.8712363, -121.2966312, 'Mountain Mike\'s', '820 Sterling Parkway Lincoln', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.8772809, -121.2949757, 'Elm Cleaner', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.8777665, -121.2945698, 'Papa Murphy\'s', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.8778277, -121.2945265, 'Golden 1 Credit Union', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.8941306, -121.2931862, 'Back To Life Auto', '690 Lincoln Boulevard', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8930581, -121.2923275, 'FedEx', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8937553, -121.2926424, 'Tile Liquidators Floor & Design', '643 Lincoln Boulevard Lincoln', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8940127, -121.2931903, 'Sacramento Valley Golf Cars', '690 Lincoln Boulevard', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8939096, -121.2931862, 'J & J Auto Glass', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8916627, -121.2917775, 'Lincoln Gun Exchange', '607 5th Street Lincoln', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8909989, -121.2930217, 'The Wild Arch Studio', '424 Lincoln Boulevard', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8913214, -121.2930313, 'House Maroe', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8876148, -121.2932192, 'Beautiful Massage', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.8871597, -121.2932152, 'Smoke Station US', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.8872839, -121.2932206, 'Coin Shop', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.8876795, -121.2931222, 'Farmers Insurance', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.8752771, -121.2965858, 'McDonald\'s', '505 Old Highway 65', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.8695264, -121.3031117, 'Tesla Supercharger', '950 Groveland Lane Lincoln', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.8907747, -121.2847375, 'Lincoln Food Mart', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.886721, -121.2929963, 'Milleniumn Smoke Shop', '110 Lincoln Boulevard Lincoln', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.8875814, -121.2924573, 'About New Auto Dealership', '199 Lincoln Boulevard Lincoln', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.8840511, -121.3140167, 'Flock Safety', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8839368, -121.2933132, 'Dutch Bros. Coffee', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8930015, -121.2911146, 'Salted Heaven', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8930029, -121.2912256, 'Salted Heaven', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8929528, -121.2937838, 'George\'s Friendly Auto Service', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8523259, -121.2905878, 'Nielson Fine Floors', '620 Twelve Bridges Drive Lincoln', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(38.8849562, -121.292826, 'Brood Coffee', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.885604, -121.293269, 'The Book Cellar', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8871319, -121.3124983, 'Chevron', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8873143, -121.3124989, 'Mi Tienda Panaderia Y Carniceria', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.875276, -121.2956247, 'Dollar Tree', '53 Lincoln Boulevard Lincoln', '#f39c12', 7, 'Unnamed Retail Center', true);
+addStore(38.875304, -121.2959549, 'Verizon', '53 Lincoln Boulevard Lincoln', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.8752816, -121.2957613, 'Lincoln Laundry', '53 Lincoln Boulevard Lincoln', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.8705601, -121.3038426, 'Target', '950 Groveland Lane Lincoln', '#f39c12', 5, 'Unnamed Retail Center', true);
+addStore(38.8725894, -121.2973873, 'Goodwill Donation Xpress', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.8853841, -121.2948853, 'Lincoln Pet Spa', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8856682, -121.2949513, 'Premier Auto Glass', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8846979, -121.2929307, 'Versus Pet Foods, Inc', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.884757, -121.2929082, 'CoCo Nails Spa', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8848595, -121.2928599, 'KV Lash', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8849093, -121.2928345, 'La Piccolina Baby Boutique', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8913152, -121.2914013, 'H&R Block', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8722088, -121.2968928, 'Coinstar', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.9039249, -121.3180883, 'Doggie Walk Bags', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8911698, -121.2937572, 'Primo Water', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8979127, -121.32165, 'VIP Nails & Spa', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8979079, -121.3217557, 'MZ Smoke Shop', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8979013, -121.3223807, 'BLAND', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8726903, -121.2973339, 'Fresh Cleaners', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.8728006, -121.2972988, 'Champ Cuts', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.8728605, -121.297265, 'La Belle Nails', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.8720988, -121.2960537, 'Family Massage', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.8720457, -121.2960838, 'Hotworx', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.8719094, -121.2961611, 'Dog & Cat Health Food', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.8708103, -121.2974039, 'Anytime Fitness', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.8705175, -121.2973081, 'Wingstop', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.869985, -121.295662, 'LabCorp', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.8699379, -121.2956465, 'Skin Necessities', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8706441, -121.2958502, 'Cozy Nails', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.8695898, -121.2948896, 'Club Cruise Travel Cruises', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.869661, -121.2944513, 'Perfect Nails', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8706244, -121.2936991, 'Quest Diagnostics', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8707983, -121.2938281, 'Century 21', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8702645, -121.2946474, 'Teng Artillery Vault', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.870484, -121.2955495, 'My Dog\'s Spot', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.8707926, -121.2959419, 'Epic Sports Cards', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.870988, -121.2957975, 'Rustic Mule Grazing', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.8710617, -121.2957512, 'Artistic Nails', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.8710981, -121.2957139, 'Boutique Hair Parlor', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.8711587, -121.295672, 'Lincoln Medical Supplies', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.8712015, -121.2942311, 'PNC Bank', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.8712093, -121.2942656, 'PNC Bank', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8708164, -121.2947303, 'Enterprise', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.8714323, -121.2965275, 'Twisted Eyebrow Threading', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.8787565, -121.2941518, 'Lincoln Jewelers', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.8790971, -121.2943235, 'Woof Gang Bakery & Grooming', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.8844737, -121.2950591, 'Duncan\'s Automotive', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8853882, -121.2933492, 'Blades to Fades', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8878243, -121.293098, 'Lincoln New & Used Tires', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.8750844, -121.302838, 'Habit Burger & Grill', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8750456, -121.3027788, 'Beauty By Thread', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8721809, -121.3035039, 'Vibrance Medical Spa', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8712024, -121.3043135, 'Banfield Pet Hospital', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.8710342, -121.3042432, 'PetSmart Grooming', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.8873608, -121.2926363, 'The Beauty Lounge', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.8896886, -121.2924033, 'Ace Body Shop & Towing', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.8856586, -121.293249, 'We Sell Epoxy', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8875375, -121.2932052, 'Legion', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.888734, -121.292115, 'AmeriGas', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.8885427, -121.2920935, 'CALottery', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.8902362, -121.2912624, 'LavishLips XOXO', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.890712, -121.284828, 'Farmers Insurance', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8910025, -121.2841957, 'U-Haul', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8912431, -121.2840554, 'In Depth Salon', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8870227, -121.31253, 'Primo Water', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8517633, -121.2882645, 'Walgreens', '-', '#27ae60', -1, 'Standalone / Not in Plaza', true);
+addStore(38.8727373, -121.297775, 'Chase', '45 Lincoln Boulevard', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.8731576, -121.2976157, 'Bank of America', '47 Lincoln Boulevard', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.877296, -121.2958505, 'Jack in the Box', '455 Highway 65 Lincoln', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.8771715, -121.2954763, 'Starbucks', '59 Lincoln Boulevard Lincoln Hills Town Center', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.8781209, -121.2941211, 'Safeway', '67 Lincoln Boulevard Lincoln', '#f39c12', 3, 'Unnamed Retail Center', true);
+addStore(38.8683378, -121.3031636, 'The Home Depot', '1000 Groveland Lane Lincoln', '#f39c12', 5, 'Unnamed Retail Center', true);
+addStore(38.870745, -121.3043747, 'TJ Maxx', '930 Groveland Lane Lincoln', '#f39c12', 5, 'Unnamed Retail Center', true);
+addStore(38.869915, -121.3042337, 'Target', '950 Groveland Lane Lincoln', '#27ae60', -1, 'Standalone / Not in Plaza', true);
+addStore(38.8713727, -121.3051447, 'Holiday Inn Express', '155 Ferrari Ranch Road Lincoln', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.8741428, -121.3020781, 'Ross', '113 Ferrari Ranch Road Lincoln', '#f39c12', 4, 'Unnamed Retail Center', true);
+addStore(38.8710811, -121.3045391, 'PetSmart', '920 Groveland Lane Lincoln', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.871546, -121.3032034, 'O\'Reilly Auto Parts', '900 Groveland Lane Lincoln', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8737469, -121.3021338, 'Sprouts Farmers Market', '115 Ferrari Ranch Road Lincoln', '#f39c12', 4, 'Unnamed Retail Center', true);
+addStore(38.8733977, -121.3023857, 'Ulta Beauty', '117 Ferrari Ranch Road Lincoln', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8749646, -121.303258, 'Panda Express', '105 Ferrari Ranch Road Lincoln', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8726451, -121.3039494, 'In-N-Out Burger', '850 Groveland Lane Lincoln', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8886017, -121.2918418, 'Walmart Neighborhood Market', '255 Lincoln Boulevard Lincoln', '#f39c12', 2, 'Unnamed Retail Center', true);
+addStore(38.874739, -121.3070689, 'DR Horton', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8717973, -121.2950761, 'Quick Quack Car Wash', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.8850659, -121.2909774, 'United States Post Office', '200 Gateway Drive 2', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.894795, -121.328849, 'Revere', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8874897, -121.2576688, 'Turkey Creek Estates', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.9051994, -121.2745899, 'Cresleigh Homes', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8724529, -121.2966684, 'Raley\'s', '39 Lincoln Boulevard Lincoln', '#f39c12', 0, 'Unnamed Retail Center', true);
+addStore(38.8745375, -121.29691, 'ampm', '49 Lincoln Boulevard Lincoln', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.874271, -121.2970175, 'Arco', '49 Lincoln Boulevard Lincoln', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.8742428, -121.3033601, 'Carl\'s Jr.', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8975735, -121.323144, 'Chevron', '2330 Nicolaus Road Lincoln', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8853075, -121.314082, 'Joiner Parkway Self Storage', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.88562, -121.294212, 'Caliber Collision', '100 Flocchini Circle', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.884295, -121.294591, 'Gypsy Chic Vintage Market', '109 Flocchini Circle Lincoln', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8850863, -121.2940481, 'Salt Mine Thrift Store', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8869525, -121.312848, 'Chevron', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8730995, -121.293893, 'Big 5 Sporting Goods', '741 East Joiner Parkway Lincoln', '#f39c12', 0, 'Unnamed Retail Center', true);
+addStore(38.8902975, -121.290556, 'U.S. Bank', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.8939175, -121.292342, 'ExtraMile', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8920485, -121.2910675, 'Bank of America', '570 5th Street', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8941695, -121.2925435, 'Chevron', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8920787, -121.2917738, 'Panadería La Michoacana', '616 5th Street', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8943125, -121.293192, 'Annie’s K-9 Grooming', '690 Lincoln Boulevard', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8915115, -121.2911885, 'Fotos Market', '561 5th Street', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8920026, -121.292258, 'Lovely Nails', '654 5th Street', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.886334, -121.292565, 'Blessed', '699 First Street', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.8867935, -121.29197, 'Burger King', '115 Lincoln Boulevard Lincoln', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.886319, -121.292018, 'At Last Hair Salon', '671 First Street', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.8884168, -121.2931953, 'Shell', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8991707, -121.3145233, 'Self Storage Lincoln Ranch', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8515847, -121.2921845, 'Arco', '584 Twelve Bridges Drive Lincoln', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8519021, -121.292143, 'ampm', '584 Twelve Bridges Drive Lincoln', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8913562, -121.2919359, 'FieldHaven Marketplace', '454 F Street Lincoln', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.8352736, -121.3042727, 'Trojan Storage', '3201 Industrial Avenue Rocklin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.9038567, -121.3184908, 'Fitness Court', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(38.8838401, -121.2932999, 'Dutch Bros. Coffee', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+
+  map.on('overlayadd overlayremove', updateVisibility);
+  updateVisibility();
+
+  var overlays = {
+    '🔴  Multi-anchor plazas (2+ anchors)': layerMultiAnchor,
+    '⭕  Single-anchor plazas': layerSingleAnchor,
+    '🟣  Plaza Center Points': layerPlazaCenters,
+    '🟡  Anchor Stores (in Plaza)': layerAnchors,
+    '🔵🔴  Tenants (In Plaza)': layerTenants,
+    '🟢  Standalone Stores': layerStandalone,
+    '━━━━━━━━━━━━━━': L.layerGroup(),
+    '🔥  High Density Plazas (10+ tenants)': layerHighDensity,
+    '🔹  Lower Density (< 10 tenants)': layerLowDensity
+  };
+
+  var countyDivider = false;
+  for (var county in countyLayers) {
+    if (!countyDivider) {
+        overlays['━━━━━━━━━━━━━━ '] = L.layerGroup();
+        countyDivider = true;
+    }
+    overlays['📍 ' + county] = countyLayers[county];
+  }
+
+  L.control.layers(null, overlays, {
+    position: 'topright',
+    collapsed: false,
+  }).addTo(map);
+
+  var legend = L.control({position: 'bottomright'});
+  legend.onAdd = function() {
+    var div = L.DomUtil.create('div', 'legend');
+    div.innerHTML = '<b>Retail Centers – Lincoln, CA</b><br>'
+      + '<span class="legend-dot" style="background:#e74c3c"></span> Named plaza<br>'
+      + '<span class="legend-dot" style="background:#3498db"></span> Unnamed plaza<br>'
+      + '<span class="legend-dot" style="background:#8e44ad"></span> Plaza center point<br>'
+      + '<span class="legend-dot" style="background:#f39c12"></span> Anchor store (in plaza)<br>'
+      + '<span class="legend-dot" style="background:#27ae60"></span> Standalone store<br>'
+      + '⚓ = anchor &nbsp; 🔥 = 10+ tenants';
+    return div;
+  };
+  legend.addTo(map);
+</script>
+</body>
+</html>
