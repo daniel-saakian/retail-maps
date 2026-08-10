@@ -22,15 +22,15 @@
 <div id='map'></div>
 <script>
   var map = L.map('map').setView([38.77352964281536, -121.30260587111108], 12);
-
+ 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     maxZoom: 19
   }).addTo(map);
-
+ 
   var plazasData = [];
   var storesData = [];
-
+ 
   var layerMultiAnchor = L.layerGroup().addTo(map);
   var layerSingleAnchor = L.layerGroup().addTo(map);
   var layerPlazaCenters = L.layerGroup().addTo(map);
@@ -40,7 +40,7 @@
   var layerHighDensity = L.layerGroup().addTo(map);
   var layerLowDensity = L.layerGroup().addTo(map);
   var countyLayers = {};
-
+ 
   function getOrCreateCountyLayer(county) {
     if (!county || county === '-') county = 'Unknown';
     if (!countyLayers[county]) {
@@ -48,7 +48,7 @@
     }
     return countyLayers[county];
   }
-
+ 
   function addPlaza(lat, lng, radius_m, plazaId, name, address, county, city, numAnchors, anchors, numTenants, tenants, color, leasingHtml) {
     var popup = '<b>' + name + '</b><br>'
       + (address !== '-' ? address + '<br>' : '')
@@ -71,7 +71,7 @@
     } else {
       layerSingleAnchor.addLayer(circle);
     }
-
+ 
     var center = L.circleMarker([lat,lng], {
         radius: 9,
         color: '#fff',
@@ -79,10 +79,10 @@
         fillOpacity: 1,
         weight: 2
     }).bindPopup(popup, {maxHeight: 320, autoPanPadding: [20, 20]}).bindTooltip(name, {permanent: false, direction: 'top'});
-
+ 
     var cleanCounty = (!county || county === '-') ? 'Unknown' : county;
     getOrCreateCountyLayer(cleanCounty);
-
+ 
     plazasData.push({
         circle: circle,
         center: center,
@@ -93,7 +93,7 @@
         numTenants: numTenants
     });
   }
-
+ 
   function addStore(lat, lng, name, address, color, plazaId, plaza, isAnchor) {
     var size = isAnchor ? 11 : 9;
     var icon = L.divIcon({
@@ -120,24 +120,24 @@
       isAnchor: isAnchor
     });
   }
-
+ 
   function updateVisibility() {
     plazasData.forEach(function(p) {
       var anchorMatch = (p.numAnchors > 1) ? map.hasLayer(layerMultiAnchor): map.hasLayer(layerSingleAnchor);
       var densityMatch = (p.numTenants >= 10) ? map.hasLayer(layerHighDensity) : map.hasLayer(layerLowDensity);
       var countyLayer = countyLayers[p.county];
       var countyMatch = countyLayer ? map.hasLayer(countyLayer) : true;
-
+ 
       var plazaVisible = anchorMatch && densityMatch && countyMatch;
       p.isActive = plazaVisible;
-
+ 
       if (plazaVisible) {
         // FIX 2: Changed map.has() to map.hasLayer()
         if (!map.hasLayer(p.circle)) p.circle.addTo(map);
       } else {
         if (map.hasLayer(p.circle)) map.removeLayer(p.circle);
       }
-
+ 
       if (plazaVisible && map.hasLayer(layerPlazaCenters)) {
         if (!map.hasLayer(p.center)) p.center.addTo(map);
       } else {
@@ -147,23 +147,23 @@
       
     storesData.forEach(function(s) {
         var storeVisible = false;
-
+ 
         if (s.plazaId === -1) {
             // Standalone store
             storeVisible = map.hasLayer(layerStandalone);
-
+ 
         } else {
             var parentPlaza = plazasData.find(function(p) {
                 return p.id === s.plazaId;
             });
-
+ 
             if (parentPlaza && parentPlaza.isActive) {
                 storeVisible = s.isAnchor
                     ? map.hasLayer(layerAnchors)
                     : map.hasLayer(layerTenants);
             }
         }
-
+ 
         if (storeVisible) {
             if (!map.hasLayer(s.marker))
                 s.marker.addTo(map);
@@ -173,7 +173,7 @@
         }
     });
   }
-
+ 
   addPlaza(38.76795706216216, -121.26818256756758, 350.2, 0, 'Fountains at Roseville', '1001 Galleria Boulevard Roseville', 'Placer County', 'Roseville', 1, 'Whole Foods Market', 36, 'Anthropologie, BJ\'s, Brighton Collectibles, Burger Lounge, Button Up Boutique, California Closets, Charles Schwab, Chico\'s, Creamy\'s, Dave & Buster\'s, Eileen Fisher, Engel & Völkers, European Wax Center, Evereve, Fogo de Chão, J. Crew Factory, Jack\'s Urban Eats, Joli Nail Spa, Kenny G & Company, LaserAway, Mendocino Farms, Nick The Greek, Paper Source, Peet\'s Coffee, Pet Food Express, Rock Hill Boutique, Salt & Straw, Sephora, Sole Desire Shoes, Soma, Sunglass Hut, Sur La Table, Tommy Bahama, White House Black Market, Willo, west elm', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
 addPlaza(38.77368461481481, -121.26947609629632, 393.5, 1, 'Westfield Galleria at Roseville', '1151 Galleria Boulevard Roseville', 'Placer County', 'Roseville', 3, 'H&M, JCPenney, Nordstrom', 24, 'Arhaus, Buckle, Cinemark, Crate & Barrel, Design Within Reach, Finish Line, Foot Locker, GameStop, Glittery Slime Parlour, Janie & Jack, LensCrafters, Mansour\'s Oriental Rug Gallery, Pottery Barn, Quickly, Round1, Ruth\'s Chris Steak House, Starbucks, Suits Dept, Sweetgreen, The Cheesecake Factory, Tiffany & Company, Uniqlo, Westfield, Westfield Galleria at Roseville', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-130211" target="_blank" rel="noopener">CBRE — Rick Martinez</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-130211" target="_blank" rel="noopener">CBRE — Josh Schmidt</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-130211" target="_blank" rel="noopener">CBRE — Heath Kastner</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-130211" target="_blank" rel="noopener">CBRE — Jon Schultz</a><br><a href="https://www.crexi.com/lease/properties/133518/california-ridge-at-creekside" target="_blank" rel="noopener">CBRE - Sacramento — Jenni Tabaka</a><br>');
 addPlaza(38.782924461538464, -121.2698922576923, 436.2, 2, 'Stanford Ranch Crossing', '6744 Stanford Ranch Road Roseville', 'Placer County', 'Roseville', 5, 'Costco, Dick\'s Sporting Goods, Dollar Tree, Ross, The Home Depot', 21, 'AT&T, Advance America, Black Bear Diner, Chuck E. Cheese, Golf Galaxy, Goodwill, Guitar Center, Home Consignment Center, Island Nails, L&L Hawaiian Barbecue, Les Schwab Tire Center, Mattress Outlet, McDonald\'s, Party City, Red Wing, Staples, Starbucks, The Cave Roseville, Total Wine, Wayback Burgers, Western Dental', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://gallellire.com/property/stanford-ranch-crossing/" target="_blank" rel="noopener">Gallelli Real Estate — Kevin Soares</a><br><a href="https://gallellire.com/property/stanford-ranch-crossing/" target="_blank" rel="noopener">Gallelli Real Estate — Jeff Hagan</a><br><a href="https://www.crexi.com/lease/properties/301137/california-stanford-ranch" target="_blank" rel="noopener">Kimco Realty Corporation — Ben Minton</a><br><a href="https://www.crexi.com/lease/properties/163155/california-the-plaza-at-stanford-ranch" target="_blank" rel="noopener">Clark Commercial Realty Advisors — Jeff Clark</a><br>');
@@ -603,10 +603,10 @@ addStore(38.7522083, -121.3673931, 'Costco', '-', '#27ae60', -1, 'Standalone / N
 addStore(38.767452, -121.3578983, 'Bank of America', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
 addStore(38.7958975, -121.3250488, 'Dutch Bros. Coffee', '1478 Blue Oaks Boulevard Roseville', '#e74c3c', 8, 'Crocker Ranch', false);
 addStore(38.795861, -121.3268676, 'Chick-fil-A', '1490 Blue Oaks Boulevard Roseville', '#e74c3c', 8, 'Crocker Ranch', false);
-
+ 
   map.on('overlayadd overlayremove', updateVisibility);
   updateVisibility();
-
+ 
   var overlays = {
     '🔴  Multi-anchor plazas (2+ anchors)': layerMultiAnchor,
     '⭕  Single-anchor plazas': layerSingleAnchor,
@@ -618,7 +618,7 @@ addStore(38.795861, -121.3268676, 'Chick-fil-A', '1490 Blue Oaks Boulevard Rosev
     '🔥  High Density Plazas (10+ tenants)': layerHighDensity,
     '🔹  Lower Density (< 10 tenants)': layerLowDensity
   };
-
+ 
   var countyDivider = false;
   for (var county in countyLayers) {
     if (!countyDivider) {
@@ -627,12 +627,12 @@ addStore(38.795861, -121.3268676, 'Chick-fil-A', '1490 Blue Oaks Boulevard Rosev
     }
     overlays['📍 ' + county] = countyLayers[county];
   }
-
+ 
   L.control.layers(null, overlays, {
     position: 'topright',
     collapsed: false,
   }).addTo(map);
-
+ 
   var legend = L.control({position: 'bottomright'});
   legend.onAdd = function() {
     var div = L.DomUtil.create('div', 'legend');
