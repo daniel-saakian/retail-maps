@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8' />
+  <title>Retail Centers – Peoria, AZ</title>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' />
+  <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
+  <style>
+    body { margin: 0; font-family: sans-serif; }
+    #map { height: 100vh; width: 100%; }
+    .legend {
+      background: white; padding: 10px 14px; border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); line-height: 1.8;
+      font-size: 13px;
+    }
+    .legend-dot { display: inline-block; width: 12px; height: 12px;
+                   border-radius: 50%; margin-right: 6px; }
+  </style>
+</head>
+<body>
+<div id='map'></div>
+<script>
+  var map = L.map('map').setView([33.71121450988512, -112.27482053986927], 12);
+ 
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(map);
+ 
+  var plazasData = [];
+  var storesData = [];
+ 
+  var layerMultiAnchor = L.layerGroup().addTo(map);
+  var layerSingleAnchor = L.layerGroup().addTo(map);
+  var layerPlazaCenters = L.layerGroup().addTo(map);
+  var layerAnchors = L.layerGroup().addTo(map);
+  var layerTenants = L.layerGroup().addTo(map);
+  var layerStandalone = L.layerGroup().addTo(map);
+  var layerHighDensity = L.layerGroup().addTo(map);
+  var layerLowDensity = L.layerGroup().addTo(map);
+  var countyLayers = {};
+ 
+  function getOrCreateCountyLayer(county) {
+    if (!county || county === '-') county = 'Unknown';
+    if (!countyLayers[county]) {
+        countyLayers[county] = L.layerGroup().addTo(map);
+    }
+    return countyLayers[county];
+  }
+ 
+  function addPlaza(lat, lng, radius_m, plazaId, name, address, county, city, numAnchors, anchors, numTenants, tenants, color, leasingHtml) {
+    var popup = '<b>' + name + '</b><br>'
+      + (address !== '-' ? address + '<br>' : '')
+      + city + (county !== '-' ? ', ' + county + ' County' : '') + '<br>'
+      + leasingHtml
+      + '<br><b>' + numAnchors + ' anchor(s): </b><br>'
+      + anchors.split(', ').join('<br>')
+      + '<br><br><b>' + numTenants + ' other tenant(s):</b><br>'
+      + tenants.split(', ').join('<br>');
+    
+    var circle = L.circle([lat, lng], {
+      radius: radius_m,
+      color: color,
+      fillColor: color,
+      fillOpacity: 0.08,
+      weight: 2
+    });
+    if (numAnchors > 1) {
+      layerMultiAnchor.addLayer(circle);
+    } else {
+      layerSingleAnchor.addLayer(circle);
+    }
+ 
+    var center = L.circleMarker([lat,lng], {
+        radius: 9,
+        color: '#fff',
+        fillColor: '#8e44ad',
+        fillOpacity: 1,
+        weight: 2
+    }).bindPopup(popup, {maxHeight: 320, autoPanPadding: [20, 20]}).bindTooltip(name, {permanent: false, direction: 'top'});
+ 
+    var cleanCounty = (!county || county === '-') ? 'Unknown' : county;
+    getOrCreateCountyLayer(cleanCounty);
+ 
+    plazasData.push({
+        circle: circle,
+        center: center,
+        id: plazaId,
+        name: name,
+        county: cleanCounty,
+        numAnchors: numAnchors,
+        numTenants: numTenants
+    });
+  }
+ 
+  function addStore(lat, lng, name, address, color, plazaId, plaza, isAnchor) {
+    var size = isAnchor ? 11 : 9;
+    var icon = L.divIcon({
+      className: '',
+      html: '<div style="position:absolute;width:' + size + 'px;height:' + size + 'px;'
+          + 'border-radius:50%;background:' + color + ';border:2px solid white;'
+          + 'box-shadow:0 1px 3px rgba(0,0,0,0.4);top:50%;left:50%;'
+          + 'transform:translate(-50%,-50%)'
+          + (isAnchor ? ';outline:2px solid rgba(0,0,0,0.25)' : '')
+          + '"></div>',
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2]
+    });
+    var marker = L.marker([lat, lng], {icon: icon})
+      .bindPopup('<b>' + name + '</b>' + (isAnchor ? '⚓' : '')+ '<br>' 
+        + '<i>' + plaza + '</i><br>'
+        + address)
+      .bindTooltip(name, {direction: 'top'})
+    
+    storesData.push({
+      marker: marker,
+      plazaId: plazaId,
+      plazaLabel: plaza,
+      isAnchor: isAnchor
+    });
+  }
+ 
+  function updateVisibility() {
+    plazasData.forEach(function(p) {
+      var anchorMatch = (p.numAnchors > 1) ? map.hasLayer(layerMultiAnchor): map.hasLayer(layerSingleAnchor);
+      var densityMatch = (p.numTenants >= 10) ? map.hasLayer(layerHighDensity) : map.hasLayer(layerLowDensity);
+      var countyLayer = countyLayers[p.county];
+      var countyMatch = countyLayer ? map.hasLayer(countyLayer) : true;
+ 
+      var plazaVisible = anchorMatch && densityMatch && countyMatch;
+      p.isActive = plazaVisible;
+ 
+      if (plazaVisible) {
+        // FIX 2: Changed map.has() to map.hasLayer()
+        if (!map.hasLayer(p.circle)) p.circle.addTo(map);
+      } else {
+        if (map.hasLayer(p.circle)) map.removeLayer(p.circle);
+      }
+ 
+      if (plazaVisible && map.hasLayer(layerPlazaCenters)) {
+        if (!map.hasLayer(p.center)) p.center.addTo(map);
+      } else {
+        if (map.hasLayer(p.center)) map.removeLayer(p.center);
+      }
+    });
+      
+    storesData.forEach(function(s) {
+        var storeVisible = false;
+ 
+        if (s.plazaId === -1) {
+            // Standalone store
+            storeVisible = map.hasLayer(layerStandalone);
+ 
+        } else {
+            var parentPlaza = plazasData.find(function(p) {
+                return p.id === s.plazaId;
+            });
+ 
+            if (parentPlaza && parentPlaza.isActive) {
+                storeVisible = s.isAnchor
+                    ? map.hasLayer(layerAnchors)
+                    : map.hasLayer(layerTenants);
+            }
+        }
+ 
+        if (storeVisible) {
+            if (!map.hasLayer(s.marker))
+                s.marker.addTo(map);
+        } else {
+            if (map.hasLayer(s.marker))
+                map.removeLayer(s.marker);
+        }
+    });
+  }
+ 
+  addPlaza(33.70859354545455, -112.27262755000001, 380.3, 0, 'Lake Pleasant Pavilion', '24665 North Lake Pleasant Parkway Peoria', 'Maricopa County', 'Peoria', 5, 'Aldi, BevMo!, Big Lots, Marshalls, Target', 17, 'Athletico Physical Therapy, Baskin-Robbins, Blink, Bossman Barbershop, Cinnabon, Club Pilates, McDonald\'s, MidFirst Bank, Minute Mart, Nectar, Nothing Bundt Cakes, Shell, Sherwin-Williams, Starbucks, The UPS Store, Twisted Sugar, Verizon', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.crexi.com/lease/properties/1113249/arizona-northwest-peoria-medical-office-building" target="_blank" rel="noopener">Kidder Mathews — Perry Gabuzzi</a><br><a href="https://www.crexi.com/lease/properties/1113249/arizona-northwest-peoria-medical-office-building" target="_blank" rel="noopener">Kidder Mathews — Rachael Thompson</a><br><a href="https://www.crexi.com/lease/properties/1015180/arizona-nwc-lake-pleasant-pkwy-jomax-rd" target="_blank" rel="noopener">Diversified Partners — Emma Barreca</a><br><a href="https://www.crexi.com/lease/properties/1015180/arizona-nwc-lake-pleasant-pkwy-jomax-rd" target="_blank" rel="noopener">Diversified Partners — Marti Weinstein</a><br><a href="https://www.crexi.com/lease/properties/1079643/arizona-lake-pleasant-point" target="_blank" rel="noopener">Ignite Commercial Real Estate — Jesse Rozio</a><br><a href="https://www.crexi.com/lease/properties/936871/cielo-vista-medical-commons" target="_blank" rel="noopener">Cushman & Wakefield - Phoenix, Arizona — Sheila Bale</a><br><a href="https://www.crexi.com/lease/properties/936871/cielo-vista-medical-commons" target="_blank" rel="noopener">Cushman & Wakefield - Phoenix, Arizona — Erika Eckblad</a><br><a href="https://www.crexi.com/lease/properties/459789/arizona-sunrise-promenade" target="_blank" rel="noopener">CBRE - Phoenix — R. Max Bippus</a><br><a href="https://www.crexi.com/lease/properties/1056218/arizona-lake-pleasant-towne-center" target="_blank" rel="noopener">Phoenix Commercial Advisors — Zachary Pace</a><br><a href="https://www.crexi.com/lease/properties/1056218/arizona-lake-pleasant-towne-center" target="_blank" rel="noopener">Phoenix Commercial Advisors — Cameron Warren</a><br><a href="https://www.crexi.com/lease/properties/1056218/arizona-lake-pleasant-towne-center" target="_blank" rel="noopener">Phoenix Commercial Advisors — Chris Schmitt</a><br>');
+addPlaza(33.71442912941176, -112.27525740588233, 464.9, 1, 'Lake Pleasant Towne Center', '10072 West Happy Valley Parkway Peoria', 'Maricopa County', 'Peoria', 4, 'Kohl\'s, Ross, Sprouts Farmers Market, The Home Depot', 13, 'Batteries + Bulbs, Chili\'s, Famous Footwear, Firestone, Five Below, Harkins Theatres, Mattress Firm, Michaels, OfficeMax, Orangetheory Fitness, PetSmart, Ulta Beauty, Wendy\'s', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.crexi.com/lease/properties/1113249/arizona-northwest-peoria-medical-office-building" target="_blank" rel="noopener">Kidder Mathews — Perry Gabuzzi</a><br><a href="https://www.crexi.com/lease/properties/1113249/arizona-northwest-peoria-medical-office-building" target="_blank" rel="noopener">Kidder Mathews — Rachael Thompson</a><br><a href="https://www.crexi.com/lease/properties/1015180/arizona-nwc-lake-pleasant-pkwy-jomax-rd" target="_blank" rel="noopener">Diversified Partners — Emma Barreca</a><br><a href="https://www.crexi.com/lease/properties/1015180/arizona-nwc-lake-pleasant-pkwy-jomax-rd" target="_blank" rel="noopener">Diversified Partners — Marti Weinstein</a><br><a href="https://www.crexi.com/lease/properties/1079643/arizona-lake-pleasant-point" target="_blank" rel="noopener">Ignite Commercial Real Estate — Jesse Rozio</a><br><a href="https://www.crexi.com/lease/properties/936871/cielo-vista-medical-commons" target="_blank" rel="noopener">Cushman & Wakefield - Phoenix, Arizona — Sheila Bale</a><br><a href="https://www.crexi.com/lease/properties/936871/cielo-vista-medical-commons" target="_blank" rel="noopener">Cushman & Wakefield - Phoenix, Arizona — Erika Eckblad</a><br><a href="https://www.crexi.com/lease/properties/459789/arizona-sunrise-promenade" target="_blank" rel="noopener">CBRE - Phoenix — R. Max Bippus</a><br><a href="https://www.crexi.com/lease/properties/1056218/arizona-lake-pleasant-towne-center" target="_blank" rel="noopener">Phoenix Commercial Advisors — Zachary Pace</a><br><a href="https://www.crexi.com/lease/properties/1056218/arizona-lake-pleasant-towne-center" target="_blank" rel="noopener">Phoenix Commercial Advisors — Cameron Warren</a><br><a href="https://www.crexi.com/lease/properties/1056218/arizona-lake-pleasant-towne-center" target="_blank" rel="noopener">Phoenix Commercial Advisors — Chris Schmitt</a><br>');
+addPlaza(33.71215674444444, -112.26869283333333, 311.2, 2, 'Lake Pleasant Crossing Shopping Center', '25311 North Lake Pleasant Parkway Peoria', 'Maricopa County', 'Peoria', 1, 'Lowe\'s', 8, 'Barro\'s Pizza, Classic Nails and Spa, Discount Tire, Freddy\'s, Fry\'s Marketplace, Pet Planet, U.S. Bank, Wilhelm Automotive', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.crexi.com/lease/properties/1015180/arizona-nwc-lake-pleasant-pkwy-jomax-rd" target="_blank" rel="noopener">Diversified Partners — Emma Barreca</a><br><a href="https://www.crexi.com/lease/properties/1015180/arizona-nwc-lake-pleasant-pkwy-jomax-rd" target="_blank" rel="noopener">Diversified Partners — Marti Weinstein</a><br><a href="https://www.crexi.com/lease/properties/938222/arizona-shops-at-lake-pleasant" target="_blank" rel="noopener">Phoenix Commercial Advisors — Ali Hill</a><br><a href="https://www.crexi.com/lease/properties/938222/arizona-shops-at-lake-pleasant" target="_blank" rel="noopener">Phoenix Commercial Advisors — John Warren</a><br><a href="https://www.crexi.com/lease/properties/459789/arizona-sunrise-promenade" target="_blank" rel="noopener">CBRE - Phoenix — R. Max Bippus</a><br><a href="https://www.crexi.com/lease/properties/1079643/arizona-lake-pleasant-point" target="_blank" rel="noopener">Ignite Commercial Real Estate — Jesse Rozio</a><br><a href="https://www.crexi.com/lease/properties/1056218/arizona-lake-pleasant-towne-center" target="_blank" rel="noopener">Phoenix Commercial Advisors — Zachary Pace</a><br><a href="https://www.crexi.com/lease/properties/1056218/arizona-lake-pleasant-towne-center" target="_blank" rel="noopener">Phoenix Commercial Advisors — Cameron Warren</a><br><a href="https://www.crexi.com/lease/properties/1056218/arizona-lake-pleasant-towne-center" target="_blank" rel="noopener">Phoenix Commercial Advisors — Chris Schmitt</a><br><a href="https://www.crexi.com/lease/properties/657995/arizona-lake-pleasant-pavilion" target="_blank" rel="noopener">Big V Property Group — Pat Kelly</a><br><a href="https://www.crexi.com/lease/properties/657995/arizona-lake-pleasant-pavilion" target="_blank" rel="noopener">Big V Property Group — Jacob Grohman</a><br><a href="https://www.crexi.com/lease/properties/936871/cielo-vista-medical-commons" target="_blank" rel="noopener">Cushman & Wakefield - Phoenix, Arizona — Sheila Bale</a><br><a href="https://www.crexi.com/lease/properties/936871/cielo-vista-medical-commons" target="_blank" rel="noopener">Cushman & Wakefield - Phoenix, Arizona — Erika Eckblad</a><br><a href="https://www.crexi.com/lease/properties/1113249/arizona-northwest-peoria-medical-office-building" target="_blank" rel="noopener">Kidder Mathews — Perry Gabuzzi</a><br><a href="https://www.crexi.com/lease/properties/1113249/arizona-northwest-peoria-medical-office-building" target="_blank" rel="noopener">Kidder Mathews — Rachael Thompson</a><br>');
+addPlaza(33.74112254999999, -112.32223990000001, 289.7, 3, 'Unnamed Retail Center', '28455 North Vistancia Boulevard Peoria', 'Maricopa County', 'Peoria', 2, 'Safeway, Walgreens', 4, 'Chase, Chipotle, Circle K, Subway', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(33.71037764, -112.23254469999999, 289.7, 4, 'Trailhead', '8010 West Happy Valley Road Peoria', 'Maricopa County', 'Peoria', 1, 'Safeway', 4, 'Chick-fil-A, Einstein Bros. Bagels, McDonald\'s, Starbucks', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(33.68060745, -112.27756085, 289.7, 5, 'Unnamed Retail Center', '21655 North Lake Pleasant Parkway Peoria', 'Maricopa County', 'Peoria', 1, 'Walmart Supercenter', 1, 'Chevron', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+  addStore(33.709288, -112.271642, 'Blink', '-', '#e74c3c', 0, 'Lake Pleasant Pavilion', false);
+addStore(33.7076678, -112.273322, 'Starbucks', '24654 North Lake Pleasant Parkway Peoria', '#e74c3c', 0, 'Lake Pleasant Pavilion', false);
+addStore(33.7115114, -112.2729043, 'Smashburger', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.71142, -112.2731026, 'Chipotle', '9940 West Happy Valley Parkway Peoria', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7118571, -112.2728156, 'Panera Bread', '9918 West Happy Valley Road Peoria', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7115754, -112.2735137, 'Dunkin\'', '9940 West Happy Valley Parkway Peoria', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7103392, -112.2729012, 'Rubio\'s', '24920 North Lake Pleasant Parkway Peoria', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7099057, -112.2728998, 'Verizon', '24920 North Lake Pleasant Parkway Peoria', '#e74c3c', 0, 'Lake Pleasant Pavilion', false);
+addStore(33.7096045, -112.27327, 'Baskin-Robbins', '24870 North Lake Pleasant Parkway Peoria', '#e74c3c', 0, 'Lake Pleasant Pavilion', false);
+addStore(33.7096103, -112.272929, 'Nectar', '24870 North Lake Pleasant Parkway Peoria', '#e74c3c', 0, 'Lake Pleasant Pavilion', false);
+addStore(33.7113758, -112.2714244, 'Jimmy John\'s', '25101 North Lake Pleasant Parkway Peoria', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7407892, -112.3205674, 'Safeway', '28455 North Vistancia Boulevard Peoria', '#f39c12', 3, 'Unnamed Retail Center', true);
+addStore(33.7407666, -112.3222173, 'Subway', '28471 North Vistancia Boulevard Peoria', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(33.7106127, -112.273308, 'Supercuts', '9947 West Happy Valley Parkway Peoria', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7126912, -112.271262, 'Cafe Rio', '25225 North Lake Pleasant Parkway Peoria', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7075759, -112.274352, 'BevMo!', '24650 North Lake Pleasant Parkway Peoria', '#f39c12', 0, 'Lake Pleasant Pavilion', true);
+addStore(33.7135584, -112.2679943, 'Classic Nails and Spa', '-', '#e74c3c', 2, 'Lake Pleasant Crossing Shopping Center', false);
+addStore(33.7136756, -112.2679983, 'Pet Planet', '25355 North Lake Pleasant Parkway Peoria', '#e74c3c', 2, 'Lake Pleasant Crossing Shopping Center', false);
+addStore(33.7076807, -112.2731097, 'The UPS Store', '24654 North Lake Pleasant Parkway Peoria', '#e74c3c', 0, 'Lake Pleasant Pavilion', false);
+addStore(33.7090315, -112.2703674, 'Bossman Barbershop', '9785 West Happy Valley Road Peoria', '#e74c3c', 0, 'Lake Pleasant Pavilion', false);
+addStore(33.7419262, -112.3231909, 'Walgreens', '-', '#f39c12', 3, 'Unnamed Retail Center', true);
+addStore(33.7516988, -112.3141486, 'Fry\'s', 'Peoria', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7132186, -112.2723904, 'Raising Cane\'s', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7139214, -112.2718585, 'In-N-Out Burger', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7117499, -112.2728604, 'T-Mobile', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7116312, -112.2728961, 'Cold Stone Creamery', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7420428, -112.3226703, 'Chipotle', '28576 North El Mirage Road Peoria', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(33.7086201, -112.2357005, 'Salon Blissful Med Spa', '8265 West Happy Valley Road Peoria', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7530158, -112.3121938, 'Taco Bell', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.738904, -112.3221186, 'Big O Tires', '28376 N Vistancia Blvd Peoria', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7135179, -112.2744333, 'Orangetheory Fitness', '25314 North Lake Pleasant Parkway Peoria', '#e74c3c', 1, 'Lake Pleasant Towne Center', false);
+addStore(33.7136549, -112.2743974, 'Batteries + Bulbs', '-', '#e74c3c', 1, 'Lake Pleasant Towne Center', false);
+addStore(33.7137595, -112.2743525, 'Mattress Firm', '-', '#e74c3c', 1, 'Lake Pleasant Towne Center', false);
+addStore(33.7085296, -112.2709367, 'Cinnabon', '-', '#e74c3c', 0, 'Lake Pleasant Pavilion', false);
+addStore(33.7077777, -112.2709471, 'Nothing Bundt Cakes', '-', '#e74c3c', 0, 'Lake Pleasant Pavilion', false);
+addStore(33.7080507, -112.2709628, 'Athletico Physical Therapy', '-', '#e74c3c', 0, 'Lake Pleasant Pavilion', false);
+addStore(33.7081514, -112.2709606, 'Twisted Sugar', '-', '#e74c3c', 0, 'Lake Pleasant Pavilion', false);
+addStore(33.7086445, -112.2720149, 'Club Pilates', '-', '#e74c3c', 0, 'Lake Pleasant Pavilion', false);
+addStore(33.7175614, -112.2716914, 'Handel\'s Homemade Ice Cream', '25738 North Lake Pleasant Parkway Peoria', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7097589, -112.2322547, 'Chick-fil-A', '-', '#e74c3c', 4, 'Trailhead', false);
+addStore(33.7108437, -112.2329354, 'Einstein Bros. Bagels', '8068 West Happy Valley Road Peoria', '#e74c3c', 4, 'Trailhead', false);
+addStore(33.7099423, -112.2334584, 'Starbucks', '-', '#e74c3c', 4, 'Trailhead', false);
+addStore(33.6802899, -112.2762148, 'Walmart Supercenter', '21655 North Lake Pleasant Parkway Peoria', '#f39c12', 5, 'Unnamed Retail Center', true);
+addStore(33.6957337, -112.2761658, 'Circle K', '23336 North Lake Pleasant Parkway Peoria', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.6956722, -112.2765373, 'Circle K', '23336 North Lake Pleasant Parkway Peoria', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7413907, -112.3218109, 'Chase', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(33.7418003, -112.3231933, 'Walgreens', '-', '#27ae60', -1, 'Standalone / Not in Plaza', true);
+addStore(33.7091669, -112.2718959, 'Shell', '24805 North Lake Pleasant Parkway Peoria', '#e74c3c', 0, 'Lake Pleasant Pavilion', false);
+addStore(33.7091402, -112.2715533, 'Minute Mart', '24805 North Lake Pleasant Parkway Peoria', '#e74c3c', 0, 'Lake Pleasant Pavilion', false);
+addStore(33.680925, -112.2789069, 'Chevron', '21695 North Lake Pleasant Parkway Peoria', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(33.7097439, -112.2759243, 'Target', '24890 North Lake Pleasant Parkway Peoria', '#f39c12', 0, 'Lake Pleasant Pavilion', true);
+addStore(33.7125093, -112.2676847, 'Lowe\'s', '25311 North Lake Pleasant Parkway Peoria', '#f39c12', 2, 'Lake Pleasant Crossing Shopping Center', true);
+addStore(33.7144693, -112.267781, 'Fry\'s Marketplace', '25401 North Lake Pleasant Parkway Peoria', '#e74c3c', 2, 'Lake Pleasant Crossing Shopping Center', false);
+addStore(33.7150947, -112.2763182, 'Kohl\'s', '10072 West Happy Valley Parkway Peoria', '#f39c12', 1, 'Lake Pleasant Towne Center', true);
+addStore(33.7130184, -112.2775867, 'Sprouts Farmers Market', '10134 West Happy Valley Parkway Peoria', '#f39c12', 1, 'Lake Pleasant Towne Center', true);
+addStore(33.7164959, -112.2750272, 'The Home Depot', '25650 North Lake Pleasant Parkway Peoria', '#f39c12', 1, 'Lake Pleasant Towne Center', true);
+addStore(33.7101288, -112.2705497, 'O\'Reilly Auto Parts', '9809 West Happy Valley Road Peoria', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7101859, -112.2698857, 'Taco Bell', '9831 West Happy Valley Road Peoria', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7101678, -112.2689321, 'Discount Tire', '9735 West Happy Valley Road Peoria', '#e74c3c', 2, 'Lake Pleasant Crossing Shopping Center', false);
+addStore(33.7102225, -112.2684235, 'Wilhelm Automotive', '9715 West Happy Valley Road Peoria', '#e74c3c', 2, 'Lake Pleasant Crossing Shopping Center', false);
+addStore(33.7102224, -112.2693544, 'Panda Express', '9753 West Happy Valley Road Peoria', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7101171, -112.2712329, 'Jack in the Box', '9841 West Happy Valley Road Peoria', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.710174, -112.2717973, 'Chase', '9873 West Happy Valley Road Peoria', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7120452, -112.270241, 'Barro\'s Pizza', '9800 West Happy Valley Road Peoria', '#e74c3c', 2, 'Lake Pleasant Crossing Shopping Center', false);
+addStore(33.7144752, -112.273585, 'Harkins Theatres', '-', '#e74c3c', 1, 'Lake Pleasant Towne Center', false);
+addStore(33.7140951, -112.2738312, 'PetSmart', '25372 North Lake Pleasant Parkway Peoria', '#e74c3c', 1, 'Lake Pleasant Towne Center', false);
+addStore(33.7137938, -112.2740798, 'OfficeMax', '-', '#e74c3c', 1, 'Lake Pleasant Towne Center', false);
+addStore(33.7134016, -112.2773169, 'Ross', '10114 West Happy Valley Parkway Peoria', '#f39c12', 1, 'Lake Pleasant Towne Center', true);
+addStore(33.7137283, -112.2770475, 'Michaels', '10106 West Happy Valley Parkway Peoria', '#e74c3c', 1, 'Lake Pleasant Towne Center', false);
+addStore(33.7142014, -112.2766497, 'Five Below', '10092 West Happy Valley Parkway Peoria', '#e74c3c', 1, 'Lake Pleasant Towne Center', false);
+addStore(33.7143839, -112.2764849, 'Ulta Beauty', '10084 West Happy Valley Parkway Peoria', '#e74c3c', 1, 'Lake Pleasant Towne Center', false);
+addStore(33.7145548, -112.2763535, 'Famous Footwear', '10078 West Happy Valley Parkway Peoria', '#e74c3c', 1, 'Lake Pleasant Towne Center', false);
+addStore(33.7117299, -112.2741744, 'IHOP', '9976 West Happy Valley Parkway Peoria', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7119692, -112.2747328, 'El Pollo Loco', '10000 West Happy Valley Parkway Peoria', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7131063, -112.2731337, 'Bank of America', '25260 North Lake Pleasant Parkway Peoria', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7126239, -112.275573, 'Chili\'s', '10040 West Happy Valley Road Peoria', '#e74c3c', 1, 'Lake Pleasant Towne Center', false);
+addStore(33.7138178, -112.2704374, 'Fry\'s Fuel', '25371 North Lake Pleasant Parkway Peoria', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7114007, -112.2691776, 'U.S. Bank', '9746 West Happy Valley Road Peoria', '#e74c3c', 2, 'Lake Pleasant Crossing Shopping Center', false);
+addStore(33.7113619, -112.270003, 'Freddy\'s', '9790 West Happy Valley Road Peoria', '#e74c3c', 2, 'Lake Pleasant Crossing Shopping Center', false);
+addStore(33.70904, -112.2731172, 'MidFirst Bank', '24810 North Lake Pleasant Parkway Peoria', '#e74c3c', 0, 'Lake Pleasant Pavilion', false);
+addStore(33.7080715, -112.2731105, 'McDonald\'s', '24710 North Lake Pleasant Parkway Peoria', '#e74c3c', 0, 'Lake Pleasant Pavilion', false);
+addStore(33.708175, -112.2758189, 'Marshalls', '24720 North Lake Pleasant Parkway Peoria', '#f39c12', 0, 'Lake Pleasant Pavilion', true);
+addStore(33.7085745, -112.2758022, 'Big Lots', '24760 North Lake Pleasant Parkway Peoria', '#f39c12', 0, 'Lake Pleasant Pavilion', true);
+addStore(33.7112249, -112.2757069, 'Brake Masters', '10029 West Happy Valley Parkway Peoria', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7168752, -112.2731744, 'Firestone', '25672 North Lake Pleasant Parkway Peoria', '#e74c3c', 1, 'Lake Pleasant Towne Center', false);
+addStore(33.7176207, -112.2731647, 'Wendy\'s', '25774 North Lake Pleasant Parkway Peoria', '#e74c3c', 1, 'Lake Pleasant Towne Center', false);
+addStore(33.7398198, -112.3229826, 'Circle K', '28460 North Vistancia Boulevard Peoria', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(33.7401168, -112.323011, 'Circle K', '28460 North Vistancia Boulevard Peoria', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7109523, -112.3068433, 'Happy Valley Storage', '25011 North 115th Avenue Sun City', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7081576, -112.2720894, 'Sherwin-Williams', '-', '#e74c3c', 0, 'Lake Pleasant Pavilion', false);
+addStore(33.7074701, -112.2707804, 'Aldi', '24665 North Lake Pleasant Parkway Peoria', '#f39c12', 0, 'Lake Pleasant Pavilion', true);
+addStore(33.6955686, -112.274795, 'AutoZone', '23335 North Lake Pleasant Parkway Peoria', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7126292, -112.3057453, 'QuikTrip', '25215 North 115th Avenue Sun City', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7130965, -112.3057893, 'QuikTrip', '25215 North 115th Avenue Sun City', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7512535, -112.3125831, 'Fry\'s Marketplace', 'Peoria', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7517888, -112.3141068, 'Fry\'s', 'Peoria', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.7113349, -112.2323354, 'Safeway', '8010 West Happy Valley Road Peoria', '#f39c12', 4, 'Trailhead', true);
+addStore(33.7100084, -112.2317396, 'McDonald\'s', '8022 West Happy Valley Road Peoria', '#e74c3c', 4, 'Trailhead', false);
+addStore(33.8010936, -112.24065, 'Minute Mart', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(33.8010502, -112.2409959, 'Shell', '34951 Lake Pleasant Freeway Peoria', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+ 
+  map.on('overlayadd overlayremove', updateVisibility);
+  updateVisibility();
+ 
+  var overlays = {
+    '🔴  Multi-anchor plazas (2+ anchors)': layerMultiAnchor,
+    '⭕  Single-anchor plazas': layerSingleAnchor,
+    '🟣  Plaza Center Points': layerPlazaCenters,
+    '🟡  Anchor Stores (in Plaza)': layerAnchors,
+    '🔵🔴  Tenants (In Plaza)': layerTenants,
+    '🟢  Standalone Stores': layerStandalone,
+    '━━━━━━━━━━━━━━': L.layerGroup(),
+    '🔥  High Density Plazas (10+ tenants)': layerHighDensity,
+    '🔹  Lower Density (< 10 tenants)': layerLowDensity
+  };
+ 
+  var countyDivider = false;
+  for (var county in countyLayers) {
+    if (!countyDivider) {
+        overlays['━━━━━━━━━━━━━━ '] = L.layerGroup();
+        countyDivider = true;
+    }
+    overlays['📍 ' + county] = countyLayers[county];
+  }
+ 
+  L.control.layers(null, overlays, {
+    position: 'topright',
+    collapsed: false,
+  }).addTo(map);
+ 
+  var legend = L.control({position: 'bottomright'});
+  legend.onAdd = function() {
+    var div = L.DomUtil.create('div', 'legend');
+    div.innerHTML = '<b>Retail Centers – Peoria, AZ</b><br>'
+      + '<span class="legend-dot" style="background:#e74c3c"></span> Named plaza<br>'
+      + '<span class="legend-dot" style="background:#3498db"></span> Unnamed plaza<br>'
+      + '<span class="legend-dot" style="background:#8e44ad"></span> Plaza center point<br>'
+      + '<span class="legend-dot" style="background:#f39c12"></span> Anchor store (in plaza)<br>'
+      + '<span class="legend-dot" style="background:#27ae60"></span> Standalone store<br>'
+      + '⚓ = anchor &nbsp; 🔥 = 10+ tenants';
+    return div;
+  };
+  legend.addTo(map);
+</script>
+</body>
+</html>
