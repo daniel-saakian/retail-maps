@@ -108,7 +108,7 @@ export default function LoadingScreen({
                         />
                     </div>
                     <div className="absolute inset-[3px] rounded-full border border-line/60 bg-white" />
-                    <div className="absolute left-1/2 top-1/2 h2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-sky" />
+                    <div className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-sky" />
                 </div>
                 <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-3">
@@ -119,7 +119,7 @@ export default function LoadingScreen({
                             {formatElapsed(elapsed)}
                         </span>
                     </div>
-                    <p key={msgIdx} className="mt1 animate-[fade-in_0.4s_ease] text-xs text-charcoal">
+                    <p key={msgIdx} className="mt-1 animate-[fade-in_0.4s_ease] text-xs text-charcoal">
                         {messages[msgIdx]}
                     </p>
                 </div>
@@ -127,7 +127,7 @@ export default function LoadingScreen({
 
             <div className="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-paper-dim">
                 <div
-                    className="h-full rounded-full bg-sky transition[width] duration-700 ease-out"
+                    className="h-full rounded-full bg-sky transition-[width] duration-700 ease-out"
                     style={{ width: `${progressPct}%` }}
                 />
             </div>

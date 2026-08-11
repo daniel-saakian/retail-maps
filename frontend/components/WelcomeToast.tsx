@@ -22,7 +22,7 @@ export default function WelcomeToast() {
             const params = new URLSearchParams(searchParams.toString());
             params.delete("welcome");
             const query = params.toString();
-            router.replace(pathname + (query ? `${query}` : ""));
+            router.replace(pathname + (query ? `?${query}` : ""));
         }, 300 + 2000 + 300);
 
         return () => {
