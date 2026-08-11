@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+    background: #FBF8F2;
+    color: #1B355E;
+}
+
+::selection {
+    background: #DCEEF6;
+    color: #1B355E;
+}
+
+.wedge-divider {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+}
+.wedge-divider::before,
+.wedge-divider::after {
+    content: "";
+    flex: 1 1 auto;
+    height: 1px;
+    background: #4B4B4B;
+    clip-path: polygon(0 45%, 100% 0, 100% 100%, 0 55%);
+}
+.wedge-divider::after {
+    clip-path: polygon(0 0, 100% 45%, 100% 55%, 0 100%);
+}
+
+@keyframes radar-spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes fade-in {
+    from {
+        opacity: 0;
+        transform: translateY(2px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (prefers-reduced-motion:reduce) {
+    * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}

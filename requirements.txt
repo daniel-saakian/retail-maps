@@ -7,3 +7,9 @@ python-dotenv
 openpyxl
 gunicorn
 supabase
+streamlit>=1.60
+streamlit-autorefresh>=1.0
+pandas
+fastapi
+uvicorn[standard]
+pydantic

@@ -3,6 +3,7 @@ import math
 import sys
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone, timedelta
 import requests
 from tabulate import tabulate
 import os
@@ -18,12 +19,14 @@ def get_supabase():
     url = os.getenv("SUPABASE_URL")
     key = os.getenv("SUPABASE_KEY")
     if not url or not key:
+        print("  [cache] SUPABASE_URL/SUPABASE_KEY not set -- skipping Supabase read/write")
         return None
     try:
         return create_client(url, key)
-    except Exception:
+    except Exception as e:
+        print(f"  [cache] Failed to create Supabase client: {e}")
         return None
-
+ 
 anchor_brands = [
     "walmart", "walmart supercenter", "walmart neighborhood market", "target", "costco", "sams club", "sam's club",
     "nugget markets", "safeway", "kroger", "lucky", "sprouts farmers market", "sprouts",
@@ -32,7 +35,7 @@ anchor_brands = [
     "albertson's", "albertson", "ralphs", "ralphs supermarket", "ralphs market", "smart & final", "smart and final", 
     "smart & final extra", "smart and final extra", "publix", "whole foods", "whole foods market", "wholefoods", 
     "wholefoods market", "foodmaxx", "99 ranch market", "walgreens", "cvs", "big lots", "planet fitness", "gold's gym", "crunch fitness", "lifetime fitness", "california family fitness", "24 hour fitness",
-
+ 
     "home depot", "the home depot", "lowe's", "lowes", "best buy", "macy's", "macys", "nordstrom", "nordstrom rack", "bloomingdale's", 
     "bloomingdales", "dicks sporting goods", "dick's sporting", "dick's sporting goods", "dollar tree", "save mart", "grocery outlet",
     "winco", "bevmo", "bevmo!", "harbor freight", "homegoods", "home goods", "ross", "burlington", "tj maxx", "william-sonoma",
@@ -43,12 +46,12 @@ subbrand_noise = [
     "tire centre", "auto center", "auto centre", "optical", "portrait studio", "photo center", "deli", "bakery", "jewelry", "money center",
     "vision center", "furniture", "furniture gallery", "express", "convenience store",
 ]
-
+ 
 plaza_radius_mi = 0.18
 min_anchors_per_plaza = 1
 search_radius_km = 12
 min_other_tenants = 1
-
+ 
 overpass_mirrors = [
     "https://overpass-api.de/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
@@ -56,8 +59,8 @@ overpass_mirrors = [
     "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
 ]
 headers = {"User-Agent": "retailfinder/1.0"}
-
-
+ 
+ 
 @dataclass
 class Store:
     name:str
@@ -67,7 +70,7 @@ class Store:
     address: str= ""
     city: str = ""
     is_anchor_store: bool = False
-
+ 
 @dataclass
 class Plaza:
     anchors: list=field(default_factory=list)
@@ -76,7 +79,9 @@ class Plaza:
     mall_address: str = ""
     county: str=""
     scores: dict = field(default_factory=dict)
-
+    agents: list = field(default_factory=list)
+    radius_m: float = 0.0
+ 
     @property
     def all_stores(self):
         return self.anchors + self.tenants
@@ -91,7 +96,7 @@ class Plaza:
     @property
     def label(self):
         return self.mall_name if self.mall_name else "Unnamed Retail Center"
-
+ 
     @property
     def display_address(self):
         if self.mall_address:
@@ -117,13 +122,77 @@ class Plaza:
     @property
     def tenant_names(self):
         return ", ".join(sorted(set(s.name for s in self.tenants)))
-
-
+    
+    @property
+    def broker_records(self):
+        seen = set()
+        out = []
+        for a in self.agents:
+            name = (a.get("agent_name") or "").strip()
+            brokerage = (a.get("brokerage") or "").strip()
+            if not name and not brokerage:
+                continue
+            key = (name.lower(), brokerage.lower())
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({
+                "name": name or "-",
+                "brokerage": brokerage or "-",
+                "phone": a.get("phone") or "-",
+                "email": a.get("email") or "-",
+                "url": a.get("listing_url") or ""
+            })
+        return out
+ 
+    @property
+    def brokerage_names(self):
+        return "; ".join(sorted(set(
+            r["brokerage"] for r in self.broker_records if r["brokerage"] != "-"
+        )))
+    
+    @property
+    def broker_names(self):
+        return "; ".join(
+            f"{r['name']} ({r['brokerage']})" if r["brokerage"] != "-" else r["name"]
+            for r in self.broker_records if r["name"] != "-"
+        )
+    
+    @property
+    def broker_contacts(self):
+        return "; ".join(
+            f"{r['phone']} / {r['email']}"
+            for r in self.broker_records if r["name"] != "-"
+        )
+    
+    @property
+    def broker_urls(self):
+        return "; ".join(
+            r["url"] for r in self.broker_records if r["name"] != "-" and r["url"]
+        )
+ 
+ 
 def geocode_city(city: str) -> tuple[float, float, str, str, str]:
     parts = [p.strip() for p in city.split(",")]
     city_name = parts[0]
     state = parts[1].strip() if len(parts) > 1 else ""
-
+ 
+    try:
+        import os as _os
+        import gaz_lookup
+        if not _os.path.exists(gaz_lookup._DEFAULT_PATH):
+            print(f"  [gaz] data file not found at {gaz_lookup._DEFAULT_PATH} "
+                  f"- falling back to Overpass geocoding")
+        else:
+            hit = gaz_lookup.lookup_city(city_name,state)
+            if hit:
+                lat, lng, display = hit
+                print(f"  [gaz] found {display} locally - skipping overpass geocoding")
+                return lat, lng, display
+            print(f"  [gaz] '{city}' not in local Gazetteer data - falling back to Overpass geocoding")
+    except ImportError as e:
+        print(f"  [gaz] gaz_lookup module not available ({e}) - falling back to overpass")
+ 
     query = f"""
 [out:json][timeout:30];
 (
@@ -131,15 +200,15 @@ def geocode_city(city: str) -> tuple[float, float, str, str, str]:
 );
 out 20;
 """.strip()
-
+ 
     elements = run_overpass(query)
-
+ 
     if not elements:
         raise ValueError(
             f"City not found: '{city}'. "
             "Use 'City, State' format such as 'Atlanta, GA'."
         )
-
+ 
     # State abbreviation → full name mapping for broader matching
     state_names = {
         "AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas",
@@ -156,27 +225,27 @@ out 20;
         "VT": "Vermont", "VA": "Virginia", "WA": "Washington", "WV": "West Virginia",
         "WI": "Wisconsin", "WY": "Wyoming", "DC": "District of Columbia",
     }
-
+ 
     chosen = elements[0]  # fallback
-
+ 
     if state:
         state_upper = state.upper()
         state_full  = state_names.get(state_upper, "").lower()
-
+ 
         for el in elements:
             tags = el.get("tags", {})
-
+ 
             # Check all state-related tags OSM uses
             st_code = (tags.get("addr:state", "") or
                        tags.get("is_in:state_code", "") or
                        tags.get("ISO3166-2", "")).upper()
             st_name = (tags.get("is_in:state", "") or
                        tags.get("addr:state", "")).lower()
-
+ 
             # Match by abbreviation (GA) or full name (Georgia)
             code_match = state_upper in st_code
             name_match = state_full and state_full in st_name
-
+ 
             if code_match or name_match:
                 chosen = el
                 break
@@ -208,7 +277,7 @@ out tags;
                     break
                 except Exception:
                     continue
-
+ 
     tags = chosen.get("tags", {})
     name = tags.get("name", city_name)
     state_tag = (tags.get("addr:state") or
@@ -232,10 +301,22 @@ out tags;
     except Exception:
         state_fips = "-"
         county_fips = "-"
-
+ 
     display = f"{name}, {state_tag}" if state_tag else name
     return chosen["lat"], chosen["lon"], display
-
+ 
+FIPS_TO_STATE = {
+    "01": "AL", "02": "AK", "04": "AZ", "05": "AR", "06": "CA", "08": "CO",
+    "09": "CT", "10": "DE", "11": "DC", "12": "FL", "13": "GA", "15": "HI",
+    "16": "ID", "17": "IL", "18": "IN", "19": "IA", "20": "KS", "21": "KY",
+    "22": "LA", "23": "ME", "24": "MD", "25": "MA", "26": "MI", "27": "MN",
+    "28": "MS", "29": "MO", "30": "MT", "31": "NE", "32": "NV", "33": "NH",
+    "34": "NJ", "35": "NM", "36": "NY", "37": "NC", "38": "ND", "39": "OH",
+    "40": "OK", "41": "OR", "42": "PA", "44": "RI", "45": "SC", "46": "SD",
+    "47": "TN", "48": "TX", "49": "UT", "50": "VT", "51": "VA", "53": "WA",
+    "54": "WV", "55": "WI", "56": "WY", "72": "PR",
+}
+ 
 def get_fips_from_coords(lat:float,lng:float) -> tuple[str,str]:
     try:
         url = "https://geocoding.geo.census.gov/geocoder/geographies/coordinates"
@@ -252,7 +333,7 @@ def get_fips_from_coords(lat:float,lng:float) -> tuple[str,str]:
     except Exception as e:
         print(f"  [fips] lookup failed: {e}")
         return "-","-"
-
+ 
 def build_store_query(lat:float,lng:float,radius_km:float) -> str:
     radius_m = int(radius_km * 1000)
     return f"""
@@ -265,7 +346,7 @@ def build_store_query(lat:float,lng:float,radius_km:float) -> str:
 );
 out center tags;
 """.strip()
-
+ 
 def build_mall_query(lat:float,lng:float,radius_km:float) -> str:
     radius_m = int(radius_km * 1000)
     return f"""
@@ -278,14 +359,14 @@ def build_mall_query(lat:float,lng:float,radius_km:float) -> str:
 );
 out center tags;
 """.strip()
-
+ 
 def build_county_query(lat:float, lng: float) -> str:
     return f"""
 [out:json][timeout:15];
 is_in({lat}, {lng});
 out tags;
 """.strip()
-
+ 
 def run_overpass(query: str, retries: int = 3) -> list:
     last_error = None
     for mirror in overpass_mirrors:
@@ -325,7 +406,7 @@ def run_overpass(query: str, retries: int = 3) -> list:
                 raise RuntimeError(f"Overpass query failed: {e}") from e
         print(f"  [warn] {mirror} exhausted, moving to next mirror...")
     raise RuntimeError(f"All Overpass mirrors failed. Last error: {last_error}")
-
+ 
 def is_anchor(name:str) -> bool:
     if not name:
         return False
@@ -335,7 +416,7 @@ def is_anchor(name:str) -> bool:
         if re.search(pattern, n):
             return True
     return False
-
+ 
 def is_subbrand(name:str) -> bool:
     if not name:
         return False
@@ -343,7 +424,7 @@ def is_subbrand(name:str) -> bool:
     matches_anchor = any(re.search(r'\b' + re.escape(b) + r'\b', n) for b in anchor_brands)
     matches_noise  = any(re.search(r'\b' + re.escape(noise) + r'\b', n) for noise in subbrand_noise)
     return matches_anchor and matches_noise
-
+ 
 street_types = {
     "street", "st", "dr", "drive", "ln", "lane", "blvd", "boulevard", "way","rd","road", "ave", "avenue", "ct", "court", "pl", "place","cir", "circle",
     "hwy", "highway", "pkwy", "parkway", "trail", "trl", "loop", "run", "expy", "expressway"
@@ -360,11 +441,11 @@ def is_valid_address(address:str) -> bool:
     if not tokens[0].isdigit():
         return False
     return True
-
+ 
 def extract_stores(elements:list) -> list[Store]:
     stores = []
     seen = set()
-
+ 
     for el in elements:
         tags = el.get("tags",{})
         name = tags.get("name") or tags.get("brand") or ""
@@ -372,18 +453,18 @@ def extract_stores(elements:list) -> list[Store]:
             continue
         if is_subbrand(name):
             continue
-
-
+ 
+ 
         lat = el.get("lat") or (el.get("center") or {}).get("lat")
         lng = el.get("lon") or (el.get("center") or {}).get("lon")
         if lat is None or lng is None:
             continue
-
+ 
         key = (round(lat,4), round(lng,4))
         if key in seen:
             continue
         seen.add(key)
-
+ 
         addr_city = tags.get("addr:city","")
         address_parts = [
             tags.get("addr:housenumber",""),
@@ -391,7 +472,7 @@ def extract_stores(elements:list) -> list[Store]:
             addr_city,
         ]
         address = " ".join(p for p in address_parts if p).strip()
-
+ 
         stores.append(Store(
             name=name,
             lat=lat,
@@ -401,9 +482,9 @@ def extract_stores(elements:list) -> list[Store]:
             city = addr_city,
             is_anchor_store= is_anchor(name),
         ))
-
+ 
     return stores
-
+ 
 def haversine_m(lat1,lng1,lat2,lng2) -> float:
     r = 6_371_000
     dlat = math.radians(lat2-lat1)
@@ -414,11 +495,11 @@ def haversine_m(lat1,lng1,lat2,lng2) -> float:
          *math.sin(dlng/2) ** 2
          )
     return r*2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
-
+ 
 def build_plazas (stores: list[Store], radius_miles: float, min_other_tenants: int) -> list[Plaza]:
     radius_m = radius_miles * 1609.34
     anchors = [s for s in stores if s.is_anchor_store]
-
+ 
     used = set()
     anchor_groups: list[list[Store]] = []
     for i, a in enumerate(anchors):
@@ -433,14 +514,14 @@ def build_plazas (stores: list[Store], radius_miles: float, min_other_tenants: i
                 group.append(b)
                 used.add(j)
         anchor_groups.append(group)
-
+ 
     plazas = []
     for plaza_anchors in anchor_groups:
         clat = sum(a.lat for a in plaza_anchors) / len(plaza_anchors)
         clng = sum(a.lng for a in plaza_anchors) / len(plaza_anchors)
-
+ 
         anchor_coords = {(round(a.lat, 4), round(a.lng, 4)) for a in plaza_anchors}
-
+ 
         tenants = []
         for s in stores:
             coord = (round(s.lat, 4), round(s.lng, 4))
@@ -449,7 +530,7 @@ def build_plazas (stores: list[Store], radius_miles: float, min_other_tenants: i
             d = haversine_m(clat, clng, s.lat, s.lng)
             if d <= radius_m:
                 tenants.append(s)
-
+ 
         seen_coords = set()
         unique_tenants = []
         for t in tenants:
@@ -457,16 +538,16 @@ def build_plazas (stores: list[Store], radius_miles: float, min_other_tenants: i
             if coord not in seen_coords:
                 seen_coords.add(coord)
                 unique_tenants.append(t)
-
+ 
         non_anchor_tenants = [t for t in unique_tenants if not t.is_anchor_store]
         extra_anchor_tenants = [t for t in unique_tenants if t.is_anchor_store]
         plaza_anchors = plaza_anchors + extra_anchor_tenants
-
+ 
         if len(non_anchor_tenants) >= min_other_tenants:
             plazas.append(Plaza(anchors=plaza_anchors, tenants=non_anchor_tenants))
-
+ 
     return plazas
-
+ 
 def deduplicate_plaza_stores(plazas: list[Plaza]) -> list[Plaza]:
     def dedupe_list(items:list[Store]) -> list[Store]:
         seen_brands: dict[str,Store] = {}
@@ -481,9 +562,9 @@ def deduplicate_plaza_stores(plazas: list[Plaza]) -> list[Plaza]:
     for plaza in plazas:
         plaza.anchors = dedupe_list(plaza.anchors)
         plaza.tenants = dedupe_list(plaza.tenants)
-
+ 
     plazas_sorted = sorted(plazas, key = lambda p: len(p.all_stores), reverse = True)
-
+ 
     global_seen: set[tuple] = set()
     final_plazas = []
     for plaza in plazas_sorted:
@@ -500,15 +581,15 @@ def deduplicate_plaza_stores(plazas: list[Plaza]) -> list[Plaza]:
                 new_tenants.append(t)
         plaza.anchors = new_anchors
         plaza.tenants = new_tenants
-
+ 
         if len(plaza.anchors) >= 1 and len(plaza.tenants) >= min_other_tenants:
             final_plazas.append(plaza)
     return final_plazas
-
+ 
 def merge_same_name_plazas(plazas: list[Plaza]) -> list[Plaza]:
     named: dict[str,Plaza] = {}
     unnamed: list[Plaza] = []
-
+ 
     for plaza in plazas:
         if not plaza.mall_name:
             unnamed.append(plaza)
@@ -522,9 +603,9 @@ def merge_same_name_plazas(plazas: list[Plaza]) -> list[Plaza]:
                 existing.tenants.extend(plaza.tenants)
                 if not is_valid_address(existing.mall_address) and is_valid_address(plaza.mall_address):
                     existing.mall_address = plaza.mall_address
-
+ 
     merged = list(named.values()) + unnamed
-
+ 
     def dedupe_list(items: list[Store]) -> list[Store]:
         seen_brands: dict[str, Store] = {}
         for store in items:
@@ -545,7 +626,16 @@ def merge_same_name_plazas(plazas: list[Plaza]) -> list[Plaza]:
         key = lambda p: len(p.all_stores),
         reverse = True,
     )
-
+ 
+def attach_plaza_radius(plazas:list[Plaza], base_radius_m: float) -> None:
+    for p in plazas:
+        clat, clng = p.center
+        max_dist = max(
+            (haversine_m(clat,clng, s.lat, s.lng) for s in p.all_stores),
+            default = base_radius_m,
+        )
+        p.radius_m = max(max_dist * 1.15, base_radius_m)
+ 
 def attach_mall_names(plazas: list[Plaza], mall_elements:list)-> None:
     malls = []
     for el in mall_elements:
@@ -564,8 +654,8 @@ def attach_mall_names(plazas: list[Plaza], mall_elements:list)-> None:
         ]
         address = " ".join(p for p in address_parts if p).strip()
         malls.append((name, lat, lng, address))
-
-
+ 
+ 
     for plaza in plazas:
         clat,clng = plaza.center
         best_name,best_addr,best_dist = None, "", float("inf")
@@ -576,9 +666,9 @@ def attach_mall_names(plazas: list[Plaza], mall_elements:list)-> None:
                 best_name = name
                 best_addr = address
         plaza.mall_name = best_name or ""
-        plaza.mall_address = best_addr or ""
-
-
+        plaza.mall_address = best_addr if is_valid_address(best_addr) else ""
+ 
+ 
 def lookup_county(lat: float, lng: float) -> str:
     sb = get_supabase()
     if sb:
@@ -595,7 +685,7 @@ def lookup_county(lat: float, lng: float) -> str:
                 return result.data[0]["county"]
         except Exception:
             pass
-
+ 
     county = "-"
     try:
         elements = run_overpass(build_county_query(lat, lng))
@@ -607,7 +697,7 @@ def lookup_county(lat: float, lng: float) -> str:
                 break
     except Exception:
         pass
-
+ 
     if sb and county != "-":
         try:
             sb.table("county_cache").upsert({
@@ -617,10 +707,10 @@ def lookup_county(lat: float, lng: float) -> str:
             }, on_conflict="lat_key,lng_key").execute()
         except Exception:
             pass
-
+ 
     return county
-
-
+ 
+ 
 def attach_counties(plazas: list[Plaza]) -> None:
     seen: dict[str, str] = {}
     for i, plaza in enumerate(plazas):
@@ -632,7 +722,7 @@ def attach_counties(plazas: list[Plaza]) -> None:
             time.sleep(0.1) 
         plaza.county = seen[key]
     print(" " * 50, end="\r")
-
+ 
 def score_plazas(plazas:list, state_fips: str, county_fips: str) -> None:
     try:
         from pull_demographics import profile_from_coords
@@ -647,15 +737,15 @@ def score_plazas(plazas:list, state_fips: str, county_fips: str) -> None:
         "In Line": 0.5,
         "Visibility": 0.85,
     }
-
+ 
     total = len(plazas)
     seen: dict[str,dict] = {}
     for i, plaza in enumerate(plazas):
         clat,clng = plaza.center
         key = f"{round(clat,3)},{round(clng,3)}"
-
+ 
         print(f"  [scoring] {i+1}/{total} {plaza.label[:45]}...", end ="\r")
-
+ 
         if key in seen:
             plaza.scores = seen[key]
             continue
@@ -676,9 +766,28 @@ def score_plazas(plazas:list, state_fips: str, county_fips: str) -> None:
             plaza.scores = {}
     print(" " * 60, end ="\r")
     print(f"  [scoring] Done - {len(seen)} unique locations scored")
-
-
-
+ 
+def _leasing_popup_html(p) -> str:
+    records = p.broker_records if hasattr(p, "broker_records") else []
+    if not records:
+        return "<br><br><b>Leasing:</b> no broker contact found"
+    parts = ["<br><br><b>Leasing contact(s):</b><br>"]
+    for r in records:
+        if r["brokerage"] != "-" and r["name"] != "-":
+            label = f"{r['brokerage']} \u2014 {r['name']}"
+        elif r["brokerage"] != "-":
+            label = r["brokerage"]
+        elif r["name"] != "-":
+            label = r["name"]
+        else:
+            label = "Broker"
+        if r["url"]:
+            parts.append(f'<a href="{r["url"]}" target="_blank" rel="noopener">{label}</a><br>')
+        else:
+            parts.append(f"{label}<br>")
+    return "".join(parts)
+ 
+ 
 def js_escape(s:str) -> str:
     return (s.replace("\\", "\\\\")
              .replace("'","\\'")
@@ -694,14 +803,14 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
         )
     if not plazas:
         return
-
+ 
     # Center the map on the average of all cluster centers
     all_lats = [p.center[0] for p in plazas]
     all_lngs = [p.center[1] for p in plazas]
     map_lat = sum(all_lats) / len(all_lats)
     map_lng = sum(all_lngs) / len(all_lngs)
     base_radius_m = radius_miles * 1609.34
-
+ 
     coord_to_color = {}
     for plaza_id, p in enumerate(plazas):
         color = "#e74c3c" if p.mall_name else "#3498db"
@@ -715,26 +824,26 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
     for s in all_stores:
         sname = js_escape(s.name)
         saddr = js_escape(s.address if s.address else "-")
-
+ 
         key = (round(s.lat, 4), round(s.lng, 4))
-
+ 
         if key in coord_to_color:
             info = coord_to_color[key]
-
+ 
             color = info["color"]
             plaza_label = info["label"]
             plaza_id = info["id"]
-
+ 
             if s.is_anchor_store:
                 dot_color = "#f39c12"
             else:
                 dot_color = color
-
+ 
         else:
             plaza_label = "Standalone / Not in Plaza"
             plaza_id = -1
             dot_color = "#27ae60"
-
+ 
         store_js.append(
             f"addStore("
             f"{s.lat}, "
@@ -748,23 +857,20 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
             f");"
         )
     stores_code = "\n".join(store_js)
-
+ 
     plaza_js = []
     for plaza_id,p in enumerate(plazas):
         clat, clng = p.center
-        max_dist = max(
-            (haversine_m(clat,clng,s.lat,s.lng) for s in p.all_stores),
-            default = base_radius_m,
-        )
-        plaza_radius_m = max(max_dist*1.15,base_radius_m)
+        plaza_radius_m = p.radius_m if p.radius_m else base_radius_m
         anchors_list = js_escape(p.anchor_names)
         tenants_list = js_escape(p.tenant_names)
         label       = js_escape(p.label)
         address     = js_escape(p.display_address)
         county      = js_escape(p.county)
         city        = js_escape(p.display_city)
+        leasing_html = js_escape(_leasing_popup_html(p))
         color = "#e74c3c" if p.mall_name else "#3498db"
-
+ 
         plaza_js.append(
             f"addPlaza("
             f"{clat}, "
@@ -779,13 +885,14 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
             f"'{anchors_list}', "
             f"{len(p.tenants)}, "
             f"'{tenants_list}', "
-            f"'{color}'"
+            f"'{color}', "
+            f"'{leasing_html}'"
             f");"
         )
-
-
+ 
+ 
     plazas_code = "\n".join(plaza_js)
-
+ 
     html = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -810,16 +917,15 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
 <div id='map'></div>
 <script>
   var map = L.map('map').setView([{map_lat}, {map_lng}], 12);
-
+ 
   L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
     attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     maxZoom: 19
   }}).addTo(map);
-
-  // FIX 1: Explicitly initialize the tracking arrays
+ 
   var plazasData = [];
   var storesData = [];
-
+ 
   var layerMultiAnchor = L.layerGroup().addTo(map);
   var layerSingleAnchor = L.layerGroup().addTo(map);
   var layerPlazaCenters = L.layerGroup().addTo(map);
@@ -829,7 +935,7 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
   var layerHighDensity = L.layerGroup().addTo(map);
   var layerLowDensity = L.layerGroup().addTo(map);
   var countyLayers = {{}};
-
+ 
   function getOrCreateCountyLayer(county) {{
     if (!county || county === '-') county = 'Unknown';
     if (!countyLayers[county]) {{
@@ -837,11 +943,12 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
     }}
     return countyLayers[county];
   }}
-
-  function addPlaza(lat, lng, radius_m, plazaId, name, address, county, city, numAnchors, anchors, numTenants, tenants, color) {{
+ 
+  function addPlaza(lat, lng, radius_m, plazaId, name, address, county, city, numAnchors, anchors, numTenants, tenants, color, leasingHtml) {{
     var popup = '<b>' + name + '</b><br>'
       + (address !== '-' ? address + '<br>' : '')
       + city + (county !== '-' ? ', ' + county + ' County' : '') + '<br>'
+      + leasingHtml
       + '<br><b>' + numAnchors + ' anchor(s): </b><br>'
       + anchors.split(', ').join('<br>')
       + '<br><br><b>' + numTenants + ' other tenant(s):</b><br>'
@@ -859,18 +966,18 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
     }} else {{
       layerSingleAnchor.addLayer(circle);
     }}
-
+ 
     var center = L.circleMarker([lat,lng], {{
         radius: 9,
         color: '#fff',
         fillColor: '#8e44ad',
         fillOpacity: 1,
         weight: 2
-    }}).bindPopup(popup).bindTooltip(name, {{permanent: false, direction: 'top'}});
-
+    }}).bindPopup(popup, {{maxHeight: 320, autoPanPadding: [20, 20]}}).bindTooltip(name, {{permanent: false, direction: 'top'}});
+ 
     var cleanCounty = (!county || county === '-') ? 'Unknown' : county;
     getOrCreateCountyLayer(cleanCounty);
-
+ 
     plazasData.push({{
         circle: circle,
         center: center,
@@ -881,7 +988,7 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
         numTenants: numTenants
     }});
   }}
-
+ 
   function addStore(lat, lng, name, address, color, plazaId, plaza, isAnchor) {{
     var size = isAnchor ? 11 : 9;
     var icon = L.divIcon({{
@@ -908,24 +1015,24 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
       isAnchor: isAnchor
     }});
   }}
-
+ 
   function updateVisibility() {{
     plazasData.forEach(function(p) {{
       var anchorMatch = (p.numAnchors > 1) ? map.hasLayer(layerMultiAnchor): map.hasLayer(layerSingleAnchor);
       var densityMatch = (p.numTenants >= 10) ? map.hasLayer(layerHighDensity) : map.hasLayer(layerLowDensity);
       var countyLayer = countyLayers[p.county];
       var countyMatch = countyLayer ? map.hasLayer(countyLayer) : true;
-
+ 
       var plazaVisible = anchorMatch && densityMatch && countyMatch;
       p.isActive = plazaVisible;
-
+ 
       if (plazaVisible) {{
         // FIX 2: Changed map.has() to map.hasLayer()
         if (!map.hasLayer(p.circle)) p.circle.addTo(map);
       }} else {{
         if (map.hasLayer(p.circle)) map.removeLayer(p.circle);
       }}
-
+ 
       if (plazaVisible && map.hasLayer(layerPlazaCenters)) {{
         if (!map.hasLayer(p.center)) p.center.addTo(map);
       }} else {{
@@ -935,23 +1042,23 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
       
     storesData.forEach(function(s) {{
         var storeVisible = false;
-
+ 
         if (s.plazaId === -1) {{
             // Standalone store
             storeVisible = map.hasLayer(layerStandalone);
-
+ 
         }} else {{
             var parentPlaza = plazasData.find(function(p) {{
                 return p.id === s.plazaId;
             }});
-
+ 
             if (parentPlaza && parentPlaza.isActive) {{
                 storeVisible = s.isAnchor
                     ? map.hasLayer(layerAnchors)
                     : map.hasLayer(layerTenants);
             }}
         }}
-
+ 
         if (storeVisible) {{
             if (!map.hasLayer(s.marker))
                 s.marker.addTo(map);
@@ -961,13 +1068,13 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
         }}
     }});
   }}
-
+ 
   {plazas_code}
   {stores_code}
-
+ 
   map.on('overlayadd overlayremove', updateVisibility);
   updateVisibility();
-
+ 
   var overlays = {{
     '🔴  Multi-anchor plazas (2+ anchors)': layerMultiAnchor,
     '⭕  Single-anchor plazas': layerSingleAnchor,
@@ -979,7 +1086,7 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
     '🔥  High Density Plazas (10+ tenants)': layerHighDensity,
     '🔹  Lower Density (< 10 tenants)': layerLowDensity
   }};
-
+ 
   var countyDivider = false;
   for (var county in countyLayers) {{
     if (!countyDivider) {{
@@ -988,12 +1095,12 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
     }}
     overlays['📍 ' + county] = countyLayers[county];
   }}
-
+ 
   L.control.layers(null, overlays, {{
     position: 'topright',
     collapsed: false,
   }}).addTo(map);
-
+ 
   var legend = L.control({{position: 'bottomright'}});
   legend.onAdd = function() {{
     var div = L.DomUtil.create('div', 'legend');
@@ -1010,23 +1117,23 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
 </script>
 </body>
 </html>"""
-
+ 
     with open(output_path, "w") as f:
         f.write(html)
     print(f"\n  Map saved → {output_path}  (open in any browser)")
     return output_path
-
+ 
 def print_results(plazas: list[Plaza], city_display: str, args) -> None:
     print(f"\n{'='*60}")
     print(f"  Major retail centers near {city_display}")
     print(f"  Criteria: {args.min_anchors}+ anchors, {args.min_tenants} + other tenant(s) within {args.radius} mile radius")
     print(f"{'='*60}\n")
-
+ 
     if not plazas:
         print("  No qualifying retail clusters found.")
         print("  Try lowering --min-anchors or increasing --radius.\n")
         return
-
+ 
     # Sort by county then city alphabetically
     sorted_plazas = sorted(
         plazas,
@@ -1035,9 +1142,9 @@ def print_results(plazas: list[Plaza], city_display: str, args) -> None:
             p.display_city.lower() if p.display_city and p.display_city != "-" else "zzz",
         )
     )
-
+ 
     print(f"  Found {len(sorted_plazas)} major retail center(s):\n")
-
+ 
     table_rows = [
         [
             p.label,
@@ -1048,20 +1155,26 @@ def print_results(plazas: list[Plaza], city_display: str, args) -> None:
             len(p.anchors),
             p.anchor_names,
             len(p.tenants),
-            p.tenant_names
+            p.tenant_names,
+            round(p.scores.get("aggregate_score", 0),1) if p.scores else "-",
+            p.brokerage_names
         ]
         for p in sorted_plazas
     ]
-
+ 
     print(tabulate(
         table_rows,
-        headers=["Plaza / Property Name", "State", "County", "City", "Address", "# Anchors", "Anchor Names", "# Tenants", "Other Tenants", "Sourdough Score"],
+        headers=["Plaza / Property Name", "State", "County", "City", "Address", "# Anchors", "Anchor Names", "# Tenants", "Other Tenants", "Sourdough Score", "Brokerage(s)"],
         tablefmt="simple",
     ))
     print()
  
-
-def export_to_excel(plazas, city_display, args, map_url, output_path = os.path.expanduser("~/Desktop/text.xlsx")):
+ 
+def export_to_excel(plazas, city_display, args, map_url, state:str = "-", output_path = None):
+    if output_path is None:
+        slug = city_display.lower().replace(", ", "-").replace(" ", "-")
+        output_path = os.path.expanduser(f"~/Desktop/{slug}.xlsx")
+ 
     if os.path.exists(output_path):
         from openpyxl import load_workbook
         wb = load_workbook(output_path)
@@ -1070,37 +1183,37 @@ def export_to_excel(plazas, city_display, args, map_url, output_path = os.path.e
         if "Sheet" in wb.sheetnames:
             del wb["Sheet"]
     tab_name = city_display.replace(",","").strip()[:31]
-
+ 
     if tab_name in wb.sheetnames:
         del wb[tab_name]
     ws = wb.create_sheet(title=tab_name)
-
-
-    ws.merge_cells("A1:J1")
+    headers = ["Plaza / Property Name", "State", "County", "City", "Address", "# Anchors", "Anchor Names", "# Tenants", "Other Tenants", "Sourdough Score", "Brokerage(s)", "Broker(s)", "Broker Contact(s)"]
+    last_col_letter = get_column_letter(len(headers))
+ 
+ 
+    ws.merge_cells(f"A1:{last_col_letter}1")
     title_cell = ws["A1"]
-    title_cell.value = "test"
+    title_cell.value = city_display
     title_cell.font = Font(name = "Arial", bold = True, size = 16, color = "FFFFFF")
     title_cell.fill = PatternFill("solid", start_color = "2C3E50")
     title_cell.alignment = Alignment(horizontal = "center", vertical = "center")
     ws.row_dimensions[1].height = 32
-
-    ws.merge_cells("A2:J2")
+ 
+    ws.merge_cells(f"A2:{last_col_letter}2")
     map_cell = ws["A2"]
     
     map_cell.hyperlink = map_url
     map_cell.value = "View Interactive Map (Live)" if map_url.startswith("http") else "View Interactive Map (Local)"
-
+ 
     map_cell.font = Font(name="Arial", bold = True, size = 11, color = "FFFFFF",underline="single")
     map_cell.fill = PatternFill("solid", start_color="2980B9")
     map_cell.alignment = Alignment(horizontal = "center", vertical = "center")
     ws.row_dimensions[2].height = 24
-
-    headers = ["Plaza / Property Name", "State", "County", "City", "Address", "# Anchors", "Anchor Names", "# Tenants", "Other Tenants"]
     header_fill = PatternFill("solid", start_color = "34495E")
     header_font = Font(name = "Arial", bold = True, size = 11, color = "FFFFFF")
     thin = Side(style = "thin", color = "CCCCCC")
     border = Border(left=thin, right=thin, top=thin,bottom = thin)
-
+ 
     for col, header in enumerate(headers,1):
         cell = ws.cell(row=3, column = col, value = header)
         cell.font = header_font
@@ -1108,7 +1221,7 @@ def export_to_excel(plazas, city_display, args, map_url, output_path = os.path.e
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         cell.border=border
     ws.row_dimensions[3].height=20
-
+ 
     sorted_plazas = sorted(
         plazas,
         key=lambda p: (
@@ -1116,12 +1229,11 @@ def export_to_excel(plazas, city_display, args, map_url, output_path = os.path.e
             p.display_city.lower() if p.display_city and p.display_city != "-" else "zzz",
         )
     )
-    state = args.city.split(",")[1].strip() if "," in args.city else "-"
     row_fills = [
         PatternFill("solid", start_color = "FDFEFE"),
         PatternFill("solid", start_color = "EBF5FB"),
     ]
-
+ 
     for i, plaza in enumerate(sorted_plazas):
         row = i+4
         fill = row_fills[i % 2]
@@ -1136,34 +1248,40 @@ def export_to_excel(plazas, city_display, args, map_url, output_path = os.path.e
             len(plaza.tenants),
             plaza.tenant_names,
             round(plaza.scores.get("aggregate_score",0),1) if plaza.scores else "-",
+            plaza.brokerage_names,
+            plaza.broker_names,
+            plaza.broker_contacts,
+            plaza.broker_urls
         ]
         for col, value in enumerate(data, 1):
             cell = ws.cell(row=row, column = col, value = value)
             cell.font = Font(name="Arial", size = 10)
             cell.fill = fill
             cell.border = border
-            cell.alignment = Alignment(vertical = "center", wrap_text =(col in (7,9)))
-
+            wrap_cols = {7,9,11,12,13,14}
+            cell.alignment = Alignment(vertical="center",wrap_text = (col in wrap_cols))
+ 
             if col == 5 and value and value != "-":
                 maps_url = f"https://www.google.com/maps/search/?api=1&query={requests.utils.quote(value)}"
                 cell.value = value
                 cell.hyperlink = maps_url
                 cell.font = Font(name="Arial", size=10, color = "0563C1", underline = "single")
         ws.row_dimensions[row].height = 18
-
-    for col, width in enumerate([35,8,18,18,38,10,40,10,55], 1):
+ 
+    for col, width in enumerate([35,8,18,18,38,10,40,10,55,14,30,35,45,50], 1):
         ws.column_dimensions[get_column_letter(col)].width = width
     
     ws.freeze_panes = "A4"
     wb.save(output_path)
     print(f"\n Excel Saved -> {output_path}")
-
-
+    return output_path
+ 
+ 
 def upload_map_to_github(html_path:str) -> str:
     token = os.getenv("GITHUB_TOKEN")
     username = os.getenv("GITHUB_USERNAME")
     repo_name = os.getenv("GITHUB_REPO", "retail-maps")
-
+ 
     if not token or not username:
         print("  [warn] github_token or github_username not set in .env")
         return os.path.abspath(html_path)
@@ -1172,7 +1290,7 @@ def upload_map_to_github(html_path:str) -> str:
         import github as gh
         g = gh.Github(auth=gh.Auth.Token(token))
         user = g.get_user()
-
+ 
         try:
             repo = user.get_repo(repo_name)
             print(f"  [github] Found repo: {repo_name}")
@@ -1185,7 +1303,7 @@ def upload_map_to_github(html_path:str) -> str:
             )
             time.sleep(2)
         filename = f"maps/{os.path.basename(html_path)}"
-
+ 
         with open(html_path, "r", encoding="utf-8") as f:
             content = f.read()
         
@@ -1205,118 +1323,446 @@ def upload_map_to_github(html_path:str) -> str:
                 content,
             )
             print(f"  [github] Created {filename}")
-
+ 
         try:
             repo.enable_pages(source={"branch": "main", "path": "/"})
             print(f"  [github] GitHub Pages enabled")
         except Exception:
             pass 
-
+ 
         url = f"https://{username}.github.io/{repo_name}/{filename}"
         print(f"  [github] Map live at: {url}")
         return url
-
+ 
     except Exception as e:
         print(f"  [warn] GitHub upload failed: {e}")
         print(f"  [warn] Falling back to local path.")
         return os.path.abspath(html_path)
+ 
+def _ilike_escape(s:str) -> str:
+    return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+ 
+def _match_key(s:str) -> str:
+    return _ilike_escape(" ".join((s or "").split()))
+ 
+def _find_by_proximity(sb, lat:float | None, lng: float | None, city:str,
+                       radius_m: float | None = None) -> dict | None:
+    if lat is None or lng is None:
+        return None
+    if radius_m is None:
+        radius_m = max(300.0, plaza_radius_mi * 1609.34 * 1.5)
     
+    lat_delta = radius_m / 111_000.0
+    lng_delta = radius_m / (111_000.0 * max(math.cos(math.radians(lat)), 0.1))
+ 
+    rows = (sb.table("plazas")
+              .select("id, address, lat, lng, county, last_scraped_at, "
+                      "score_all_locations, score_above_avg, score_above_950k, aggregate_score")
+              .ilike("city", _match_key(city))
+              .gte("lat", lat - lat_delta).lte("lat", lat + lat_delta)
+              .gte("lng", lng - lng_delta).lte("lng", lng + lng_delta)
+              .execute()).data or []
+    best, best_dist = None, radius_m
+    for r in rows:
+        if r.get("lat") is None or r.get("lng") is None:
+            continue
+        d = haversine_m(lat,lng,r["lat"], r["lng"])
+        if d <= best_dist:
+            best, best_dist = r, d
+    return best
+ 
+def save_one_plaza(sb, p, run_id, state:str) -> tuple[str | None, bool]:
+    name = p.label if hasattr(p,"label") else p.get("name", "")
+    address = p.display_address if hasattr(p,"display_address") else p.get("address", "-")
+    city = p.display_city if hasattr(p,"display_city") else p.get("city", "-")
+    county = p.county if hasattr(p, "county") else p.get("county", "-")
+    num_anchors = len(p.anchors) if hasattr(p,"anchors") else p.get("num_anchors", 0)
+    anchor_names = p.anchor_names if hasattr(p, "anchor_names") else p.get("anchor_names", "")
+    num_tenants = len(p.tenants) if hasattr(p,"tenants") else p.get("num_tenants", 0)
+    tenant_names = p.tenant_names if hasattr(p, "tenant_names") else p.get("tenant_names", "")
+ 
+    if hasattr(p, "center") and (p.anchors + p.tenants):
+        p_lat, p_lng = p.center
+    else:
+        p_lat = p.get("lat") if isinstance(p,dict) else None
+        p_lng = p.get("lng") if isinstance(p,dict) else None
+ 
+    p_radius_m = p.radius_m if hasattr(p, "radius_m") else p.get("radius_m") if isinstance(p,dict) else None
+ 
+    is_unnamed = (name == "Unnamed Retail Center")
+ 
+    # A plaza with no name, no address, AND no computed coordinates has no
+    # signal left to match against on a future run -- proximity matching
+    # requires lat/lng, address matching requires an address, and neither is
+    # available here. Persisting it would just accumulate an unbounded number
+    # of un-mergeable duplicates in Supabase over time. It still appears
+    # normally in this run's own Excel/map output; it's only skipped from the
+    # permanent cache.
+    if is_unnamed and address == "-" and (p_lat is None or p_lng is None):
+        return None, False
+ 
+    if is_unnamed:
+        if address == "-":
+            near = _find_by_proximity(sb, p_lat, p_lng, city)
+            existing_data = [near] if near else []
+        else:
+            result = (sb.table("plazas")
+                        .select("id, address")
+                        .eq("address", address)
+                        .eq("city", city)
+                        .limit(1)
+                        .execute())
+            existing_data = result.data
+    else:
+        result = (sb.table("plazas")
+                    .select("id, address")
+                    .eq("name", name)
+                    .eq("city", city)
+                    .limit(1)
+                    .execute())
+        existing_data = result.data
+ 
+    if existing_data:
+        plaza_id = existing_data[0]["id"]
+        existing_addr = existing_data[0].get("address", "-")
+        update_payload = {"city_run_id": run_id}
+        if address != "-" and existing_addr == "-":
+            update_payload["address"] = address
+        scores = p.scores if hasattr(p, "scores") and p.scores else {}
+        if scores.get("aggregate_score") is not None:
+            update_payload["aggregate_score"] = scores["aggregate_score"]
+            update_payload["score_all_locations"] = scores.get("score_all_locations")
+            update_payload["score_above_avg"] = scores.get("score_above_avg")
+            update_payload["score_above_950k"] = scores.get("score_above_950k")
+        if p_lat is not None and p_lng is not None:
+            update_payload["lat"] = p_lat
+            update_payload["lng"] = p_lng
+        if p_radius_m:
+            update_payload["radius_m"] = p_radius_m
+        if update_payload:
+            sb.table("plazas").update(update_payload).eq("id",plaza_id).execute()
+        return plaza_id, False
+    else:
+        inserted = sb.table("plazas").insert({
+            "city_run_id": run_id,
+            "name": name,
+            "state": state,
+            "county": county,
+            "city": city,
+            "address": address,
+            "num_anchors": num_anchors,
+            "anchor_names": anchor_names,
+            "num_tenants": num_tenants,
+            "tenant_names": tenant_names,
+            "aggregate_score": p.scores.get("aggregate_score") if hasattr(p,"scores") and p.scores else None,
+            "score_all_locations": p.scores.get("score_all_locations") if hasattr(p,"scores") and p.scores else None,
+            "score_above_avg": p.scores.get("score_above_avg") if hasattr(p,"scores") and p.scores else None,
+            "score_above_950k": p.scores.get("score_above_950k") if hasattr(p,"scores") and p.scores else None,
+            "lat": p_lat,
+            "lng": p_lng,
+            "radius_m": p_radius_m,
+        }).execute()
+        plaza_id = inserted.data[0]["id"] if inserted.data else None
+        return plaza_id, True
+ 
+def attach_existing_data(sb, plazas: list[Plaza], max_age_days: float | None = None) -> list[Plaza]:
+    needs_fresh = []
+    needs_scoring = []
+    cutoff = None
+    if max_age_days is not None:
+        cutoff = datetime.now(timezone.utc) - timedelta(days = max_age_days)
+    
+    for p in plazas:
+        name = p.label
+        address = p.display_address
+        city = p.display_city
+ 
+        select_cols = ("id, county, last_scraped_at, score_all_locations, "
+                       "score_above_avg, score_above_950k, aggregate_score")
+        if name == "Unnamed Retail Center":
+            if address == "-":
+                clat,clng = (p.center if (p.anchors + p.tenants) else (None,None))
+                match = _find_by_proximity(sb, clat, clng, city)
+            else:
+                res = (sb.table("plazas").select(select_cols)
+                         .eq("address", address).eq("city", city)
+                         .limit(1).execute())
+                match = res.data[0] if res.data else None
+        else:
+            res = (sb.table("plazas").select(select_cols)
+                     .eq("name", name).eq("city", city)
+                     .limit(1).execute())
+            match = res.data[0] if res.data else None
+        if not match:
+            p.freshly_scraped = True
+            needs_fresh.append(p)
+            continue
+ 
+        if match.get("county"):
+            p.county = match["county"]
+        if match.get("aggregate_score") is not None:
+            p.scores = {
+                "score_all_locations": match.get("score_all_locations"),
+                "score_above_avg": match.get("score_above_avg"),
+                "score_above_950k": match.get("score_above_950k"),
+                "aggregate_score": match.get("aggregate_score"),
+            }
+        if cutoff is not None:
+            last_scraped = match.get("last_scraped_at")
+            is_stale = last_scraped is None or datetime.fromisoformat(last_scraped) < cutoff
+            if is_stale:
+                p.freshly_scraped = True
+                needs_fresh.append(p)
+                continue
+        
+        if match.get("aggregate_score") is None:
+            needs_scoring.append(p)
+        plaza_id = match["id"]
+        listing_rows = (sb.table("listings")
+                          .select("brokerage, agent_name, phone, email, listing_url, source")
+                          .eq("plaza_id", plaza_id)
+                          .eq("active", True)
+                          .execute()).data or []
+        
+        p.agents = [
+            {
+                "agent_name": r.get("agent_name"),
+                "brokerage": r.get("brokerage"),
+                "phone": r.get("phone"),
+                "email": r.get("email"),
+                "listing_url": r.get("listing_url"),
+                "source": r.get("source"),
+            }
+            for r in listing_rows
+        ]
+    return needs_fresh, needs_scoring
+ 
 def save_run_to_cache(display: str, lat: float, lng: float,
                       radius_km: float, map_url: str,
-                      plazas: list, state: str) -> None:
+                      plazas: list, state: str) -> str | None:
     sb = get_supabase()
     if not sb:
-        return
+        print(f"  [cache] Skipping save for {display}: no Supabase client available")
+        return None
     try:
-        # ── Upsert city run ─────────────────────────────────────────────────
+        # Every search is its own row now -- no more one-row-per-city upsert.
+        # This is what lets History show each individual run (and its own
+        # radius/map/excel) instead of merging every search for a city ever
+        # done into a single, ever-growing entry.
         run = (sb.table("city_runs")
-                 .upsert({
+                 .insert({
                      "city":      display,
                      "display":   display,
                      "lat":       lat,
                      "lng":       lng,
                      "radius_km": radius_km,
                      "map_url":   map_url,
-                 }, on_conflict="city")
+                     "ran_at":    datetime.now(timezone.utc).isoformat(),
+                 })
                  .execute())
         run_id = run.data[0]["id"]
-
+ 
         saved   = 0
         skipped = 0
-
+ 
         for p in plazas:
-            # Support both Plaza objects and dicts
-            name    = p.label           if hasattr(p, "label")           else p.get("name", "")
-            address = p.display_address if hasattr(p, "display_address") else p.get("address", "-")
-            city    = p.display_city    if hasattr(p, "display_city")    else p.get("city", "-")
-            county  = p.county          if hasattr(p, "county")          else p.get("county", "-")
-            num_anchors  = len(p.anchors)  if hasattr(p, "anchors")      else p.get("num_anchors", 0)
-            anchor_names = p.anchor_names  if hasattr(p, "anchor_names") else p.get("anchor_names", "")
-            num_tenants  = len(p.tenants)  if hasattr(p, "tenants")      else p.get("num_tenants", 0)
-            tenant_names = p.tenant_names  if hasattr(p, "tenant_names") else p.get("tenant_names", "")
-
-            is_unnamed = (name == "Unnamed Retail Center")
-
-
-
-            existing = None
-
-            if is_unnamed:
-                if address == "-":
-                    # No name, no address — can't dedup, always insert
-                    existing_data = []
-                else:
-                    result = (sb.table("plazas")
-                                .select("id, address")
-                                .eq("address", address)
-                                .eq("city", city)
-                                .limit(1)
-                                .execute())
-                    existing_data = result.data
-            else:
-                result = (sb.table("plazas")
-                            .select("id, address")
-                            .eq("name", name)
-                            .eq("city", city)
-                            .limit(1)
-                            .execute())
-                existing_data = result.data
-
-            if existing_data:
-                existing_addr = existing_data[0].get("address", "-")
-                update_payload = {}
-                if address != "-" and existing_addr == "-":
-                    update_payload["address"] = address
-                # Always update score if we have one
-                score_val = p.scores.get("aggregate_score") if hasattr(p, "scores") and p.scores else None
-                if score_val is not None:
-                    update_payload["aggregate_score"] = score_val
-                if update_payload:
-                    sb.table("plazas").update(update_payload).eq("id", existing_data[0]["id"]).execute()
-                
-                skipped += 1
-            else:
-                # New plaza — insert
-                sb.table("plazas").insert({
-                    "city_run_id":  run_id,
-                    "name":         name,
-                    "state":        state,
-                    "county":       county,
-                    "city":         city,
-                    "address":      address,
-                    "num_anchors":  num_anchors,
-                    "anchor_names": anchor_names,
-                    "num_tenants":  num_tenants,
-                    "tenant_names": tenant_names,
-                    "aggregate_score": p.scores.get("aggregate_score") if hasattr(p,"scores") and p.scores else None,
-                }).execute()
+            _plaza_id, was_new = save_one_plaza(sb, p, run_id, state)
+            if was_new:
                 saved += 1
-
+            else:
+                skipped += 1
+            if _plaza_id and getattr(p, "freshly_scraped", False):
+                sb.table("plazas").update({
+                    "last_scraped_at": datetime.now(timezone.utc).isoformat()
+                }).eq("id", _plaza_id).execute()
+            # A plaza can belong to many runs (e.g. the same shopping center
+            # turns up whether you search this city at 3mi or 30mi) -- record
+            # this run's membership in the join table rather than relying on
+            # plazas.city_run_id, which can only ever point at one run.
+            if _plaza_id:
+                sb.table("run_plazas").upsert({
+                    "city_run_id": run_id,
+                    "plaza_id": _plaza_id,
+                }, on_conflict="city_run_id,plaza_id").execute()
+ 
         print(f"  [cache] {display}: {saved} new plazas saved, {skipped} already existed")
-
+        return run_id
+ 
     except Exception as e:
         print(f"  [cache] Save failed: {e}")
-
+        return None
+ 
+ 
+min_cached_plazas_to_trust = 3
+def load_cached_plazas(lat: float, lng: float, radius_km:float) -> list[Plaza]:
+    sb = get_supabase()
+    if not sb:
+        return []
+    
+    try:
+        lat_delta = radius_km / 111.0
+        lng_delta = radius_km / (111.0 * max(math.cos(math.radians(lat)),0.1))
+ 
+        rows = (sb.table("plazas")
+                  .select("*")
+                  .gte("lat", lat - lat_delta).lte("lat", lat+ lat_delta)
+                  .gte("lng", lng - lng_delta).lte("lng", lng+lng_delta)
+                  .execute()).data or []
+ 
+        nearby_rows = []
+        for row in rows:
+            p_lat, p_lng = row.get("lat"), row.get("lng")
+            if p_lat is None or p_lng is None:
+                continue
+            if haversine_m(lat, lng, p_lat, p_lng) / 1000.0 <= radius_km:
+                nearby_rows.append(row)
+        
+        if len(nearby_rows) < min_cached_plazas_to_trust:
+            print(f"  [cache] Only {len(nearby_rows)} plaza(s) already known within {radius_km}km -"
+                  f"treating as a cache miss and doing a fresh OSMdiscovery instead")
+            return []
+        
+        plazas = []
+        for row in nearby_rows:
+            p_lat = row.get("lat")
+            p_lng = row.get("lng")
+            name = row.get("name") or "Unnamed Retail Center"
+            address = row.get("address") or "-"
+ 
+            def make_placeholder_stores(count,names_str, is_anchor):
+                names = [n.strip() for n in (names_str or "").split(",") if n.strip()]
+                if not names:
+                    label = "Anchor" if is_anchor else "Tenant"
+                    names = [f"{label} {i+1}" for i in range(count)]
+                return [
+                    Store(name=n, lat=p_lat,lng=p_lng,
+                          address=address, city=row.get("city") or"",
+                          is_anchor_store=is_anchor)
+                    for n in names
+                ]
+            plaza = Plaza(
+                anchors = make_placeholder_stores(row.get("num_anchors", 0), row.get("anchor_names"), True),
+                tenants = make_placeholder_stores(row.get("num_tenants",0), row.get("tenant_names"), False),
+                mall_name = ("" if name == "Unnamed Retail Center" else name),
+                mall_address = ("" if address == "-" else address),
+                county = row.get("county") or "-",
+                scores = ({"aggregate_score": row["aggregate_score"]} if row.get("aggregate_score") is not None else {}),
+                radius_m = row.get("radius_m") or 0.0
+            )
+            plazas.append(plaza)
+        return plazas
+    except Exception as e:
+        print(f"  [cache] Load Failed: {e}")
+        return []
+ 
+ 
+def run_city_search(city: str, search_km: float | None=None, radius_mi: float | None=None,
+                     min_anchors: int | None=None, min_tenants: int | None=None,
+                     lat: float | None=None, lng: float | None=None, rescrape_after_days: float | None=None) -> dict:
+    args = argparse.Namespace(
+        city=city,
+        radius = radius_mi if radius_mi is not None else plaza_radius_mi,
+        min_anchors=min_anchors if min_anchors is not None else min_anchors_per_plaza,
+        min_tenants=min_tenants if min_tenants is not None else min_other_tenants,
+        search_km=search_km if search_km is not None else search_radius_km,
+        lat=lat, lng=lng,
+        rescrape_after_days=rescrape_after_days,
+    )
+ 
+    def _empty(reason: str) -> dict:
+        print(f"  {reason}")
+        return {"ok": False, "reason": reason, "plazas": [], "map_path": None,
+                "map_url": None, "excel_path": None, "state": "-", "display": args.city,
+                "lat": None, "lng": None}
+ 
+    print(f"\n  Searching for major retail centers in: {args.city}")
+ 
+    print("  [1/6] Geocoding city...")
+    if args.lat and args.lng:
+        lat, lng, display = args.lat, args.lng, args.city
+        print(f"        \u2192 Using provided coordinates: ({lat}, {lng})")
+    else:
+        lat, lng, display = geocode_city(args.city)
+        print(f"        \u2192 {display} ({lat:.4f}, {lng:.4f})")
+    state_fips,county_fips = get_fips_from_coords(lat,lng)
+    print(f"     -> FIPS: state={state_fips}, county = {county_fips}")
+    time.sleep(1)
+ 
+    state = FIPS_TO_STATE.get(state_fips.zfill(2) if state_fips and state_fips != "-" else "", "") \
+        or (args.city.split(",")[1].strip() if "," in args.city else "-")
+ 
+    print("  [2/6] Querying OpenStreetMap for stores (may take 10-20s)...")
+    store_elements = run_overpass(build_store_query(lat,lng,args.search_km))
+    print(f"   -> {len(store_elements)} raw elements returned")
+ 
+    print("  [3/6] querying for mall/retail area names...")
+    try:
+        mall_elements = run_overpass(build_mall_query(lat, lng, args.search_km))
+        print(f"   -> {len(mall_elements)} mall/retail areas found")
+    except RuntimeError as e:
+        print(f"  [warn] Mall name lookup failed ({e}). Centers will show as 'Unnamed'.")
+        mall_elements = []
+ 
+    stores = extract_stores(store_elements)
+    n_anchors = sum(1 for s in stores if s.is_anchor_store)
+    print(f"\n  Total shops identified: {len(stores)}  ({n_anchors} are anchors)")
+    if n_anchors == 0 or not stores:
+        return _empty("No anchor stores found. OSM data may be sparse for this area.")
+ 
+    print("  [4/6] Building plazas around each anchor and gathering tenants...")
+    plazas = build_plazas(stores,args.radius, args.min_tenants)
+    attach_mall_names(plazas, mall_elements)
+    plazas = deduplicate_plaza_stores(plazas)
+    plazas = merge_same_name_plazas(plazas)
+    attach_plaza_radius(plazas, args.radius * 1609.34)
+ 
+    sb = get_supabase()
+    print(f"  Checking Supabase for {len(plazas)} known plazas...")
+    new_plazas, needs_scoring = attach_existing_data(sb, plazas, args.rescrape_after_days) if sb else (plazas, [])
+    print(f"  -> {len(plazas) - len(new_plazas)} matched existing "
+          f"(county + score + listings reused), {len(new_plazas)} need a fresh look")
+ 
+    if needs_scoring:
+        print(f"  Scoring {len(needs_scoring)} previously-unscored matched plaza(s)...")
+        score_plazas(needs_scoring, state_fips, county_fips)
+    if new_plazas:
+        print(f"  [5/6] looking up counties for {len(new_plazas)} plazas...")
+        attach_counties(new_plazas)
+ 
+        print(f"  Scoring {len(new_plazas)} plazas...")
+        score_plazas(new_plazas,state_fips,county_fips)
+ 
+        print(f"\n  [6/6] Searching brokerage sites for leasing broker contacts...")
+        try:
+            from scraper import scrape_listings
+            scrape_listings(new_plazas,display,state)
+        except Exception as e:
+            print(f"  [warn] Scraping failed/unavailable: {e}")
+            print(f"  [warn] continuing without broker contact columns.")
+    else:
+        print("  [5/6]-[6/6] Nothing new - all plazas matched existing Supabase data")
+ 
+    print_results(plazas,display, args)
+ 
+    # Include the search radius in the filename -- otherwise re-running the
+    # same city at a different radius silently overwrites the previous map.
+    search_mi = round(args.search_km / 1.60934, 1)
+    map_slug = display.lower().replace(", ", "-").replace(" ", "-")
+    os.makedirs("maps", exist_ok=True)
+    map_output_path = os.path.join("maps", f"{map_slug}-{search_mi}mi.html")
+ 
+    map_path = generate_map(plazas,display, args.radius, stores, output_path=map_output_path)
+    print("\n  Uploading to GitHub")
+    map_url = upload_map_to_github(map_path)
+ 
+    excel_output_path = os.path.expanduser(f"~/Desktop/{map_slug}-{search_mi}mi.xlsx")
+    excel_path = export_to_excel(plazas,display, args, map_url, state=state, output_path=excel_output_path)
+    run_id = save_run_to_cache(display,lat,lng,args.search_km,map_url,plazas,state)
+ 
+    return {"ok": True, "reason": None, "plazas": plazas, "map_path": map_path,
+            "map_url": map_url, "excel_path": excel_path, "state": state,
+            "display": display, "lat": lat, "lng": lng, "run_id": run_id}
+ 
  
 def main():
     parser = argparse.ArgumentParser(
@@ -1331,64 +1777,20 @@ def main():
                         help="Latitude to bypass geocoding (e.g. 42.1072)")
     parser.add_argument("--lng", type=float, default=None,
                         help="Longitude to bypass geocoding (e.g. -87.7352)")
+    parser.add_argument("--rescrape-after-days", type=float, default=None,
+                        help="Re-scrape brokers if older than a certain amount")
     args = parser.parse_args()
-
-    print(f"\n  Searching for major retail centers in: {args.city}")
-
-    print("  [1/5] Geocoding city...")
-    if args.lat and args.lng:
-        # Bypass geocoding — use provided coordinates directly
-        lat, lng, display = args.lat, args.lng, args.city
-        print(f"        → Using provided coordinates: ({lat}, {lng})")
-    else:
-        lat, lng, display = geocode_city(args.city)
-        print(f"        → {display} ({lat:.4f}, {lng:.4f})")
-    state_fips,county_fips = get_fips_from_coords(lat,lng)
-    print(f"     -> FIPS: state={state_fips}, county = {county_fips}")    
-    time.sleep(1)
  
-    print("  [2/5] Querying OpenStreetMap for stores (may take 10–20s)...")
-    store_elements = run_overpass(build_store_query(lat, lng, args.search_km))
-    print(f"        → {len(store_elements)} raw elements returned")
- 
-    print("  [3/5] Querying for mall/retail area names...")
-    try:
-        mall_elements = run_overpass(build_mall_query(lat, lng, args.search_km))
-        print(f"        → {len(mall_elements)} mall/retail areas found")
-    except RuntimeError as e:
-        print(f"  [warn] Mall name lookup failed ({e}). Centers will show as 'Unnamed'.")
-        mall_elements = []
- 
-    stores = extract_stores(store_elements)
-    n_anchors = sum(1 for s in stores if s.is_anchor_store)
-    print(f"\n  Total shops identified: {len(stores)}  ({n_anchors} are anchors)")
-    if n_anchors == 0:
-        print("  No anchor stores found. OSM data may be sparse for this area.")
-        sys.exit(0)
-    if not stores:
-        print("  No anchor stores found. OSM data may be sparse for this area.")
-        sys.exit(0)
- 
-    print("  [4/5] Building plazas around each anchor and gathering tenants...")
-    plazas = build_plazas(stores, args.radius, args.min_tenants)
-    attach_mall_names(plazas, mall_elements)
-    plazas = deduplicate_plaza_stores(plazas)
-    plazas = merge_same_name_plazas(plazas)
- 
-    print(f"  [5/5] Looking up counties for {len(plazas)} plazas...")
-    attach_counties(plazas)
-
-    print(f"  Scoring {len(plazas)} plazas...")
-    score_plazas(plazas,state_fips,county_fips)
- 
-    print_results(plazas, display, args)
-    map_path = generate_map(plazas, display, args.radius, stores)
-    print("\n  Uploading to GitHub...")
-    map_url = upload_map_to_github(map_path)
-    export_to_excel(plazas, display, args, map_url)
-    state = args.city.split(",")[1].strip() if "," in args.city else "-"
-    save_run_to_cache(display,lat,lng,args.search_km,map_url,plazas,state)
- 
+    run_city_search(
+        args.city,
+        search_km=args.search_km,
+        radius_mi=args.radius,
+        min_anchors=args.min_anchors,
+        min_tenants=args.min_tenants,
+        lat=args.lat,
+        lng=args.lng,
+        rescrape_after_days=args.rescrape_after_days,
+    )
  
 if __name__ == "__main__":
     main()

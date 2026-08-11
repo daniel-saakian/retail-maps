@@ -1,16 +1,16 @@
 import os
 from supabase import create_client
 from datetime import datetime, timedelta, timezone
-
+ 
 cache_ttl_days = 30
-
+ 
 def get_client():
     url = os.getenv("SUPABASE_URL")
     key = os.getenv("SUPABASE_KEY")
     if not url or not key:
         return None
     return create_client(url,key)
-
+ 
 def get_cached_run(lat:float, lng:float, radius_km: float):
     sb = get_client()
     if not sb:
@@ -20,7 +20,7 @@ def get_cached_run(lat:float, lng:float, radius_km: float):
         import math
         lat_delta = radius_km / 111.0
         lng_delta = radius_km / (111.0 * math.cos(math.radians(lat)))
-
+ 
         runs = (sb.table("city_runs")
                   .select("*")
                   .gte("lat",lat-lat_delta)
@@ -43,7 +43,7 @@ def get_cached_run(lat:float, lng:float, radius_km: float):
     except Exception as e:
         print(f"  [cache] read error: {e}")
         return None, None
-
+ 
 def save_run(display: str, lat: float, lng: float, radius_km: float, map_url: str, plazas: list, state: str):
     sb = get_client()
     if not sb:
@@ -60,7 +60,7 @@ def save_run(display: str, lat: float, lng: float, radius_km: float, map_url: st
                  })
                  .execute())
         run_id = run.data[0]["id"]
-
+ 
         rows = [
             {
                 "city_run_id": run_id,
@@ -75,13 +75,13 @@ def save_run(display: str, lat: float, lng: float, radius_km: float, map_url: st
                 "tenant_names": p["tenant_names"],
             } for p in plazas
         ]
-
+ 
         if rows:
             sb.table("plazas").insert(rows).execute()
         print(f"  [cache] saved {len(rows)} plazas for {display}")
     except Exception as e:
         print(f"  [cache] write error: {e}")
-
+ 
 def get_cached_county(lat: float, lng: float):
     sb = get_client()
     if not sb:
@@ -101,7 +101,7 @@ def get_cached_county(lat: float, lng: float):
     except Exception as e:
         print(f"  [cache] county read error: {e}")
         return None
-
+ 
 def save_county(lat: float, lng: float, county: str):
     sb = get_client()
     if not sb:
@@ -116,5 +116,110 @@ def save_county(lat: float, lng: float, county: str):
         }, on_conflict = "lat_key,lng_key").execute()
     except Exception as e:
         print(f"  [cache] county write error: {e}")
-    
-
+ 
+EXCEL_BUCKET = "run-exports"
+ 
+ 
+def list_history_runs() -> list[dict]:
+    sb = get_client()
+    if not sb:
+        return []
+    try:
+        runs = (sb.table("city_runs")
+                  .select("*")
+                  .order("ran_at", desc=True)
+                  .execute()).data or []
+        # N+1 is fine at this scale (internal tool, low run count).
+        for run in runs:
+            count = (sb.table("run_plazas")
+                        .select("plaza_id", count="exact")
+                        .eq("city_run_id", run["id"])
+                        .execute())
+            run["plaza_count"] = count.count or 0
+            run["excel_available"] = bool(run.get("excel_path"))
+        return runs
+    except Exception as e:
+        print(f"  [cache] history list error: {e}")
+        return []
+ 
+ 
+def get_history_run(run_id: str) -> dict | None:
+    sb = get_client()
+    if not sb:
+        return None
+    try:
+        rows = (sb.table("city_runs").select("*").eq("id", run_id).limit(1).execute()).data
+        if not rows:
+            return None
+        run = rows[0]
+        run["excel_available"] = bool(run.get("excel_path"))
+ 
+        membership = (sb.table("run_plazas")
+                        .select("plaza_id")
+                        .eq("city_run_id", run_id)
+                        .execute()).data or []
+        plaza_ids = [m["plaza_id"] for m in membership]
+        plazas = (sb.table("plazas").select("*").in_("id", plaza_ids).execute()).data if plaza_ids else []
+ 
+        listings_by_plaza: dict = {}
+        if plaza_ids:
+            listing_rows = (sb.table("listings")
+                               .select("plaza_id, brokerage, agent_name, phone, email, listing_url")
+                               .in_("plaza_id", plaza_ids)
+                               .eq("active", True)
+                               .execute()).data or []
+            for lr in listing_rows:
+                listings_by_plaza.setdefault(lr["plaza_id"], []).append(lr)
+ 
+        def _joined(values: list[str | None]) -> str:
+            seen, out = set(), []
+            for v in values:
+                if v and v not in seen:
+                    seen.add(v)
+                    out.append(v)
+            return "; ".join(out) if out else "-"
+ 
+        for p in plazas:
+            agents = listings_by_plaza.get(p.get("id"), [])
+            p["brokerages"] = _joined([a.get("brokerage") for a in agents])
+            p["brokers"] = _joined([a.get("agent_name") for a in agents])
+            p["broker_contacts"] = _joined([a.get("phone") or a.get("email") for a in agents])
+            p["broker_urls"] = _joined([a.get("listing_url") for a in agents])
+ 
+        run["plazas"] = plazas
+        run["plaza_count"] = len(plazas)
+        return run
+    except Exception as e:
+        print(f"  [cache] history detail error: {e}")
+        return None
+ 
+ 
+def save_excel_export(run_id: str, local_path: str) -> str | None:
+    sb = get_client()
+    if not sb or not os.path.exists(local_path):
+        return None
+    try:
+        storage_path = f"{run_id}/{os.path.basename(local_path)}"
+        with open(local_path, "rb") as f:
+            sb.storage.from_(EXCEL_BUCKET).upload(
+                storage_path,
+                f.read(),
+                {"content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                 "upsert": "true"},
+            )
+        sb.table("city_runs").update({"excel_path": storage_path}).eq("id", run_id).execute()
+        return storage_path
+    except Exception as e:
+        print(f"  [cache] excel upload error: {e}")
+        return None
+ 
+ 
+def download_excel_export(storage_path: str) -> bytes | None:
+    sb = get_client()
+    if not sb:
+        return None
+    try:
+        return sb.storage.from_(EXCEL_BUCKET).download(storage_path)
+    except Exception as e:
+        print(f"  [cache] excel download error: {e}")
+        return None

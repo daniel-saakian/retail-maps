@@ -1,0 +1,68 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { logout } from "@/app/login/actions";
+import StoneMark from "./StoneMark";
+import { useJobs } from "@/lib/JobsContext";
+
+const TABS = [
+    { href: "/", label: "Search" },
+    { href: "/history", label: "History" },
+];
+
+export default function NavBar() {
+    const pathname = usePathname();
+    const { jobs } = useJobs();
+
+    if (pathname.startsWith("/login")) return null;
+
+    const runningCount = jobs.filter((j) => j.status === "queued" || j.status === "running").length;
+
+    return (
+        <nav className="border-b border-ink-2/40 bg-ink">
+            <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
+                <div className="flex items-center gap-6">
+                    <div className="flex items-center gap-2.5">
+                        <StoneMark size={28} />
+                        <span className="font-display text-base font-semibold tracking-wide text-paper">
+                            Plaza Finder
+                        </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                        {TABS.map((t) => (
+                            <Link
+                                key={t.href}
+                                href={t.href}
+                                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                                    pathname === t.href
+                                        ? "bg-ink text-white"
+                                        : "text-slate-500 hover:bg-slate-50"
+                                }`}
+                            >
+                                {t.label}
+                            </Link>
+                        ))}
+                    </div>
+                </div>
+                <div className="flex items-center gap-4">
+                    {runningCount > 0 && (
+                        <Link
+                            href="/"
+                            className="flex items-center gap-1.5 text-xs font-semibold text-sky"
+                        >
+                            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky" />
+                            {runningCount} running
+                        </Link>
+                    )}
+                    <button
+                        onClick={() => logout()}
+                        className="text-xs font-medium text-slate-400 hover:text-slate-600"
+                    >
+                        Sign Out
+                    </button>
+                </div> 
+            </div>
+        </nav>
+    );
+}
