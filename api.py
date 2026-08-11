@@ -214,10 +214,13 @@ def _job_to_detail(job:Job) -> JobDetail:
     return detail
  
 app = FastAPI(title="Plaza Finder API", dependencies=[Depends(require_auth)])
+
+_allowed_origins = os.getenv("ALLOWED_ORIGINS", "https://localhost:3000").split(",")
+_allowed_origins = [o.strip() for o in _allowed_origins if o.strip()]
  
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=_allowed_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
