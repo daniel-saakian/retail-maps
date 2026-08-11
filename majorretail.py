@@ -927,7 +927,6 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
   var layerPlazaCenters = L.layerGroup().addTo(map);
   var layerAnchors = L.layerGroup().addTo(map);
   var layerTenants = L.layerGroup().addTo(map);
-  var layerStandalone = L.layerGroup().addTo(map);
   var layerHighDensity = L.layerGroup().addTo(map);
   var layerLowDensity = L.layerGroup().addTo(map);
   var countyLayers = {{}};
@@ -1023,7 +1022,6 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
       p.isActive = plazaVisible;
  
       if (plazaVisible) {{
-        // FIX 2: Changed map.has() to map.hasLayer()
         if (!map.hasLayer(p.circle)) p.circle.addTo(map);
       }} else {{
         if (map.hasLayer(p.circle)) map.removeLayer(p.circle);
