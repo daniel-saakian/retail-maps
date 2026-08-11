@@ -8,6 +8,7 @@ import requests
 from tabulate import tabulate
 import os
 import re
+import tempfile
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -828,17 +829,19 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
         key = (round(s.lat, 4), round(s.lng, 4))
  
         if key not in coord_to_color:
+            # Standalone store, not part of any plaza -- skip drawing it.
             continue
-
+ 
         info = coord_to_color[key]
-        color=info["color"]
-        plaza_label=info["label"]
+ 
+        color = info["color"]
+        plaza_label = info["label"]
         plaza_id = info["id"]
-
+ 
         if s.is_anchor_store:
             dot_color = "#f39c12"
         else:
-            dot_color=color
+            dot_color = color
  
         store_js.append(
             f"addStore("
@@ -927,6 +930,7 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
   var layerPlazaCenters = L.layerGroup().addTo(map);
   var layerAnchors = L.layerGroup().addTo(map);
   var layerTenants = L.layerGroup().addTo(map);
+  var layerStandalone = L.layerGroup().addTo(map);
   var layerHighDensity = L.layerGroup().addTo(map);
   var layerLowDensity = L.layerGroup().addTo(map);
   var countyLayers = {{}};
@@ -1022,6 +1026,7 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
       p.isActive = plazaVisible;
  
       if (plazaVisible) {{
+        // FIX 2: Changed map.has() to map.hasLayer()
         if (!map.hasLayer(p.circle)) p.circle.addTo(map);
       }} else {{
         if (map.hasLayer(p.circle)) map.removeLayer(p.circle);
@@ -1167,7 +1172,7 @@ def print_results(plazas: list[Plaza], city_display: str, args) -> None:
 def export_to_excel(plazas, city_display, args, map_url, state:str = "-", output_path = None):
     if output_path is None:
         slug = city_display.lower().replace(", ", "-").replace(" ", "-")
-        output_path = os.path.expanduser(f"~/Desktop/{slug}.xlsx")
+        output_path = os.path.join(tempfile.gettempdir(), f"{slug}.xlsx")
  
     if os.path.exists(output_path):
         from openpyxl import load_workbook
@@ -1749,7 +1754,7 @@ def run_city_search(city: str, search_km: float | None=None, radius_mi: float | 
     print("\n  Uploading to GitHub")
     map_url = upload_map_to_github(map_path)
  
-    excel_output_path = os.path.expanduser(f"~/Desktop/{map_slug}-{search_mi}mi.xlsx")
+    excel_output_path = os.path.join(tempfile.gettempdir(), f"{map_slug}-{search_mi}mi.xlsx")
     excel_path = export_to_excel(plazas,display, args, map_url, state=state, output_path=excel_output_path)
     run_id = save_run_to_cache(display,lat,lng,args.search_km,map_url,plazas,state)
  
