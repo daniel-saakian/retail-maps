@@ -827,22 +827,18 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
  
         key = (round(s.lat, 4), round(s.lng, 4))
  
-        if key in coord_to_color:
-            info = coord_to_color[key]
- 
-            color = info["color"]
-            plaza_label = info["label"]
-            plaza_id = info["id"]
- 
-            if s.is_anchor_store:
-                dot_color = "#f39c12"
-            else:
-                dot_color = color
- 
+        if key not in coord_to_color:
+            continue
+
+        info = coord_to_color[key]
+        color=info["color"]
+        plaza_label=info["label"]
+        plaza_id = info["id"]
+
+        if s.is_anchor_store:
+            dot_color = "#f39c12"
         else:
-            plaza_label = "Standalone / Not in Plaza"
-            plaza_id = -1
-            dot_color = "#27ae60"
+            dot_color=color
  
         store_js.append(
             f"addStore("
