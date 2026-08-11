@@ -20,7 +20,8 @@ export async function login(formData: FormData) {
     }
 
     revalidatePath("/", "layout");
-    redirect(next);
+    const separator = next.includes("?") ? "&" : "?";
+    redirect(`${next}${separator}welcome=1`);
 }
 
 export async function logout() {

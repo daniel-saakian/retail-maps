@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { Playfair_Display, Inter, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css"
 import NavBar from "@/components/NavBar";
+import AutoSignOut from "@/components/AutoSignOut";
+import WelcomeToast from "@/components/WelcomeToast";
 import { JobsProvider } from "@/lib/JobsContext";
 
 const playfair = Playfair_Display({
@@ -32,6 +35,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <body className="min-h-screen bg-paper font-sans text-ink antialiased">
                 <JobsProvider>
                     <NavBar />
+                    <Suspense fallback={null}>
+                        <WelcomeToast />
+                    </Suspense>
+                    <AutoSignOut />
                     {children}
                 </JobsProvider>
             </body>

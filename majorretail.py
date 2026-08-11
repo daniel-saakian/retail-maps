@@ -1080,7 +1080,6 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
     '🟣  Plaza Center Points': layerPlazaCenters,
     '🟡  Anchor Stores (in Plaza)': layerAnchors,
     '🔵🔴  Tenants (In Plaza)': layerTenants,
-    '🟢  Standalone Stores': layerStandalone,
     '━━━━━━━━━━━━━━': L.layerGroup(),
     '🔥  High Density Plazas (10+ tenants)': layerHighDensity,
     '🔹  Lower Density (< 10 tenants)': layerLowDensity
