@@ -1,0 +1,1497 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8' />
+  <title>Retail Centers – Clearwater, FL</title>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' />
+  <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
+  <style>
+    body { margin: 0; font-family: sans-serif; }
+    #map { height: 100vh; width: 100%; }
+    .legend {
+      background: white; padding: 10px 14px; border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); line-height: 1.8;
+      font-size: 13px;
+    }
+    .legend-dot { display: inline-block; width: 12px; height: 12px;
+                   border-radius: 50%; margin-right: 6px; }
+  </style>
+</head>
+<body>
+<div id='map'></div>
+<script>
+  var map = L.map('map').setView([27.97483721172451, -82.75244822481022], 12);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(map);
+
+  var plazasData = [];
+  var storesData = [];
+
+  var layerMultiAnchor = L.layerGroup().addTo(map);
+  var layerSingleAnchor = L.layerGroup().addTo(map);
+  var layerPlazaCenters = L.layerGroup().addTo(map);
+  var layerAnchors = L.layerGroup().addTo(map);
+  var layerTenants = L.layerGroup().addTo(map);
+  var layerStandalone = L.layerGroup().addTo(map);
+  var layerHighDensity = L.layerGroup().addTo(map);
+  var layerLowDensity = L.layerGroup().addTo(map);
+  var countyLayers = {};
+
+  function getOrCreateCountyLayer(county) {
+    if (!county || county === '-') county = 'Unknown';
+    if (!countyLayers[county]) {
+        countyLayers[county] = L.layerGroup().addTo(map);
+    }
+    return countyLayers[county];
+  }
+
+  function addPlaza(lat, lng, radius_m, plazaId, name, address, county, city, numAnchors, anchors, numTenants, tenants, color, leasingHtml) {
+    var popup = '<b>' + name + '</b><br>'
+      + (address !== '-' ? address + '<br>' : '')
+      + city + (county !== '-' ? ', ' + county + ' County' : '') + '<br>'
+      + leasingHtml
+      + '<br><b>' + numAnchors + ' anchor(s): </b><br>'
+      + anchors.split(', ').join('<br>')
+      + '<br><br><b>' + numTenants + ' other tenant(s):</b><br>'
+      + tenants.split(', ').join('<br>');
+    
+    var circle = L.circle([lat, lng], {
+      radius: radius_m,
+      color: color,
+      fillColor: color,
+      fillOpacity: 0.08,
+      weight: 2
+    });
+    if (numAnchors > 1) {
+      layerMultiAnchor.addLayer(circle);
+    } else {
+      layerSingleAnchor.addLayer(circle);
+    }
+
+    var center = L.circleMarker([lat,lng], {
+        radius: 9,
+        color: '#fff',
+        fillColor: '#8e44ad',
+        fillOpacity: 1,
+        weight: 2
+    }).bindPopup(popup, {maxHeight: 320, autoPanPadding: [20, 20]}).bindTooltip(name, {permanent: false, direction: 'top'});
+
+    var cleanCounty = (!county || county === '-') ? 'Unknown' : county;
+    getOrCreateCountyLayer(cleanCounty);
+
+    plazasData.push({
+        circle: circle,
+        center: center,
+        id: plazaId,
+        name: name,
+        county: cleanCounty,
+        numAnchors: numAnchors,
+        numTenants: numTenants
+    });
+  }
+
+  function addStore(lat, lng, name, address, color, plazaId, plaza, isAnchor) {
+    var size = isAnchor ? 11 : 9;
+    var icon = L.divIcon({
+      className: '',
+      html: '<div style="position:absolute;width:' + size + 'px;height:' + size + 'px;'
+          + 'border-radius:50%;background:' + color + ';border:2px solid white;'
+          + 'box-shadow:0 1px 3px rgba(0,0,0,0.4);top:50%;left:50%;'
+          + 'transform:translate(-50%,-50%)'
+          + (isAnchor ? ';outline:2px solid rgba(0,0,0,0.25)' : '')
+          + '"></div>',
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2]
+    });
+    var marker = L.marker([lat, lng], {icon: icon})
+      .bindPopup('<b>' + name + '</b>' + (isAnchor ? '⚓' : '')+ '<br>' 
+        + '<i>' + plaza + '</i><br>'
+        + address)
+      .bindTooltip(name, {direction: 'top'})
+    
+    storesData.push({
+      marker: marker,
+      plazaId: plazaId,
+      plazaLabel: plaza,
+      isAnchor: isAnchor
+    });
+  }
+
+  function updateVisibility() {
+    plazasData.forEach(function(p) {
+      var anchorMatch = (p.numAnchors > 1) ? map.hasLayer(layerMultiAnchor): map.hasLayer(layerSingleAnchor);
+      var densityMatch = (p.numTenants >= 10) ? map.hasLayer(layerHighDensity) : map.hasLayer(layerLowDensity);
+      var countyLayer = countyLayers[p.county];
+      var countyMatch = countyLayer ? map.hasLayer(countyLayer) : true;
+
+      var plazaVisible = anchorMatch && densityMatch && countyMatch;
+      p.isActive = plazaVisible;
+
+      if (plazaVisible) {
+        // FIX 2: Changed map.has() to map.hasLayer()
+        if (!map.hasLayer(p.circle)) p.circle.addTo(map);
+      } else {
+        if (map.hasLayer(p.circle)) map.removeLayer(p.circle);
+      }
+
+      if (plazaVisible && map.hasLayer(layerPlazaCenters)) {
+        if (!map.hasLayer(p.center)) p.center.addTo(map);
+      } else {
+        if (map.hasLayer(p.center)) map.removeLayer(p.center);
+      }
+    });
+      
+    storesData.forEach(function(s) {
+        var storeVisible = false;
+
+        if (s.plazaId === -1) {
+            // Standalone store
+            storeVisible = map.hasLayer(layerStandalone);
+
+        } else {
+            var parentPlaza = plazasData.find(function(p) {
+                return p.id === s.plazaId;
+            });
+
+            if (parentPlaza && parentPlaza.isActive) {
+                storeVisible = s.isAnchor
+                    ? map.hasLayer(layerAnchors)
+                    : map.hasLayer(layerTenants);
+            }
+        }
+
+        if (storeVisible) {
+            if (!map.hasLayer(s.marker))
+                s.marker.addTo(map);
+        } else {
+            if (map.hasLayer(s.marker))
+                map.removeLayer(s.marker);
+        }
+    });
+  }
+
+  addPlaza(27.8930247862069, -82.78360588448275, 577.4, 0, 'Largo Mall', '10500 Ulmerton Road Largo', 'Pinellas County', 'Largo', 6, 'Dollar Tree, Marshalls, Publix, Target, The Home Depot, Walgreens', 52, 'AT&T, Advance Auto Parts, AutoZone, Avenue, Bath & Body Works, Bealls, Bright Now! Dental, Buffalo Wild Wings, Chili\'s, Chipotle, Circle K, Club Pilates, Dots Fashions, Dunkin\', Famous Footwear, Firehouse Subs, Five Below, Five Guys, Foot Solutions, GNC, GameStop, H&R Block, Jersey Mike\'s Subs, LensCrafters, Michaels, Miss Shoe, Olive Garden, Once Upon a Child, Orangetheory Fitness, Pep Boys, PetSmart, Petland, Planet 13, Plato\'s Closet, Play It Again Sports, Rack Room Shoes, Regal Largo Mall, Sally Beauty, Shell, Staples, Starbucks, Steak \'n Shake, Supercuts, T-Mobile, TNL Nails & Spa, UPS, WW Studio, Wells Fargo, Whataburger, Wingstop, Yogurtland, rue21', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.958403395454546, -82.72733984772728, 619.8, 1, 'Clearwater Mall', '2733 Mall Perimeter Drive Clearwater', 'Pinellas County', 'Clearwater', 6, 'Burlington, Costco, Lowe\'s, Ross, Sam\'s Club, Target', 38, '7-Eleven, AT&T, America\'s Best Contacts & Eyeglasses, Aspen Dental, Baskin-Robbins, Comfort Inn, Cookie Cutters, Crumbl Cookies, David\'s Bridal, Dunkin\', EasySpirit, Five Below, Galaxy Golf, GameStop, Goddess Nails, Great Clips, Hand & Stone, Holiday Inn Express & Suites Clearwater/US 19 N, Hotworx, Jared, Mattress Firm, Men\'s Wearhouse, Michaels, Moe\'s Southwest Grill, Navy Federal Credit Union, Onix Salon & Spa, Panera Bread, Peltz Shoes, Perkins, PetSmart, Sally Beauty, Scrubs and Beyond, Skechers, T-Mobile, The UPS Store, The Vitamin Shoppe, Ulta Beauty, Wells Fargo', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(28.016722328571433, -82.73425351428568, 747.2, 2, 'Countryside Mall', '27001 US 19 North Clearwater', 'Pinellas County', 'Clearwater', 12, 'Dick\'s Sporting Goods, Dollar Tree, HomeGoods, JCPenney, Kohl\'s, Lowe\'s, Macy\'s, Nordstrom Rack, Office Depot, Ross, TJ Maxx, Whole Foods Market', 30, 'AT&T, Avis, BJ\'s, BJ\'s Wholesale Club, Bed Pros, Bright Now! Dental, Chase, Chipotle, Countryside Mall, Dillard\'s, Dot\'s Fashions, Fifth Third Bank, Good Feet, La-Z-Boy, Mattress Firm, Nothing Bundt Cakes, PNC Bank, Panera Bread, PetSmart, Red Lobster, Red Robin, Sherwin-Williams, Smoothie King, Starbucks, Subway, The Permanent Makeup Studio, Tijuana Flats, Total Wine, Truist, iParty', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(28.01236182857142, -82.71016720357143, 309.2, 3, 'Northwood Plaza', '2514 McMullen Booth Road Clearwater', 'Pinellas County', 'Clearwater', 2, 'Publix, Walgreens', 26, 'Anthony\'s Coal Fired Pizza, BB&T, Bank of America, Bark Ave Dog Grooming, Chase, Clearwater Cigar Company, Dunkin\', Emerald City, H&R Block, Hair & Nails, Jersey Mike\'s Subs, Marco\'s Pizza, Massage Envy, McDonald\'s, Northwood Vision, Oakbrook Plaza, Red Bamboo Medi Spa, Regions Bank, Shell, Starbucks, Subway, Taco Bell, The Bakery, The Garden Shed Florist, Truist, Wells Fargo', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.917340605, -82.73339103499998, 289.7, 4, 'Unnamed Retail Center', '5000 Pine Forest Drive Largo', 'Pinellas County', 'Largo', 4, 'Dollar Tree, Petco, Publix, Ross', 16, 'Applebee\'s, Chipotle, First Watch, Five Below, GNC, H&R Block, Hear USA, LA Fitness, Midas Auto Service Experts, Pizza Hut, Regions Bank, Supercuts, T-Mobile, Taco Bell, Wells Fargo, Wendy\'s', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.959860610000003, -82.74482262499998, 343.6, 5, 'Unnamed Retail Center', '2253 Gulf to Bay Boulevard Clearwater', 'Pinellas County', 'Clearwater', 3, 'Office Depot, Publix, Publix Liquors', 17, 'Bob Evans, Charleys Philly Steaks, Chase, Fantastic Sams, Goodwill, Moss Feaster, Ocean Nails and Spa, Outspokin Bicycles, PDQ, Pizza Hut, Presto, Regions Bank, Smokin Pipes, Starbucks, Sun Country Cleaners, Sunoco, ubreakifix', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.91607908333334, -82.74816608333333, 326.7, 6, 'East Bay Plaza', '3825 East Bay Drive Largo', 'Pinellas County', 'Largo', 3, 'Harbor Freight, Publix, Publix Liquor', 15, 'Boston Market, Burger King, Chase, Dunkin\', Family Dollar, Jet\'s Barbershop, Mobility City, Outback Steakhouse, Partners Personnel, Rainbow Muffler, Sally Beauty, Sapphire Nail Bar, The UPS Store, Tijuana Flats, Verizon', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.lee-associates.com/properties/?propertyId=1528430-lease&address=3760-East-Bay-Drive&officeId=15810" target="_blank" rel="noopener">Lee & Associates — Ed Killmer, FL #SL3277345</a><br><a href="https://www.crexi.com/lease/properties/1184944/florida-flexible-workspace-in-fl-largo---east-bay-dr-book-a-tour-get-info" target="_blank" rel="noopener">Regus — Regus US Admin</a><br><a href="https://www.crexi.com/lease/properties/1184944/florida-flexible-workspace-in-fl-largo---east-bay-dr-book-a-tour-get-info" target="_blank" rel="noopener">Regus — IWG US 13</a><br><a href="https://www.crexi.com/lease/properties/1089712/florida-2475-c" target="_blank" rel="noopener">Yellowtail Realty Advisors LLC — JENNY IRIZARRY</a><br><a href="https://www.crexi.com/lease/properties/1089712/florida-2475-c" target="_blank" rel="noopener">Yellowtail Realty Advisors LLC — Georgia Watson</a><br><a href="https://www.crexi.com/lease/properties/237093/florida-800-east-bay-drive" target="_blank" rel="noopener">European Equities Corporation — David McComas</a><br><a href="https://www.crexi.com/lease/properties/237093/florida-800-east-bay-drive" target="_blank" rel="noopener">European Equities Corporation — Chris Niewiarowski</a><br><a href="https://www.crexi.com/lease/properties/1151646/florida-1915-east-bay-drive" target="_blank" rel="noopener">Asset and Key — Bradley Meinck</a><br><a href="https://www.crexi.com/lease/properties/1151646/florida-1915-east-bay-drive" target="_blank" rel="noopener">Asset and Key — Andrea Polizzi</a><br><a href="https://www.crexi.com/lease/properties/1035370/florida-prime-pad-ready-ground-lease-on-east-bay-drive" target="_blank" rel="noopener">American Property Group of Sarasota Inc — Tyler Sluman</a><br>');
+addPlaza(27.94280841111111, -82.74604468333332, 289.7, 7, 'Unnamed Retail Center', '1505 South Belcher Road Clearwater', 'Pinellas County', 'Clearwater', 1, 'Walgreens', 17, 'Barber King, Belcher Food Store, Circle K, D&E Donuts, Domino\'s, Grace International Market, John\'s Fresh Produce, King Food Mart, Liem Jewelers, Mattesses by Gary, McDonald\'s, Ollie\'s Bargain Outlet, Pinch A Penny, Pink Hair Salon, Skyline Vape & Smoke Shop, Suds, Tao Massage Spa', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.988446025, -82.73130750625002, 399.1, 8, 'Sunset Point 19 Shopping Center', '23656 US Highway 19 North Clearwater', 'Pinellas County', 'Clearwater', 1, 'Sprouts Farmers Market', 15, 'Barnes & Noble, Burger King, Carter\'s, DSW, Domino\'s, Dunkin\', Fitzgerald Used Car Outlet Center Clearwater, Five Below, Hobby Lobby, Kirkland\'s, LensCrafters, Old Navy, Regions Bank, World Market, pOpshelf', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.crexi.com/lease/properties/446939/florida-sunset-19-sc" target="_blank" rel="noopener">Kimco Realty Corporation — Jordyn Mellow</a><br><a href="https://www.crexi.com/lease/properties/446939/florida-sunset-19-sc" target="_blank" rel="noopener">TSCG The Shopping Center Group Tampa — Jeremy Kral</a><br>');
+addPlaza(28.01920719285714, -82.76320227857143, 289.7, 9, 'Unnamed Retail Center', '1491 Main Street Dunedin', 'Pinellas County', 'Dunedin', 2, 'Publix, Walgreens', 12, 'A1 Cleaners, Anytime Fitness, Bank of America, Baskin-Robbins, Dunkin\', Firehouse Subs, Joe\'s Market Produce & Deli, Little Caesars, Lothian Kilt Rentals & Bagpipes, The UPS Store, Tire and Auto Tech, Wells Fargo', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.916966092307693, -82.7630432076923, 289.7, 10, 'Keene Plaza', '2295 East Bay Drive Largo', 'Pinellas County', 'Largo', 2, 'Sprouts Farmers Market, Walgreens', 11, 'AutoZone, Dollar General, Dutch Bros. Coffee, Little Caesars, McDonald\'s, Minuteman Press, Panda Express, Starbucks, Twistee Treat, Wawa, Winn-Dixie', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(28.062087515384615, -82.70751766923078, 289.7, 11, 'The Shoppes of Boot Ranch', '500 East Lake Road Palm Harbor', 'Pinellas County', 'Palm Harbor', 3, 'Publix, Target, Walgreens', 10, 'Chase, Circle K, Fifth Third Bank, Five Guys, McDonald\'s, Menchie\'s, Papa John\'s, Shell, Wells Fargo, Wendy\'s', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://srsre.com/properties/lease/retail/florida/palm-harbor/300-900-e-lake-rd/l11827" target="_blank" rel="noopener">SRS Real Estate Partners — Chris Stewart</a><br>');
+addPlaza(28.07444320833333, -82.737954525, 392.3, 12, 'Unnamed Retail Center', '33343 US Highway 19 North Palm Harbor', 'Pinellas County', 'Palm Harbor', 1, 'Publix', 11, 'AT&T, Chipotle, Dunkin\', Edible Arrangements, Einstein Bros. Bagels, Huntington Learning Center, KFC, Michaels, Plato\'s Closet, Sport Clips, Wells Fargo', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.9274971, -82.78808813333333, 289.7, 13, 'Unnamed Retail Center', '1177 Missouri Avenue North Largo', 'Pinellas County', 'Largo', 1, 'ALDI', 11, 'Amscot, Burger King, Extra Space Storage, IONNA, Marathon, Mavis Tires & Brakes, PNC Bank, Subway, Take 5 Oil Change, Verizon, Wawa', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(28.04354830909091, -82.67819096363635, 324.6, 14, 'Unnamed Retail Center', '3705 Tampa Road Oldsmar', 'Pinellas County', 'Oldsmar', 2, 'Ross, Walgreens', 9, 'Advance Auto Parts, Bank of America, Chick-fil-A, Chili\'s, Dunkin\', Joe\'s produce, Metro by T-Mobile, Subway, Thorntons', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.lee-associates.com/properties/?propertyId=1416540-lease&address=3719-Corporex-Park-Drive&officeId=15810" target="_blank" rel="noopener">Lee & Associates — Jessica Mizrahi, SIOR, FL #SL3274006</a><br><a href="https://www.crexi.com/lease/properties/210816/florida-bay-arbor-place" target="_blank" rel="noopener">European Equities Corporation — David McComas</a><br><a href="https://www.crexi.com/lease/properties/210816/florida-bay-arbor-place" target="_blank" rel="noopener">European Equities Corporation — Chris Niewiarowski</a><br><a href="https://www.crexi.com/lease/properties/1101487/florida-oldsmar-rare-2nd-gen-auto-property" target="_blank" rel="noopener">Equity Investment Services — Nick Barbato</a><br><a href="https://www.crexi.com/lease/properties/1101487/florida-oldsmar-rare-2nd-gen-auto-property" target="_blank" rel="noopener">Equity Investment Services — Eric Portnoy</a><br><a href="https://www.crexi.com/lease/properties/1225220/florida-3711-tampa-road" target="_blank" rel="noopener">Franklin Street Tampa — Tommy Turner</a><br>');
+addPlaza(28.01292416, -82.70758346, 289.7, 15, 'Northwood Oaks', '2519 McMullen Booth Road Safety Harbor', 'Pinellas County', 'Safety Harbor', 1, 'Walgreens', 9, 'Alexa Jewelry, Bonefish Grill, Circle K, Ed\'s Fine Wines, Einstein Bros. Bagels, Jimmy John\'s, Sun Country Cleaners, The UPS Store, Wild Birds Unlimited Nature Shop', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.980917070000004, -82.70996815999999, 289.7, 16, 'Unnamed Retail Center', '1500 McMullen Booth Road Clearwater', 'Pinellas County', 'Clearwater', 3, 'Ace Hardware, Dollar Tree, Publix', 7, 'Applebee\'s, Bank of America, Chase, Checkers, Pet Supplies Plus, Tires Plus, Tobacco Depot', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.978494920000003, -82.82693197, 299.9, 17, 'Unnamed Retail Center', '393 Mandalay Avenue Clearwater', 'Pinellas County', 'Clearwater', 1, 'Walgreens', 9, 'Chase, Chute Em Up Parasail, Courtyard Clearwater Beach, Dunkin\', Frenchy\'s Seafood Market, Hooters, Ron Jon Surf Shop, Starbucks, Subway', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(28.042309322222223, -82.67363211111112, 289.7, 18, 'Unnamed Retail Center', '3801 Tampa Road Oldsmar', 'Pinellas County', 'Oldsmar', 1, 'Walmart Supercenter', 8, '7-Eleven, Dairy Queen, Domino\'s, Dunkin\', Famous Tate Appliance & Bedding Center, Goodyear, Jersey Mike\'s Subs, Steak \'n Shake', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.959376988888884, -82.79982162222223, 289.7, 19, 'Unnamed Retail Center', '619 South Ft Harrison Avenue Clearwater', 'Pinellas County', 'Clearwater', 1, 'Publix', 8, 'Chase, Erik\'s Fine Cigars & Smoke Shop, FedEx Office, Jimmy John\'s, Rebel #835, Regions Bank, Speedway, Wells Fargo', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(28.05037872222222, -82.69812251111112, 306.2, 20, 'Unnamed Retail Center', '3180 Tampa Road Oldsmar', 'Pinellas County', 'Oldsmar', 2, 'Dollar Tree, Marshalls', 7, 'Bealls, OTS Mobile Audio, Panera Bread, Pollo Tropical, Regions Bank, Starbucks, Ulta Beauty', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://srsre.com/properties/lease/retail/florida/tampa/3201-w-bay-to-bay-blvd/l13779" target="_blank" rel="noopener">SRS Real Estate Partners — John Fahey</a><br><a href="https://srsre.com/properties/lease/retail/florida/tampa/3201-w-bay-to-bay-blvd/l13779" target="_blank" rel="noopener">SRS Real Estate Partners — Tyler McRae</a><br><a href="https://www.crexi.com/lease/properties/489896/florida-woodlands-square" target="_blank" rel="noopener">TSCG - The Shopping Center Group — Eric Battistone</a><br><a href="https://www.crexi.com/lease/properties/489896/florida-woodlands-square" target="_blank" rel="noopener">TSCG The Shopping Center Group Tampa — Nick Anthony</a><br>');
+addPlaza(27.960709575000003, -82.74808082500002, 304.8, 21, 'Unnamed Retail Center', '2150 Gulf To Bay Boulevard Clearwater', 'Pinellas County', 'Clearwater', 2, 'ALDI, Walmart Neighborhood Market', 6, 'AYR Cannabis Dispensary Clearwater, Andy\'s Frozen Custard, Chicken Salad Chick, Mavis Tires & Brakes, Wawa, Wingstop', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.lee-associates.com/properties/?propertyId=1609792-lease&address=2130-Gulf-To-Bay-Blvd&officeId=15810" target="_blank" rel="noopener">Lee & Associates — Tessa Mellinger, CPA, FL #BK3470144</a><br><a href="https://www.crexi.com/lease/properties/420053/florida-aldi-anchored-sublease-in-clearwater" target="_blank" rel="noopener">LQ Commercial Real Estate Services Fort Myers — Eli Dioso</a><br><a href="https://www.crexi.com/lease/properties/420053/florida-aldi-anchored-sublease-in-clearwater" target="_blank" rel="noopener">LQ Commercial Real Estate Services — Jessica McEvoy</a><br><a href="https://www.crexi.com/lease/properties/420053/florida-aldi-anchored-sublease-in-clearwater" target="_blank" rel="noopener">LQ Commercial Real Estate Services Fort Myers — John Mounce</a><br>');
+addPlaza(28.078417224999995, -82.7393549625, 289.7, 22, 'Unnamed Retail Center', '33591 US Highway 19 North Palm Harbor', 'Pinellas County', 'Palm Harbor', 4, 'Burlington, Sprouts Farmers Market, Trader Joe\'s, Walgreens', 4, 'Barnes & Noble, McDonald\'s, Speedway, Verizon', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(28.0469222125, -82.7390362, 306.1, 23, 'Unnamed Retail Center', '30144 US 19 Clearwater', 'Pinellas County', 'Clearwater', 2, 'The Home Depot, Walgreens', 6, 'Applebee\'s, Arby\'s, Dunkin\', Guidewell, IHOP, McDonald\'s', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(28.019761649999996, -82.7569064875, 289.7, 24, 'Unnamed Retail Center', '1750 Main Street Dunedin', 'Pinellas County', 'Dunedin', 1, 'Ace Hardware', 7, 'Jimmy John\'s, McDonald\'s, Papa John\'s, Pinch A Penny, State Farm Insurance - Allen Williams, Taco Bell, Wendy\'s', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.967389071428567, -82.72807241428572, 289.7, 25, 'Unnamed Retail Center', '21415 Highway 19 North Clearwater', 'Pinellas County', 'Clearwater', 2, 'Best Buy, Marshalls', 5, 'AT&T, Bed Pros, Don Pancho Villa Market, Guitar Center, Rooms to Go Outlet', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(28.05056761428571, -82.73686862857143, 289.7, 26, 'Unnamed Retail Center', '30535 Curlew Road Palm Harbor', 'Pinellas County', 'Palm Harbor', 1, 'Publix', 6, 'Circle K, Larisa Jewelry Diamond Center, MY SALON Suite®, Starbucks, The Classic\'s Barber Shop, The UPS Store', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(28.05029067142857, -82.78088837142857, 289.7, 27, 'Unnamed Retail Center', '902 Curlew Road Dunedin', 'Pinellas County', 'Dunedin', 2, 'Publix, Walgreens', 5, 'Dunkin\', Hampton Inn Dunedin, McDonald\'s, OTE Bike Shop, Subway', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(28.01786782857143, -82.77612054285714, 289.7, 28, 'Unnamed Retail Center', '950 Paticia Avenue Dunedin', 'Pinellas County', 'Dunedin', 1, 'Dollar Tree', 6, 'AutoZone, Dunedin Pet Supply, Firestone Auto Repair, KFC, Regions Bank, Save-A-Lot', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.960415042857147, -82.761914, 297.3, 29, 'Unnamed Retail Center', '1801 Gulf to Bay Boulevard Clearwater', 'Pinellas County', 'Clearwater', 2, 'Dollar Tree, Walgreens', 5, 'Amscot, Clearwater Bagels, McDonald\'s, PJ\'s Auto World, Taco Bell', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.977986385714285, -82.81709807142859, 289.7, 30, 'Unnamed Retail Center', '200 Island Way Clearwater', 'Pinellas County', 'Clearwater', 1, 'Publix', 6, 'Bank of America, Captn Kush, Clipper Creek, Fifth Third Bank, Mobil, Wells Fargo', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(28.01950111666667, -82.74955288333334, 289.7, 31, 'Coastal Plaza', '2102 Main Street Dunedin', 'Pinellas County', 'Dunedin', 1, 'Walmart Neighborhood Market', 5, 'Avon, Brazilian Wax and Sugar Center, Convenient Laundromat, Jacobs Jewelers, Optical Eyeglasses', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.990214616666666, -82.74193616666666, 289.7, 32, 'Unnamed Retail Center', '1921 North Belcher Road Clearwater', 'Pinellas County', 'Clearwater', 1, 'Publix', 5, 'Bank of America, Chase, Easy Pick, Sunset Grill, Wells Fargo', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.89379898333333, -82.76357416666667, 289.7, 33, 'Unnamed Retail Center', '9020 Ulmerton Road Largo', 'Pinellas County', 'Largo', 1, 'Walmart Neighborhood Market', 5, '7-Eleven, Charleys Philly Steaks, Domino\'s, Mark Holland - Upper Echelon Barbershop, Wawa', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.939509880000003, -82.7739918, 289.7, 34, 'Unnamed Retail Center', '1555 South Highland Avenue Clearwater', 'Pinellas County', 'Clearwater', 1, 'Publix', 4, 'AA Discount Liquor, Anytime Fitness, Pet Safari, Regions Bank', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.96041692, -82.734725, 289.7, 35, 'Unnamed Retail Center', '2495 Gulf To Bay Boulevard Clearwater', 'Pinellas County', 'Clearwater', 1, 'The Home Depot', 4, 'Advance Auto Parts, Leader\'s, PNC Bank, Raising Cane\'s', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.89684386, -82.72809597999999, 338.2, 36, 'Unnamed Retail Center', '14100 US Highway 19 North Clearwater', 'Pinellas County', 'Clearwater', 1, 'Mobile Home Depot', 4, 'Anchor Golf Carts, Florida Ink Studio, Pro Build, U-Haul', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.913975540000003, -82.72823421999999, 357.2, 37, 'Unnamed Retail Center', '2677 Roosevelt Boulevard Clearwater', 'Pinellas County', 'Clearwater', 1, 'Walmart Supercenter', 4, 'Ameri-Truck Sales, LLC, Tesla Supercharger, Village Inn, Wawa', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.crexi.com/lease/properties/294891/florida-roosevelt-commons" target="_blank" rel="noopener">European Equities Corporation — David McComas</a><br><a href="https://www.crexi.com/lease/properties/294891/florida-roosevelt-commons" target="_blank" rel="noopener">European Equities Corporation — Chris Niewiarowski</a><br>');
+addPlaza(28.074157175, -82.766852075, 289.7, 38, 'Downtown Palm Harbor Historic District', '526 Alt 19 Palm Harbor', 'Pinellas County', 'Palm Harbor', 1, 'Dollar Tree', 3, 'Antiques and Uniques, The Blue House Salon, The Fix Coffee + Vino', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.9252882, -82.7867467, 289.7, 39, 'Unnamed Retail Center', '990 Missouri Avenue North Largo', 'Pinellas County', 'Largo', 1, 'Walmart Supercenter', 3, 'Badcock Home Furniture &more, Denny\'s, Value Pawn & Jewelry', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.9162223, -82.71386820000001, 289.7, 40, 'Unnamed Retail Center', '2991 Roosevelt Boulevard Clearwater', 'Pinellas County', 'Clearwater', 1, 'Walgreens', 3, '7-Eleven, Redbox, Speedway', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.916371525, -82.798695725, 289.7, 41, 'Unnamed Retail Center', '857 West Bay Drive Largo', 'Pinellas County', 'Largo', 3, 'Ace Hardware, Publix, Walgreens', 1, 'McDonald\'s', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.982537025, -82.73090725, 289.7, 42, 'Unnamed Retail Center', '23106 US 19 Clearwater', 'Pinellas County', 'Clearwater', 1, 'Walmart Supercenter', 3, 'Jiffy Lube, Super 8, Wendy\'s', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.99684525, -82.729470425, 289.7, 43, 'Unnamed Retail Center', '24756 US 19 North Clearwater', 'Pinellas County', 'Clearwater', 1, 'ALDI', 3, 'Countryside Mazda, Loft 804 - Clearwater Lash + Beauty Studio, Thrifty Car Sales', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.9878829, -82.77464503333333, 289.7, 44, 'Unnamed Retail Center', '1803 North Highland Avenue Clearwater', 'Pinellas County', 'Clearwater', 1, 'Walmart Neighborhood Market', 2, 'Checkers, Dunkin\'', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.916703066666667, -82.81698256666665, 289.7, 45, 'Unnamed Retail Center', '2770 West Bay Drive Belleair Bluffs', 'Pinellas County', 'Belleair Bluffs', 1, 'Publix', 2, 'Speedway, Speedy Wash', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.951795933333333, -82.78676913333332, 289.7, 46, 'Unnamed Retail Center', '1295 South Missouri Avenue Clearwater', 'Pinellas County', 'Clearwater', 1, 'Publix', 2, 'Popeyes, Wells Fargo', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.880663833333333, -82.81886293333334, 289.7, 47, 'Unnamed Retail Center', '13031 Walsingham Road Largo', 'Pinellas County', 'Largo', 1, 'Publix', 2, 'Village Inn, Watersports West', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.88542443333333, -82.78765103333333, 289.7, 48, 'Unnamed Retail Center', '12344 Seminole Boulevard Largo', 'Pinellas County', 'Largo', 1, 'Ace Hardware', 2, 'Arby\'s, Dollar General', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.98259995, -82.7081496, 289.7, 49, 'Unnamed Retail Center', '1701 North Mcmullen Booth Road Clearwater', 'Pinellas County', 'Clearwater', 1, 'Walgreens', 1, 'Speedway', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.8955977, -82.7939806, 289.7, 50, 'Unnamed Retail Center', '11101 Ulmerton Road Largo', 'Pinellas County', 'Largo', 1, 'Lowe\'s', 1, 'Fifth Third Bank', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(27.96165985, -82.79612069999999, 289.7, 51, 'Unnamed Retail Center', '703 Court Street Clearwater', 'Pinellas County', 'Clearwater', 1, 'Walgreens', 1, 'Domino\'s', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+  addStore(27.937761, -82.730996, 'Dick Norris Buick GMC', '18200 US Hwy 19 N Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9682383, -82.7591659, 'Pets Unlimited', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9780648, -82.8172205, 'Bank of America', '-', '#3498db', 30, 'Unnamed Retail Center', false);
+addStore(27.968398, -82.763699, 'Chainwheel Drive Bicycles', '1770 Drew Street Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.939578, -82.729699, 'Subway', '18415 US 19 Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0676125, -82.738345, 'Super Gas', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9600269, -82.7997135, 'FedEx Office', '529 S Fort Harrison Ave, Suite A4 Clearwater', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(27.9597341, -82.7997214, 'Jimmy John\'s', '553 South Fort Harrison Clearwater', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(27.9354751, -82.7961939, 'Shell', 'Ponce de Leon Blvd Belleair', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.915664, -82.727484, 'Cheddar\'s', '2655 Roosevelt Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9403794, -82.7296393, 'GEICO', '18423 US 19 Northbound Frontage Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.958781, -82.72676, 'Moe\'s Southwest Grill', '2679 Gulf to Bay Boulevard Clearwater', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.9587786, -82.7265289, 'Panera Bread', '2679 US Highway 19 Clearwater', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.9830182, -82.729039, 'Leuken\'s Big Town Liquor', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9831853, -82.728989, 'Subway', '23106 Highway 19 North Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0042681, -82.7285647, 'Dimmitt Chevrolet', '25485 US-19 Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0215569, -82.7643175, 'Winn-Dixie', '1296 County Road No 1 Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0188234, -82.7759979, 'Regions Bank', '-', '#3498db', 28, 'Unnamed Retail Center', false);
+addStore(28.0103557, -82.7881354, 'Q', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9673244, -82.7266194, 'Best Buy', '21415 Highway 19 North Clearwater', '#f39c12', 25, 'Unnamed Retail Center', true);
+addStore(28.0119407, -82.7865873, 'Paws on Main Street', '461 Main St Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9601286, -82.7276497, 'Five Guys', '2689 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.01131, -82.789583, 'Lafayette & Rushford Home', '721 Broadway Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0190154, -82.758631, 'McDonald\'s', '1645 Main Street Dunedin', '#3498db', 24, 'Unnamed Retail Center', false);
+addStore(27.9462129, -82.73078, 'Speedway', '2577 Harn Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.987541, -82.730448, 'Barnes & Noble', '23654 US 19 Clearwater', '#e74c3c', 8, 'Sunset Point 19 Shopping Center', false);
+addStore(27.954832, -82.729118, '7-Eleven', '20073 US 19 Clearwater', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.954294, -82.729249, 'Onix Salon & Spa', '19995 US 19 Clearwater', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(28.0064629, -82.7286305, 'Jason\'s Deli', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9534365, -82.7307833, 'Enterprise', '19820 US Highway 19 N Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9662888, -82.7277876, 'Guitar Center', '21335 US Hwy 19 N Clearwater', '#3498db', 25, 'Unnamed Retail Center', false);
+addStore(27.939501, -82.730865, 'Papa John\'s', '18378 US Highway 19 North Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.933206, -82.731413, 'Jersey Jim Tower\'s', '17722 US Hwy 19 N Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9981029, -82.7285051, 'Countryside Mazda', '-', '#3498db', 43, 'Unnamed Retail Center', false);
+addStore(28.0087437, -82.7287447, 'The Fresh Market', '25961 US Highway 19 North Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0190368, -82.7617673, 'Firehouse Subs', '-', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(27.915696, -82.730503, 'Einstein Bros. Bagels', '5395 East Bay Drive Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.931748, -82.731185, 'Walker Ford', '17556 US-19 Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9386887, -82.7308758, 'Stouts Auto', '18300 US-19 Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9666871, -82.726624, 'Rooms to Go Outlet', 'Clearwater', '#3498db', 25, 'Unnamed Retail Center', false);
+addStore(27.9793203, -82.7467825, 'NAPA Auto Parts', 'N Belcher Rd Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9903623, -82.7290251, 'Chevron', '23977 US Highway 19 N Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.011461, -82.731669, 'PetSmart', '26277 US-19 Clearwater', '#e74c3c', 2, 'Countryside Mall', false);
+addStore(28.0125078, -82.70735, 'Einstein Bros. Bagels', '2519 McMullen Booth Road Safety Harbor', '#e74c3c', 15, 'Northwood Oaks', false);
+addStore(28.0130264, -82.7114835, 'Publix', '2514 McMullen Booth Road Clearwater', '#f39c12', 3, 'Northwood Plaza', true);
+addStore(27.99103, -82.7279845, 'Sunset Pointe Laundromats', '24087 US Highway 19 N Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0103497, -82.7099278, 'Subway', '2451 N McMullen Booth Road Safety Harbor', '#e74c3c', 3, 'Northwood Plaza', false);
+addStore(27.9914275, -82.7279516, 'JB Carpet Cleaners', '24145 US Highway 19 N Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0217633, -82.7098435, '7-Eleven', '2789 SR 580 Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9962206, -82.7286445, 'Thrifty Car Sales', '24639 US Highway 19 N Clearwater', '#3498db', 43, 'Unnamed Retail Center', false);
+addStore(28.001213, -82.7286111, 'Dimmitt Saab Cadillac', 'US-19 Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.915891, -82.7132852, 'Speedway', '5798 Roosevelt Boulevard Clearwater', '#3498db', 40, 'Unnamed Retail Center', false);
+addStore(28.0116675, -82.7123169, 'Regions Bank', 'Enterprise Rd E Clearwater', '#e74c3c', 3, 'Northwood Plaza', false);
+addStore(28.0113253, -82.71143, 'Bark Ave Dog Grooming', '2475 N McMullen Booth Rd Clearwater', '#e74c3c', 3, 'Northwood Plaza', false);
+addStore(28.011325, -82.711091, 'Emerald City', '2475 McMullen Booth Road Safety Harbor', '#e74c3c', 3, 'Northwood Plaza', false);
+addStore(28.0141109, -82.709414, 'Starbucks', '2580 N McMullen Booth Road Clearwater', '#e74c3c', 3, 'Northwood Plaza', false);
+addStore(28.0113586, -82.7084096, 'H&R Block', 'Mcmullen Booth Rd Safety Harbor', '#e74c3c', 3, 'Northwood Plaza', false);
+addStore(27.9906547, -82.6890649, 'Starbucks', '100 Main Street Safety Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9885321, -82.7324664, 'Old Navy', '23672 US-19 Clearwater', '#e74c3c', 8, 'Sunset Point 19 Shopping Center', false);
+addStore(27.9180931, -82.7350221, 'Publix', '5000 Pine Forest Drive Largo', '#f39c12', 4, 'Unnamed Retail Center', true);
+addStore(27.917055, -82.741095, 'Shell', '4450 East Bay Drive Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.915398, -82.7498196, 'Sally Beauty', '36th Street Southeast Largo', '#e74c3c', 6, 'East Bay Plaza', false);
+addStore(27.9169492, -82.7496392, 'Outback Steakhouse', 'East Bay Drive Largo', '#e74c3c', 6, 'East Bay Plaza', false);
+addStore(27.9157005, -82.7306, 'Liberty Tax', 'East Bay Drive Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9181836, -82.7293211, 'Public Storage', 'US 19 Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9179119, -82.7337017, 'Dollar Tree', '5080 East Bay Drive Clearwater', '#f39c12', 4, 'Unnamed Retail Center', true);
+addStore(27.930694, -82.729675, 'Quality Boats', '17389 US 19 Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9393774, -82.7308625, 'Westside Skateshop', '18370 US 19 North Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9571014, -82.7250349, 'Ross', '2733 Mall Perimeter Drive Clearwater', '#f39c12', 1, 'Clearwater Mall', true);
+addStore(27.9389102, -82.7308642, 'NAPA Auto Parts', 'US 19 Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.928849, -82.730909, 'Shell', 'US 19 Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.919686, -82.729186, 'DriveTime', '16211 US 19 Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9151641, -82.7493359, 'Family Dollar', 'East Bay Dr Largo', '#e74c3c', 6, 'East Bay Plaza', false);
+addStore(27.935939, -82.731003, 'A&N Pork Store & Deli', '17956 US 19 Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0189591, -82.7646791, 'Anytime Fitness', '1471 Main Street Clearwater', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(28.0189815, -82.764847, 'Dunkin\'', '1461 Main Street Clearwater', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(28.0189031, -82.7648476, 'Baskin-Robbins', '1461 Main Street Clearwater', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(27.915536, -82.730469, 'Anytime Fitness', '5395 East Bay Drive Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9406956, -82.7310975, 'Quality Self Storage', 'US 19 Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.961077, -82.723362, 'Amscot', 'Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9213166, -82.7307811, 'Bicycle Express', 'US 19', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9103484, -82.7299954, 'Hertz', 'US 19', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9611604, -82.7275199, 'Chipotle', '2662 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9611578, -82.7274028, 'Verizon', 'Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.961179, -82.7222253, 'Hauser\'s Coins', '2790-D Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.960878, -82.722285, 'Subway', '2790 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9612004, -82.7217142, 'It\'s All Hairsay Salon', 'Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9601899, -82.722058, 'Fastsigns', 'Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.960221, -82.7219136, 'La Belle Hair Salon', '2783 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9602115, -82.7216038, 'Bayon Nails', 'Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9602174, -82.7217822, 'Five Star Car Stereo', 'Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9602151, -82.7214254, 'Deer Hunter Guns', 'Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9610103, -82.722279, 'Dry Cleaners', 'Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.961215, -82.722141, 'Allstate', '2794 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9599826, -82.7284192, 'Mattress Firm', '2613 Gulf to Bay Boulevard Clearwater', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.966229, -82.728262, 'Marshalls', '21323 US 19 Clearwater', '#f39c12', 25, 'Unnamed Retail Center', true);
+addStore(27.9683331, -82.7419129, 'Clearwater Collision Center', 'Drew Street Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9712501, -82.7466453, 'Tommy\'s Produce', 'Belcher Rd Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9250306, -82.7295378, 'Whitney 19 Self Storage', 'US 19 Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9682844, -82.7290748, 'Bed Pros', 'Clearwater', '#3498db', 25, 'Unnamed Retail Center', false);
+addStore(27.9683829, -82.7290689, 'AT&T', 'Clearwater', '#3498db', 25, 'Unnamed Retail Center', false);
+addStore(27.9271144, -82.7310743, 'Henderson RV', 'US 19 Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9746967, -82.709357, 'Savoy Antique Mall', 'McMullen Booth Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9746086, -82.7093428, 'Rug Bazaar', 'McMullen Booth Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0118804, -82.786861, 'Lace Lingerie', '437 Main St Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0097723, -82.7884972, 'Backdoor Cottage', 'Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0111399, -82.7896291, 'Waterfront Gallery', '715 Broadway Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0190366, -82.7388601, 'Bright Now! Dental', 'Main St Dunedin', '#e74c3c', 2, 'Countryside Mall', false);
+addStore(28.0188337, -82.7388488, 'Mattress Firm', '27054 US 19 Clearwater', '#e74c3c', 2, 'Countryside Mall', false);
+addStore(27.9607534, -82.7464785, 'Sunoco', '2198 Gulf to Bay Boulevard Clearwater', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(28.0322067, -82.6857268, 'Speedway', '3659 FL 580 Oldsmar', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.960053, -82.744106, 'Outspokin Bicycles', '2241 Gulf to Bay Boulevard Clearwater', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(27.9428628, -82.7469579, 'Ollie\'s Bargain Outlet', '1492 Nursery Road Clearwater', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(27.9601783, -82.724652, 'The Vitamin Shoppe', 'Gulf to Bay Boulevard Clearwater', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.9601795, -82.7250709, 'Men\'s Wearhouse', '1135 Gulf to Bay Boulevard Clearwater', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.9601809, -82.7249549, 'Hotworx', 'Gulf to Bay Boulevard Clearwater', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.9601788, -82.7247525, 'T-Mobile', 'Gulf to Bay Boulevard Clearwater', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.9597444, -82.7238905, 'Galaxy Golf', 'Mall Perimeter Dr Clearwater', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.9575638, -82.7271043, 'Great Clips', '920 Mall Perimeter Dr Clearwater', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.95743, -82.7270972, 'Goddess Nails', '940 Mall Perimeter Dr Clearwater', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.9578124, -82.7270532, 'Skechers', 'Mall Perimeter Dr Clearwater', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.9576045, -82.726364, 'Peltz Shoes', 'Mall Perimeter Dr Clearwater', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.95785, -82.726372, 'Hand & Stone', '710 Mall Perimeter Dr Clearwater', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.959229, -82.726585, 'Ulta Beauty', '2663 Suite 27 Gulf to Bay Boulevard Clearwater', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.9589525, -82.7265199, 'EasySpirit', 'Gulf to Bay Boulevard Clearwater', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.8933144, -82.7008763, 'Mobil', '49th Street Pinellas Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.893063, -82.700883, 'Circle K', '49th Street Pinellas Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8933188, -82.6997294, 'Fifth Third Bank', '13361 49th Street Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9610907, -82.7138175, 'Phantom Fireworks', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9685269, -82.7290702, 'Don Pancho Villa Market', 'Drew St Clearwater', '#3498db', 25, 'Unnamed Retail Center', false);
+addStore(28.0199003, -82.7614792, 'Lothian Kilt Rentals & Bagpipes', 'Main Street Dunedin', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(28.0199003, -82.7614304, 'A1 Cleaners', 'Main St Dunedin', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(28.0198967, -82.7610862, 'Joe\'s Market Produce & Deli', 'Main St Dunedin', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(28.0190565, -82.7499132, 'Jacobs Jewelers', 'Main St Dunedin', '#e74c3c', 31, 'Coastal Plaza', false);
+addStore(28.0190638, -82.7497577, 'Avon', 'Main St Dunedin', '#e74c3c', 31, 'Coastal Plaza', false);
+addStore(28.0190927, -82.7485795, 'Optical Eyeglasses', 'Main St Dunedin', '#e74c3c', 31, 'Coastal Plaza', false);
+addStore(27.9178892, -82.7344932, 'Supercuts', '5020 East Bay Drive Clearwater', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(27.9178863, -82.7345846, 'GNC', '5020 East Bay Drive Clearwater', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(28.005609, -82.7303535, 'Euro Elegance Furniture', 'US 19 Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0057704, -82.7303893, 'Hertz', 'US 19 Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0059393, -82.730432, 'Thrift Store', 'US 19 Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.01964, -82.7725761, 'Dunedin Jewelers II', '1276', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0197628, -82.7698234, 'Euro Jewelers', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0216815, -82.7364527, 'Fitzgerald Hyundai', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0197581, -82.769901, 'Gulf Coast Skate Shop', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0197652, -82.7697378, 'Jet\'s Pizza', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0196636, -82.7725012, 'Joseph Michael Salon', '1278', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0197605, -82.7699919, 'Nails', '1344', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0581109, -82.7381893, 'AT&T', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0266522, -82.7375058, 'AAMCO', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0305941, -82.7377073, 'American Heritage Auctioneers', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0774758, -82.739645, 'Speedway', '33600 US 19 Palm Harbor', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(28.0546054, -82.7380709, 'Mattress Firm', '30323 Highway 19 Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0585052, -82.7381975, 'MattressOne', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.077474, -82.7374179, 'Michaels', '33561 Highway 19 North Palm Harbor', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(28.0261745, -82.7372486, 'Roberts Collision Center', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.077894, -82.7374033, 'Trader Joe\'s', '33591 US Highway 19 North Palm Harbor', '#f39c12', 22, 'Unnamed Retail Center', true);
+addStore(28.0273628, -82.7371584, 'Wells Fargo', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9445421, -82.7309394, 'Crown Audi', '18940 US 19 Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9890127, -82.775848, 'Amscot', 'N Highland Ave Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0504082, -82.7816912, 'Subway', '2610 Causeway Boulevard Dunedin', '#3498db', 27, 'Unnamed Retail Center', false);
+addStore(27.929272, -82.72956, 'AutoNation Honda Clearwater', 'US-19 Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9470027, -82.7307886, 'Thrifty Car Sales', 'Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9572794, -82.7293726, 'The UPS Store', 'US 19 Clearwater', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.8944267, -82.7019166, 'Randy\'s Pianos', '5011 Ulmerton Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8944402, -82.702215, 'NAPA Auto Parts', '5027 Ulmerton Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8944309, -82.7020627, 'SRI Supply Direct', '5019 Ulmerton Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8944356, -82.7019603, 'Eagle\'s Nest', '5015 Ulmerton Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8932891, -82.7035601, 'Florida Carpet', '5150 Ulmerton Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.894385, -82.708288, 'BP', 'Ulmerton Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.961281, -82.723369, 'Rituals', '2643 Gulf to Bay Blvd Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0168257, -82.734583, 'BJ\'s', 'Countryside Blvd Clearwater', '#e74c3c', 2, 'Countryside Mall', false);
+addStore(28.0140094, -82.70808, 'Bonefish Grill', 'McMullen Booth Road Clearwater', '#e74c3c', 15, 'Northwood Oaks', false);
+addStore(28.0037094, -82.7308878, 'FedEx Drop Box', '25400 US Hwy 19 N Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0190172, -82.762977, 'Wells Fargo', '1483 Main St Dunedin', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(27.9916927, -82.7284906, 'Metro by T-Mobile', 'US 19 Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8945338, -82.7145592, 'Regions Bank', 'Ulmerton Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9511847, -82.7306919, 'smart', '19620 US 19 North Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0478078, -82.6922417, 'SunTrust', '3500 Tampa Road Oldsmar', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0495675, -82.695794, 'Starbucks', '3180 Tampa Road Oldsmar', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(28.0494601, -82.6958129, 'Panera Bread', '3181 Tampa Road Oldsmar', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(28.0484776, -82.6955952, 'Mini Storage', '3182 Tampa Road Oldsmar', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9166014, -82.7139788, '7-Eleven', 'Roosevelt Boulevard Clearwater', '#3498db', 40, 'Unnamed Retail Center', false);
+addStore(27.918127, -82.762722, 'Little Caesars', 'Imperial Palm Ct Largo', '#e74c3c', 10, 'Keene Plaza', false);
+addStore(27.916831, -82.756724, 'Marathon', 'East Bay Drive Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.916845, -82.752947, 'KinderCare', 'East Bay Drive Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.894067, -82.724397, 'Florida Body Shop & Paint', '6363 Ulmerton Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.894867, -82.744853, 'China Wok', 'Ulmerton Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.894886, -82.744805, 'ACE Cash Express', 'Ulmerton Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.894966, -82.744577, 'Subway', '7725 Ulmerton Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8949705, -82.7446504, 'Barber King', 'Ulmerton Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.896277, -82.745242, 'Family Dollar', 'Belcher Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.896202, -82.746221, 'Mini Storage', 'S Belcher Rd Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.896911, -82.746297, 'Tire Kingdom', 'S Belcher Rd Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.898144, -82.745286, 'American Transmission', 'S Belcher Rd Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.960894, -82.718659, 'S&M Truck World', '2868 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.957086, -82.7257102, 'GameStop', '2723 Mall Perimeter Dr Clearwater', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.915882, -82.733995, 'Midas Auto Service Experts', '5105 East Bay Drive Largo', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(27.887031, -82.728615, 'JR Food Mart', '66th Street North Pinellas Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.88702, -82.728424, 'Chicago Deli', '66th Street North Pinellas Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.05009, -82.735771, 'Publix', '30535 Curlew Road Palm Harbor', '#f39c12', 26, 'Unnamed Retail Center', true);
+addStore(28.049932, -82.737694, 'Starbucks', '30503 US HWY19 N Palm Harbor', '#3498db', 26, 'Unnamed Retail Center', false);
+addStore(28.068842, -82.739691, 'Pet Supermarket, Inc.', '32560 US 19 Palm Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.070445, -82.739499, 'Chick-fil-A', '32800 US Highway 19 North Palm Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9611646, -82.7276542, 'Mattress Firm', '2660 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.997712, -82.783212, 'Munchee\'s', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.011071, -82.790023, 'Enchanted Spirits', '712 Broadway Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.011187, -82.789986, 'Erika\'s Place, Inc.', '716 Scotland St Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.011265, -82.789976, 'Designer\'s Difference Home Furnishings & Decor', '718 Broadway Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.891647, -82.782671, 'Marshalls', 'Seminole Blvd Largo', '#f39c12', 0, 'Largo Mall', true);
+addStore(27.891406, -82.783272, 'AT&T', '10500 Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.890867, -82.783415, 'Petland', '103rd Way N Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.892973, -82.782028, 'rue21', 'Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.892998, -82.781851, 'H&R Block', 'Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.8928899, -82.7836078, 'GNC', 'Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.892991, -82.781532, 'Firehouse Subs', 'Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.892654, -82.781914, 'Bealls', 'Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.892053, -82.782613, 'Famous Footwear', '10500 Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.892153, -82.782512, 'Supercuts', '10500 Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.892245, -82.782397, 'Dots Fashions', '10500 Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.892341, -82.782288, 'Bath & Body Works', '10500 Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.892817, -82.783611, 'Sally Beauty', 'Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.892969, -82.783611, 'Play It Again Sports', '10500 Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.893184, -82.783702, 'Michaels', '10500 Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.891577, -82.783078, 'Rack Room Shoes', '10500 Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.891722, -82.783031, 'TNL Nails & Spa', '10500 Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.8939426, -82.7587572, 'RaceTrac', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.043718, -82.67658, 'Subway', '3775 Tampa Road Oldsmar', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(28.042383, -82.677556, 'Metro by T-Mobile', 'Forest Lakes Blvd Oldsmar', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(27.960252, -82.799717, 'Chase', '511 S Ft Harrison Ave Clearwater', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(27.957723, -82.7997, 'Regions Bank', '715 S Ft Harrison Ave Clearwater', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(27.944674, -82.799674, 'Fluffy Puppies', 'S Ft Harrison Ave Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.93227, -82.796019, 'The Miranda Gallery', 'Clearwater Largo Rd N Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.917191, -82.795825, 'Save-A-Lot', 'West Bay Dr Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8917231, -82.7866465, 'Advance Auto Parts', '10500 Seminole Blvd Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.892917, -82.784493, 'Target', '10500 Ulmerton Road Largo', '#f39c12', 0, 'Largo Mall', true);
+addStore(27.890863, -82.785462, 'Plato\'s Closet', 'Seminole Blvd Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.890807, -82.785214, 'PetSmart', '10500 Seminole Boulevard Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.890962, -82.784356, 'Yogurtland', '103rd Way N Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.890979, -82.784171, 'Miss Shoe', '103rd Way N Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.89104, -82.783358, 'Once Upon a Child', '-', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.891298, -82.783411, 'Avenue', 'Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.890906, -82.784512, 'Dollar Tree', '-', '#f39c12', 0, 'Largo Mall', true);
+addStore(27.8950562, -82.7825674, 'T-Mobile', 'Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.8936545, -82.7842711, 'Bright Now! Dental', '10500 Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.8936529, -82.7844413, 'Jersey Mike\'s Subs', '10500 Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.893603, -82.783602, 'LensCrafters', 'Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.893522, -82.783604, 'GameStop', 'Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.893428, -82.783599, 'Foot Solutions', 'Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.893339, -82.78359, 'WW Studio', '-', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.893823, -82.761742, '7-Eleven', 'Ulmerton Road Largo', '#3498db', 33, 'Unnamed Retail Center', false);
+addStore(27.990322, -82.735895, 'Cadence Bank', 'Sunset Blvd', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9570879, -82.7256233, 'Cookie Cutters', '2729 Gulf to Bay Boulevard Clearwater', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.9570902, -82.7255242, 'Sally Beauty', '2729 Gulf to Bay Boulevard Clearwater', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.9570599, -82.7247154, 'Five Below', '2739 Gulf to Bay Boulevard Clearwater', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(28.024513, -82.739026, 'Lokey Nissan', '27758 US 19 North Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.025306, -82.739031, 'Lokey Volkswagen', 'US 19 North Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.02604, -82.739124, 'Lokey Kia', 'US 19 North Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.024284, -82.73979, 'Lokey Nissan Service', '27758 US 19 North Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.010467, -82.73454, 'Kitchen & Bath Ideas', '26258A US 19 North Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.009882, -82.734254, 'Allstate', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.010035, -82.734468, 'Salon Italia', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.009754, -82.733806, 'Swiss Watch', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.012564, -82.7116, 'Marco\'s Pizza', '-', '#e74c3c', 3, 'Northwood Plaza', false);
+addStore(27.91611, -82.761602, 'Minuteman Press', '2475 East Bay Drive Clearwater', '#e74c3c', 10, 'Keene Plaza', false);
+addStore(27.916093, -82.761815, 'Starbucks', '2401 East Bay Drive Largo', '#e74c3c', 10, 'Keene Plaza', false);
+addStore(27.937468, -82.728866, 'USPS', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.931517, -82.795394, 'Benjamin Moore Paints', '706 Clearwater Largo Road North Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.013832, -82.707846, 'Jimmy John\'s', '-', '#e74c3c', 15, 'Northwood Oaks', false);
+addStore(28.013536, -82.707772, 'Alexa Jewelry', '-', '#e74c3c', 15, 'Northwood Oaks', false);
+addStore(27.909563, -82.787426, 'A Life Tribute', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.895055, -82.761829, 'Thorntons', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.885451, -82.812359, 'Sikorsky Deli & Fish Market', '12545 Ulmerton Road Indian Rocks Beach', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.884626, -82.812639, 'Domino\'s', '12613 Ulmerton Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.879735, -82.814092, 'Klaus Body Shop', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.879692, -82.814575, 'Indian Rocks Mini Storage', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.989649, -82.775764, '7-Eleven', '1898 North Highland Avenue Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.989735, -82.787487, 'Circle A Food Store', '1201 Sunset Point Road Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9156291, -82.7257405, 'Moe\'s Southwest Grill', '2683 Roosevelt Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9155044, -82.7254802, 'Tropical Smoothie Cafe', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.991696, -82.728413, 'Prints2Go', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.991696, -82.728204, 'Tailor & Cleaners', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0198712, -82.7320947, 'Panera Bread', '2532 Main Street Clearwater', '#e74c3c', 2, 'Countryside Mall', false);
+addStore(28.0201799, -82.7320895, 'Smoothie King', 'Main Street Clearwater', '#e74c3c', 2, 'Countryside Mall', false);
+addStore(28.0168399, -82.734414, 'Red Robin', '-', '#e74c3c', 2, 'Countryside Mall', false);
+addStore(28.012206, -82.789435, 'MJ\'s Gifts', '314 Main Street Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.973879, -82.708464, 'Sam Ash', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9112179, -82.7287384, 'Ameri-Truck Sales, LLC', '-', '#3498db', 37, 'Unnamed Retail Center', false);
+addStore(27.916731, -82.71415, 'Redbox', '-', '#3498db', 40, 'Unnamed Retail Center', false);
+addStore(27.893346, -82.719853, 'Image Print Works', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.990294, -82.718905, 'Sylvan Abbey Funeral Home', '2853 Sunset Point Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.893477, -82.737417, 'All About Puppies', '7190 Ulmerton Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.013058, -82.732263, 'Subway', '2561 Countryside Boulevard Clearwater', '#e74c3c', 2, 'Countryside Mall', false);
+addStore(28.013229, -82.732244, 'Ross', '2561 Countryside Boulevard Clearwater', '#f39c12', 2, 'Countryside Mall', true);
+addStore(28.013424, -82.732267, 'Dot\'s Fashions', '2561 Countryside Boulevard Clearwater', '#e74c3c', 2, 'Countryside Mall', false);
+addStore(28.014039, -82.7338004, 'iParty', '-', '#e74c3c', 2, 'Countryside Mall', false);
+addStore(28.012589, -82.711241, 'Hair & Nails', '2510 McMullen Booth Road Clearwater', '#e74c3c', 3, 'Northwood Plaza', false);
+addStore(28.011707, -82.711185, 'Oakbrook Plaza', '-', '#e74c3c', 3, 'Northwood Plaza', false);
+addStore(27.942537, -82.745488, 'Circle K', 'South Belcher Road Clearwater', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(27.942866, -82.745442, 'Belcher Food Store', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(27.940169, -82.730884, 'Elite Car Sales', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.945819, -82.73068, 'Total Auto Care', '19080', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.89474, -82.704148, 'Central Music', 'Ulmerton Road', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.018577, -82.762213, 'The UPS Store', 'Virginia Street Dunedin', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(27.97987, -82.710584, 'Ace Hardware', '1500 McMullen Booth Road Clearwater', '#f39c12', 16, 'Unnamed Retail Center', true);
+addStore(27.980021, -82.709876, 'Pet Supplies Plus', '1500 McMullen Booth Road Clearwater', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(28.051381, -82.738042, 'The UPS Store', '30725 US 19 Dunedin', '#3498db', 26, 'Unnamed Retail Center', false);
+addStore(28.063365, -82.739556, 'American Automobile Association', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.065729, -82.738126, 'Edwin Watts', '32257 US 19 Palm Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.07467, -82.738288, 'Wells Fargo', '-', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(28.075135, -82.737277, 'Publix', '33343 US Highway 19 North Palm Harbor', '#f39c12', 12, 'Unnamed Retail Center', true);
+addStore(27.968302, -82.764707, 'Verena Food Mart', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9155744, -82.7256086, 'Jersey Mike\'s Subs', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.02854, -82.739128, 'The Missing Piece', '28200 US 19 Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.030282, -82.7389, 'Hudson\'s Furniture', 'US 19 Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.961014, -82.758945, 'Burger King', '1888 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.960336, -82.759943, 'Clearwater Bagels', 'Gulf to Bay Boulevard Clearwater', '#3498db', 29, 'Unnamed Retail Center', false);
+addStore(27.997692, -82.783536, 'Coin Laundry', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0117749, -82.7073471, 'Wild Birds Unlimited Nature Shop', '2454 N. McMullen Booth Road Clearwater', '#e74c3c', 15, 'Northwood Oaks', false);
+addStore(27.916963, -82.744623, 'Amscot', '4100', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.007214, -82.727895, 'Orangetheory Fitness', '25853 US Highway 19 North Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.007614, -82.727903, 'State Farm', '25881', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.008126, -82.728043, 'Chuck E. Cheese', '25921 US Highway 19 North Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.943952, -82.745377, 'Ana\'s Bakery', '1441 South Belcher Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.943329, -82.745422, 'Pink Hair Salon', 'South Belcher Road Clearwater', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(27.893678, -82.752556, 'Discount Mattress', 'Ulmerton Road Seminole', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.893528, -82.739317, 'Amscot', 'Ulmerton Road Seminole', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.893227, -82.729901, 'Arby\'s', '6640 66th Street North Pinellas Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.892042, -82.729638, 'Burger King', '13238 66th Street North Seminole', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9521458, -82.7755576, 'A&B Battery', 'South Highland Avenue Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.950684, -82.7755445, 'Pet Grooming', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9515731, -82.7755467, 'Rainbow Food', 'South Highland Avenue Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0501515, -82.6971939, 'OTS Mobile Audio', '3166 Tampa Road Oldsmar', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(27.9906861, -82.6907529, 'Safety Harbor Optical', '330 Main Street Safety Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.965852, -82.748184, 'SunTrust', '2150 Cleveland Street Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.960915, -82.741325, 'Fiat of Clearwater', '2330 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.961179, -82.740704, 'Dayton Andrews Inc', '2388 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.942509, -82.746881, 'King Food Mart', '1498 2nd Street', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(27.960028, -82.743727, 'Publix Liquors', '2253 Gulf to Bay Boulevard Clearwater', '#f39c12', 5, 'Unnamed Retail Center', true);
+addStore(27.960059, -82.743901, 'Sun Country Cleaners', '2249 Gulf to Bay Boulevard Clearwater', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(27.960091, -82.744279, 'Ocean Nails and Spa', '2235 Gulf to Bay Boulevard Clearwater', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(27.960091, -82.744228, 'Fantastic Sams', '2237 Gulf to Bay Boulevard Clearwater', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(27.960823, -82.743976, 'Goodwill', '2250', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(27.960833, -82.743871, 'Smokin Pipes', '2254', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(28.0204737, -82.7505051, 'Walmart Neighborhood Market', '2102 Main Street Dunedin', '#f39c12', 31, 'Coastal Plaza', true);
+addStore(28.0197661, -82.7565755, 'Papa John\'s', '1098 Overcash Drive Dunedin', '#3498db', 24, 'Unnamed Retail Center', false);
+addStore(27.9782773, -82.8273736, 'Chase', '-', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(27.9789774, -82.8272214, 'Subway', '-', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(28.044339, -82.681314, 'Sunoco', 'Tampa Road Oldsmar', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.033838, -82.739247, 'Skyline Chili', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.011605, -82.70767, 'The Bakery', '-', '#e74c3c', 3, 'Northwood Plaza', false);
+addStore(28.011738, -82.707394, 'Ed\'s Fine Wines', '-', '#e74c3c', 15, 'Northwood Oaks', false);
+addStore(27.9780838, -82.8169871, 'Wells Fargo', '-', '#3498db', 30, 'Unnamed Retail Center', false);
+addStore(28.0455287, -82.6781677, 'ALDI', '3705 Tampa Road Oldsmar', '#27ae60', -1, 'Standalone / Not in Plaza', true);
+addStore(28.0454624, -82.6779531, 'Ross', '3705 Tampa Road Oldsmar', '#f39c12', 14, 'Unnamed Retail Center', true);
+addStore(27.9273765, -82.7893538, 'ALDI', '1177 Missouri Avenue North Largo', '#f39c12', 13, 'Unnamed Retail Center', true);
+addStore(27.9273813, -82.7880878, 'Marathon', '1199 Missouri Avenue North Largo', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(27.9264846, -82.7858843, 'Walmart Supercenter', '990 Missouri Avenue North Largo', '#f39c12', 39, 'Unnamed Retail Center', true);
+addStore(28.051233, -82.7367913, 'MY SALON Suite®', '30669 U.S. Highway 19 North Palm Harbor', '#3498db', 26, 'Unnamed Retail Center', false);
+addStore(28.009036, -82.731974, 'Mattress One', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.019721, -82.740973, 'Sun Country Cleaners', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.019818, -82.736015, 'Bed Pros', '-', '#e74c3c', 2, 'Countryside Mall', false);
+addStore(28.005995, -82.7752187, 'T & T Auto Repair', '481 Patricia Avenue Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0189646, -82.7349723, 'Chase', '-', '#e74c3c', 2, 'Countryside Mall', false);
+addStore(28.0199274, -82.7570036, 'State Farm Insurance - Allen Williams', '1780 Main Street Dunedin', '#3498db', 24, 'Unnamed Retail Center', false);
+addStore(27.9051609, -82.7630685, 'MedRx, Inc.', '1200 Starkey Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0483314, -82.7399158, 'Guidewell', '2375 Curlew Road Dunedin', '#3498db', 23, 'Unnamed Retail Center', false);
+addStore(28.0509233, -82.7360357, 'The Classic\'s Barber Shop', '30561 US Highway 19 North Palm Harbor', '#3498db', 26, 'Unnamed Retail Center', false);
+addStore(28.0509745, -82.7360366, 'Larisa Jewelry Diamond Center', '30569 US Highway 19 North Palm Harbor', '#3498db', 26, 'Unnamed Retail Center', false);
+addStore(27.9153115, -82.7469116, 'Publix Liquor', '3825 East Bay Drive Largo', '#f39c12', 6, 'East Bay Plaza', true);
+addStore(28.019076, -82.757378, 'Jimmy John\'s', '1761 Main Street', '#3498db', 24, 'Unnamed Retail Center', false);
+addStore(28.0201255, -82.7320885, 'Good Feet', 'Main Street', '#e74c3c', 2, 'Countryside Mall', false);
+addStore(28.0199279, -82.7329812, 'Tijuana Flats', 'Main Street', '#e74c3c', 2, 'Countryside Mall', false);
+addStore(27.9654779, -82.8001524, 'Starbucks', '433 Cleveland Street Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0500296, -82.7785358, 'Publix', '902 Curlew Road Dunedin', '#f39c12', 27, 'Unnamed Retail Center', true);
+addStore(27.9893201, -82.7323273, 'Five Below', '23678 US-19 Clearwater', '#e74c3c', 8, 'Sunset Point 19 Shopping Center', false);
+addStore(28.0176589, -82.7357293, 'Avis', '-', '#e74c3c', 2, 'Countryside Mall', false);
+addStore(27.9870445, -82.7736996, 'Walmart Neighborhood Market', '1803 North Highland Avenue Clearwater', '#f39c12', 44, 'Unnamed Retail Center', true);
+addStore(28.0600454, -82.7062003, 'Walmart Neighborhood Market', '3400 East Lake Road Palm Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', true);
+addStore(28.0505385, -82.7815908, 'OTE Bike Shop', '-', '#3498db', 27, 'Unnamed Retail Center', false);
+addStore(28.0568888, -82.8235949, 'South Beach Pavilion Store', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0044249, -82.7758016, 'Dunedin Fresh Market', '390 Patricia Avenue Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0134676, -82.7111348, 'Red Bamboo Medi Spa', '2516 McMullen Booth Road Clearwater', '#e74c3c', 3, 'Northwood Plaza', false);
+addStore(28.0171153, -82.7358511, 'Whole Foods Market', '27001 US 19 North Clearwater', '#f39c12', 2, 'Countryside Mall', true);
+addStore(27.8796154, -82.7874307, 'Speedway', '11708 Seminole Boulevard Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8937697, -82.7809954, 'Starbucks', '10500 Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.9438926, -82.7463567, 'Subway', '1444 Belcher Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9412473, -82.7452878, 'Walgreens', '-', '#27ae60', -1, 'Standalone / Not in Plaza', true);
+addStore(27.9653944, -82.8007556, 'Abbott Blackstone Co.', '411 Cleveland Street Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9705987, -82.7004412, 'Dero', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9171218, -82.7201137, 'Woody\'s Liquor & Fine Wine', '2862 Roosevelt Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.023335, -82.7082254, 'Country Coin Laundry', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0234093, -82.7081409, 'Perfect Nails', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0124373, -82.7070571, 'Sun Country Cleaners', '-', '#e74c3c', 15, 'Northwood Oaks', false);
+addStore(28.0144237, -82.7339714, 'Starbucks', '27001 Highway 19 North Clearwater', '#e74c3c', 2, 'Countryside Mall', false);
+addStore(27.8935987, -82.7410703, 'Game On Movies & Games', '7500 Ulmerton Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0135513, -82.7098232, 'Anthony\'s Coal Fired Pizza', '-', '#e74c3c', 3, 'Northwood Plaza', false);
+addStore(28.0135287, -82.7104288, 'The Garden Shed Florist', '-', '#e74c3c', 3, 'Northwood Plaza', false);
+addStore(28.0135869, -82.7110421, 'Northwood Vision', '-', '#e74c3c', 3, 'Northwood Plaza', false);
+addStore(28.0142248, -82.709567, 'Jersey Mike\'s Subs', '-', '#e74c3c', 3, 'Northwood Plaza', false);
+addStore(28.0134192, -82.7111607, 'Massage Envy', '-', '#e74c3c', 3, 'Northwood Plaza', false);
+addStore(27.987774, -82.7319472, 'Hobby Lobby', '-', '#e74c3c', 8, 'Sunset Point 19 Shopping Center', false);
+addStore(27.9889914, -82.7322825, 'World Market', '-', '#e74c3c', 8, 'Sunset Point 19 Shopping Center', false);
+addStore(27.9905077, -82.6940472, '3 Cheers Liquor', 'Main Street Safety Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.990664, -82.6934517, 'Mobil', 'Main Street Safety Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9906498, -82.6927221, 'Edward Jones', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9906664, -82.6926014, 'The Chop Shop', 'Main Street Safety Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9906711, -82.6924405, 'Polished', 'Main Street Safety Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.990664, -82.691609, 'Bru\'s Barber Shop', 'Main Street Safety Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9906772, -82.6903625, 'La Diva', '312 Main Street Safety Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9906469, -82.688486, 'Cold Stone Creamery', '100 Main Street Safety Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9905791, -82.6969995, 'Harborside Auto Repair', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0124434, -82.707193, 'The UPS Store', '-', '#e74c3c', 15, 'Northwood Oaks', false);
+addStore(27.9611866, -82.7218715, 'Serenity Nails & Spa', '2794 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9670306, -82.8255973, 'Island Market', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9670891, -82.8251897, 'Island Liquor', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9666348, -82.8241831, 'Subway', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9665698, -82.8235673, 'Surf Style', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8932584, -82.732241, 'Westlund Florida LLC', '6760 Ulmerton Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0608913, -82.7066076, 'Walgreens', '-', '#f39c12', 11, 'The Shoppes of Boot Ranch', true);
+addStore(27.9789857, -82.7425059, 'Dero', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9793025, -82.8256503, 'Frenchy\'s Seafood Market', 'East Shore Drive', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(27.9155987, -82.78401, 'Dero', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9156658, -82.7140588, 'Walgreens', '2991 Roosevelt Boulevard Clearwater', '#f39c12', 40, 'Unnamed Retail Center', true);
+addStore(27.916817, -82.731079, 'Subway', '5310 East Bay Drive Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9168079, -82.7311931, 'First Watch', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(27.9167779, -82.7314123, 'T-Mobile', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(27.9167747, -82.7315153, 'Chipotle', '5360 East Bay Drive Clearwater', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(27.9179867, -82.7327799, 'Ross', '5220 East Bay Drive Clearwater', '#f39c12', 4, 'Unnamed Retail Center', true);
+addStore(27.9179612, -82.733419, 'Petco', '5120 East Bay Drive Clearwater', '#f39c12', 4, 'Unnamed Retail Center', true);
+addStore(27.9179367, -82.7340143, 'Five Below', '5060 East Bay Drive Clearwater', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(27.9178818, -82.734197, 'Hear USA', '5020 East Bay Drive Clearwater', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(27.9178841, -82.7343891, 'Pizza Hut', '5020 East Bay Drive Clearwater', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(27.9178912, -82.7346607, 'H&R Block', '5020 East Bay Drive Clearwater', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(27.9174371, -82.7305784, 'HT Computers', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9173026, -82.7305838, 'Spectrum', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.908061, -82.8464788, 'Sunoco', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9780229, -82.827289, 'Ron Jon Surf Shop', '-', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(27.9784244, -82.8272742, 'Dunkin\'', '393 Mandalay Avenue Clearwater', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(27.9788022, -82.8276363, 'Starbucks', '400 Mandalay Avenue Clearwater', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(27.8968745, -82.8482001, 'Crystal\'s Nails and Spa', '1401 Gulf Boulevard Indian Rocks Beach', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9610744, -82.7048084, 'Dero', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8947826, -82.7536445, 'Mid-County Collision', 'Ulmerton Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0129925, -82.7362266, 'Tesla Supercharger', '26508 US Highway 19 Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0414742, -82.6729865, 'Jersey Mike\'s Subs', '-', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(28.0610901, -82.7097259, 'Five Guys', '300 East Lake Road Palm Harbor', '#e74c3c', 11, 'The Shoppes of Boot Ranch', false);
+addStore(28.0630929, -82.7078579, 'Menchie\'s', '794 East Lake Road Palm Harbor', '#e74c3c', 11, 'The Shoppes of Boot Ranch', false);
+addStore(28.0618485, -82.7066133, 'Circle K', '3470 East Lake Road Palm Harbor', '#e74c3c', 11, 'The Shoppes of Boot Ranch', false);
+addStore(27.9475036, -82.8335558, 'CGX', '1375 Gulf Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8940635, -82.758757, 'RaceTrac', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0209512, -82.7647384, 'Art from the Heart Cafe', '1248 County Rd 1 Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0780483, -82.7396781, 'Walgreens', '33670 US 19 Palm Harbor', '#f39c12', 22, 'Unnamed Retail Center', true);
+addStore(27.9730844, -82.728059, 'Sunshine Wellness', '22113 US Highway 19 North Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0513484, -82.787959, 'Angler 360 Bait Tackle and Apparel Co.', '290 Causeway Boulevard Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9810809, -82.7906585, 'DJ Booth', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9609493, -82.7748309, 'China Wok', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9909166, -82.6958988, 'Joey Biscotti', '839 Main Street Safety Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.990926, -82.6926533, 'Dazzled Boutique', '525 Main Street Safety Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.991344, -82.6913598, 'Tupelo on 4th', '135 4th Avenue North Safety Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9909253, -82.6904866, 'Aerie Lane Home', '319 Main Street Safety Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9909137, -82.6882538, 'Rocking Delicious', '101 Main Street Safety Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9905281, -82.6915829, 'Safety Harbor Galleria', '123 2nd Avenue South Safety Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9907019, -82.6904853, 'Spice of the Harbor', '318 Main Street Safety Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9906636, -82.6929478, 'The End Table', '550 Main Street Safety Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0115418, -82.7863067, 'TuKro Coffee', '472 Wood Street Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0225134, -82.7367107, 'Lexus of Clearwater', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0210514, -82.736852, 'Fitzgerald Subaru', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8831061, -82.8149868, 'Leaf & Bean LLC', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8796989, -82.7874463, 'Speedway', '11708 Seminole Boulevard Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9171295, -82.817393, 'Speedway', '4 Indian Rocks Road North Belleair Bluffs', '#3498db', 45, 'Unnamed Retail Center', false);
+addStore(27.9172419, -82.8174671, 'Speedway', '4 Indian Rocks Road North Belleair Bluffs', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9461922, -82.7310963, 'Speedway', '2577 Harn Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9853995, -82.8269423, 'Dunkin\'', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9853149, -82.8269388, 'Speedway', '580 Mandalay Avenue Clearwater Beach', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9607216, -82.8002111, 'Rebel #835', '441 Chestnut Street Clearwater', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(27.9606868, -82.8004972, 'Speedway', '441 Chestnut Street Clearwater', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(27.9166814, -82.7200542, 'Family Dollar', '2862 Roosevelt Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9168104, -82.7256946, 'Speedway', '2698 Roosevelt Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9157687, -82.7286868, 'Wawa', '15701 US Highway 19 North Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9154489, -82.7286415, 'Wawa', '15701 US Highway 19 North Clearwater', '#3498db', 37, 'Unnamed Retail Center', false);
+addStore(27.9156371, -82.7132362, 'Speedway', '5798 Roosevelt Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9830931, -82.7078804, 'Walgreens', '1701 North Mcmullen Booth Road Clearwater', '#f39c12', 49, 'Unnamed Retail Center', true);
+addStore(27.9821068, -82.7084188, 'Speedway', '1625 North Mcmullen Booth Road Clearwater', '#3498db', 49, 'Unnamed Retail Center', false);
+addStore(27.9821374, -82.7080933, 'Speedway', '1625 North Mcmullen Booth Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0774279, -82.7399109, 'Speedway', '33600 US 19 Palm Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0320779, -82.685545, 'Speedway', '3659 FL 580 Oldsmar', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9609185, -82.6985461, 'Dero', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9178996, -82.7636914, 'Sprouts Farmers Market', '-', '#f39c12', 10, 'Keene Plaza', true);
+addStore(27.9178963, -82.7642153, 'Dollar General', '-', '#e74c3c', 10, 'Keene Plaza', false);
+addStore(27.9392661, -82.7734972, 'Anytime Fitness', '1595 South Highland Clearwater', '#3498db', 34, 'Unnamed Retail Center', false);
+addStore(27.9392524, -82.773967, 'Pet Safari', '-', '#3498db', 34, 'Unnamed Retail Center', false);
+addStore(27.9394516, -82.7739739, 'AA Discount Liquor', '-', '#3498db', 34, 'Unnamed Retail Center', false);
+addStore(27.9567454, -82.7881031, 'Marco\'s Pizza', '810 South Missouri Avenue Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9568953, -82.7880856, '7-Eleven', '810 South Missouri Avenue Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8842251, -82.7627338, 'Automotive Evolution', '12382 Starkey Road', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9997307, -82.7305958, 'Joseph\'s Tea', '25028 US-19 Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9731084, -82.7267265, 'Mold Bros', '22155 US Highway 19 North Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9434009, -82.7469489, 'Pinch A Penny', '1480 South Belcher Road Clearwater', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(27.9172941, -82.7752764, 'Bell\'s Hardwood Flooring', '95 Highland Avenue Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9174291, -82.7752683, 'Highland Cleaners', '97 Highland Avenue Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9160119, -82.7418037, 'Waterwheel', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9169515, -82.753636, 'Orange Pawn', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9169345, -82.7538676, 'Hartson Food Store', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9169192, -82.7537506, 'The Barber\'s Edge', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9162011, -82.756468, 'The Vapers Depot', '2945 East Bay Drive Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.916811, -82.7572517, 'DIY Pest Control', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9161311, -82.7599339, 'Subway', '2655 East Bay Drive Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0423005, -82.6772635, 'Joe\'s produce', '-', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(28.0288571, -82.7632436, 'Honors Gran Jewelry', 'County Road 1 Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9743143, -82.7469414, 'Veterans Funeral Care', '830 North Belcher Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0128429, -82.7324217, 'Nothing Bundt Cakes', '2543 Countryside Blvd Clearwater', '#e74c3c', 2, 'Countryside Mall', false);
+addStore(27.8942131, -82.7734591, 'Frida\'s Cafe & Bakery', '9700 Ulmerton Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9791454, -82.8173693, 'Clipper Creek', '-', '#3498db', 30, 'Unnamed Retail Center', false);
+addStore(28.0685389, -82.7396793, 'Appliance Repair by Asurion', 'Palm Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9756679, -82.8279721, 'Totally Tubular Watersports Clearwater', '25 Causeway Blvd Slip #1 Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9762935, -82.8278469, 'Chute Em Up Parasail', 'Slip 8, 25 Causeway Blvd Clearwater Beach', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(28.0688477, -82.7698663, 'Caladesi Propane', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0191729, -82.7491385, 'Brazilian Wax and Sugar Center', '2141 Main Street', '#e74c3c', 31, 'Coastal Plaza', false);
+addStore(27.8922526, -82.7849176, 'Five Below', '-', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.8928072, -82.7630778, 'Domino\'s', '13220 Starkey Road Largo', '#3498db', 33, 'Unnamed Retail Center', false);
+addStore(27.8938497, -82.7609826, 'Starbucks', '8870 Ulmerton Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8850088, -82.7336745, 'The Damatta Experience LLC Elegance Baked In', '6844 124th Ave North Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9152086, -82.7482493, 'The UPS Store', '-', '#e74c3c', 6, 'East Bay Plaza', false);
+addStore(27.9161677, -82.7604408, 'Rainbow Food Mart', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9168084, -82.7610683, 'Wawa', '-', '#e74c3c', 10, 'Keene Plaza', false);
+addStore(27.8935804, -82.7828973, 'UPS', '-', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.8912883, -82.7877575, 'Batteries Plus Bulbs', '13002 Seminole Boulevard Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.891357, -82.7877569, 'Attitudes Dancewear', '13002 Seminole Boulevard Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8915314, -82.7878042, 'Tosca Salon', '13002 Seminole Boulevard Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8915628, -82.7878053, 'Foot Solutions', '13002 Seminole Boulevard Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8918265, -82.7877417, 'Eyeglass World', '13002 Seminole Boulevard Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8915277, -82.7866464, 'Pep Boys', '-', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.8936513, -82.7840325, 'Orangetheory Fitness', '10500 Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(28.0179536, -82.776627, 'Firestone Auto Repair', '952 Patricia Avenue', '#3498db', 28, 'Unnamed Retail Center', false);
+addStore(27.987598, -82.731032, 'Sprouts Farmers Market', '23656 US Highway 19 North Clearwater', '#f39c12', 8, 'Sunset Point 19 Shopping Center', true);
+addStore(27.9615397, -82.7476107, 'ALDI', '2150 Gulf To Bay Boulevard Clearwater', '#f39c12', 21, 'Unnamed Retail Center', true);
+addStore(27.9402608, -82.7740108, 'Publix', '1555 South Highland Avenue Clearwater', '#f39c12', 34, 'Unnamed Retail Center', true);
+addStore(27.8845605, -82.747642, 'McCleary\'s Auto and Truck Repair', '12350 #4A South Belcher Road', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8921451, -82.7079457, 'Jacksew', '13101 56th Court North Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9776057, -82.8310364, 'Hooked on Pier 60', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.078307, -82.7410983, 'Sprouts Farmers Market', '33652 US Highway 19 North Palm Harbor', '#f39c12', 22, 'Unnamed Retail Center', true);
+addStore(28.0780178, -82.7410767, 'Burlington', '33650 Highway 19N Palm Harbor', '#f39c12', 22, 'Unnamed Retail Center', true);
+addStore(27.9741959, -82.7094318, 'The Forge Smoke Shop', '908 McMullen Booth Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9658747, -82.7857791, 'A Very Important Pet', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9168279, -82.7441991, 'Euro Food & Deli', '4100 East Bay Drive Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8857147, -82.7178082, 'Forty Millimeter, Inc.', '6020 126th Avenue North Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9667892, -82.826062, 'Hampton Inn & Suites', '635 South Gulfview Boulevard Clearwater Beach', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0447768, -82.6807074, 'Bank of America', '-', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(27.9157953, -82.7374234, 'Raising Cane\'s', '4835 East Bay Drive Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0671761, -82.721306, 'Circle K', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0670117, -82.7385735, 'PNC Bank', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9150945, -82.7273984, 'Village Inn', '2659 Roosevelt Boulevard Clearwater', '#3498db', 37, 'Unnamed Retail Center', false);
+addStore(27.91513, -82.72865, 'Tesla Supercharger', '15701 US Highway 19 North Clearwater', '#3498db', 37, 'Unnamed Retail Center', false);
+addStore(27.9521582, -82.8295679, 'Taste of Italy Authentic Gelateria & Cafe', '1261 Gulf Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9874277, -82.7751164, 'Dunkin\'', '1831 North Highland Avenue Clearwater', '#3498db', 44, 'Unnamed Retail Center', false);
+addStore(28.04999, -82.7804916, 'Dunkin\'', '2600 Bayshore Boulevard Dunedin', '#3498db', 27, 'Unnamed Retail Center', false);
+addStore(28.0234627, -82.771961, 'Domino\'s', '1410 Pinehurst Road Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0478834, -82.7377243, 'Dunkin\'', '30323 19 North Clearwater', '#3498db', 23, 'Unnamed Retail Center', false);
+addStore(28.0731747, -82.7382977, 'Chipotle', '33121 Highway 19 North Palm Harbor', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(28.0732563, -82.7396965, 'Wingstop', '33148 Highway 19 North Palm Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0742717, -82.7395457, 'Dunkin\'', '33240 Highway 19 North Palm Harbor', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(28.0760879, -82.7396509, 'KFC', '33420 Highway 19 North Palm Harbor', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(28.0811697, -82.7397859, 'Wendy\'s', '34092 US Highway 19 North Palm Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0832304, -82.7400826, 'Jimmy John\'s', '34190 Highway 19 North Palm Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0437144, -82.6740847, 'Dunkin\'', '3801 Tampa Road Oldsmar', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(28.0420487, -82.6748103, 'Domino\'s', '3800 Tampa Road Oldsmar', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(28.0436235, -82.6800129, 'Dunkin\'', '3720 Tampa Road Oldsmar', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(28.0102985, -82.7096171, 'Dunkin\'', '2451 North McMullen Booth Road Clearwater', '#e74c3c', 3, 'Northwood Plaza', false);
+addStore(27.9858252, -82.7304223, 'Domino\'s', '23698 Highway 19 Clearwater', '#e74c3c', 8, 'Sunset Point 19 Shopping Center', false);
+addStore(27.961032, -82.713819, 'Dunkin\'', '2970 Gulf To Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9397075, -82.7297093, 'Dunkin\'', '18419 19 North Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.941753, -82.7440792, 'Domino\'s', '2245 Nursery Road Clearwater', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(27.9610653, -82.7507488, 'Wingstop', '2090 Gulf to Bay Boulevard Clearwater', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(27.960844, -82.752418, 'Dairy Queen', '2046 Gulf To Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9609387, -82.7562963, 'KFC', '1960 Gulf To Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9608444, -82.7576773, 'Arby\'s', '1920 Gulf-To-Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9676343, -82.7645864, 'Dunkin\'', '1749 Drew Street Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9616446, -82.7956859, 'Domino\'s', '423 South Myrtle Avenue Clearwater', '#3498db', 51, 'Unnamed Retail Center', false);
+addStore(27.959158, -82.787977, 'Dunkin\'', '600 South Missouri Avenue Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.951986, -82.787162, 'Popeyes', '1285 South Missouri Avenue Clearwater', '#3498db', 46, 'Unnamed Retail Center', false);
+addStore(27.936686, -82.7879594, 'KFC', '1648 South Missouri Avenue Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8958462, -82.7875949, 'Dunkin\'', '2298 Seminole Boulevard Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.8953332, -82.7793265, 'Five Guys', '10125 Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.9171476, -82.7787172, 'Domino\'s', '800 East Bay Drive Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9214846, -82.7873653, 'Dunkin\'', '600 Missouri Avenue North Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.919837, -82.788113, 'DQ Grill & Chill', '351 Missouri Avenue North Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9163409, -82.8189572, 'Panera Bread', '2928 West Bay Drive Belleair Bluffs', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0120998, -82.7886532, 'Dero', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.020173, -82.7672959, 'Lueken\'s Wine & Spirits', '1410 Main Street', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9675966, -82.7590048, 'The Bikeshop', '1895 Drew Street', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0291098, -82.7629754, 'First Choice Grocery', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0204123, -82.764467, 'Little Caesars', '-', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(27.9936224, -82.6855682, 'Dero FixIt', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9151602, -82.7491879, 'Harbor Freight', '3665 East Bay Dr', '#f39c12', 6, 'East Bay Plaza', true);
+addStore(27.8945682, -82.7366509, 'Castle Keep Guns', '7153 Ulmerton Road', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8945559, -82.7364476, 'Asylum Smoke & Stuff', '7149 Ulmerton Road', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.893904, -82.7453315, 'Strange Cloudz Vape And Smoke Shop', '13355 South Belcher Road', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9084318, -82.7214815, '7-Eleven', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.915791, -82.7239294, 'Higher Up Smoke Shop', '2751 Roosevelt Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8945753, -82.7367872, 'MBM Beauty', '7165 Ulmerton Road', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8964364, -82.8484318, 'Nekton Surf Shop', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.879731, -82.7876746, 'Speedy Wash', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9172708, -82.8174638, 'Speedy Wash', '-', '#3498db', 45, 'Unnamed Retail Center', false);
+addStore(28.0481824, -82.7423083, 'Kassie Graddy Lancaster: Allstate Insurance', '2323 Curlew Road Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9819398, -82.7461513, 'The Salvation Army Worship Center', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9762201, -82.723852, 'Friends of Moccasin Lake\'s Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9808884, -82.7242253, 'Library on Pineapple', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8909254, -82.786544, 'Planet 13', '12955 Seminole Boulevard', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.9601747, -82.7251723, 'Crumbl Cookies', '-', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.9599716, -82.7291425, 'Aspen Dental', '-', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.9601298, -82.7273656, 'TD Bank', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9599732, -82.7289858, 'Navy Federal Credit Union', '-', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.9601287, -82.7275256, 'Buff City Soap', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.95711, -82.7254196, 'America\'s Best Contacts & Eyeglasses', '-', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.9578999, -82.7267142, 'Burlington', '-', '#f39c12', 1, 'Clearwater Mall', true);
+addStore(27.9572051, -82.7270948, 'Scrubs and Beyond', '-', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.9573423, -82.7271038, 'AT&T', '-', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.9645234, -82.7305009, 'Hertz', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9602016, -82.7324361, 'Baskin-Robbins', '-', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.9004258, -82.7298137, 'Layman\'s Salvage', '14144 66th Street North', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9000756, -82.7296344, 'Adult Factory Outlet', '14100 66th Street North', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9157204, -82.7241463, 'Napa Auto Care Center', '2727 Roosevelt Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8916973, -82.7306718, 'Extra Space Storage', '13100 66th Street North', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8910348, -82.7295545, 'Advance Auto Parts', '13110 66th Street North', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8904905, -82.7303291, 'Sky Zone Trampoline Park', '13000 66th Street North', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9516714, -82.8300229, 'Merry Mouse Of Sand Key', '1261 Gulf Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9523928, -82.8293188, 'Poolside', '1261 Gulf Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9522611, -82.8294663, 'Palm Palms', '1261 Gulf Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8789059, -82.7302291, 'Grand Tire & Auto Repair', '11788 66th Street', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9601875, -82.7540476, 'Smoke Brothers Smoke Shop', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.978364, -82.8263716, 'Walgreens', '-', '#f39c12', 17, 'Unnamed Retail Center', true);
+addStore(28.0453742, -82.6812515, 'Beef O\'Brady\'s', '3687 Tampa Road Oldsmar', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9603144, -82.7193918, 'Einstein Bros. Bagels', '2849 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9602316, -82.7211329, 'The UPS Store', '2813 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.974281, -82.8017287, '2Shea Fishing and Diving Center', '198 Seminole Street', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9588923, -82.7541635, 'State Farm', 'South Hercules Avenue Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9469166, -82.7536541, 'Ring', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9464057, -82.7540651, 'Ring', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9456753, -82.7536536, 'Ring', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9444314, -82.753641, 'Ring', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9438058, -82.7536475, 'Ring', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9436133, -82.7536433, 'Ring', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9428887, -82.7520057, 'Ring', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9469813, -82.7504428, 'Ring', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9392492, -82.7963536, 'BTK Motors', '635 Belleair Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9174972, -82.7484274, 'Partners Personnel', '-', '#e74c3c', 6, 'East Bay Plaza', false);
+addStore(27.9174249, -82.7492558, 'Sapphire Nail Bar', '-', '#e74c3c', 6, 'East Bay Plaza', false);
+addStore(27.9172697, -82.7494361, 'Mobility City', '-', '#e74c3c', 6, 'East Bay Plaza', false);
+addStore(27.9171841, -82.7495317, 'Jet\'s Barbershop', '-', '#e74c3c', 6, 'East Bay Plaza', false);
+addStore(28.0201471, -82.7494233, 'Convenient Laundromat', '2172 Main Street', '#e74c3c', 31, 'Coastal Plaza', false);
+addStore(28.018548, -82.7748254, 'Dunedin Pet Supply', '1045 Main Street', '#3498db', 28, 'Unnamed Retail Center', false);
+addStore(27.9783261, -82.7841401, 'hep Thrift Store', '1212 North Betty Lane', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8936846, -82.7587761, 'Circle K', '8650 Ulmerton Road', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0229382, -82.7784833, 'Blue Jay Grocery', '785 San Christopher Drive', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9086679, -82.796385, 'Criativity', '720 9th Avenue Southwest', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0222941, -82.7893099, 'Dunedin Hemp Company', '1301 Bayshore Boulevard Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9170679, -82.7640209, 'Dutch Bros. Coffee', '2250 East Bay Drive Largo', '#e74c3c', 10, 'Keene Plaza', false);
+addStore(28.067056, -82.7232718, 'Benjamin Moore', '3370 Tampa Road Palm Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0669344, -82.7231733, 'Hot Box Smoke Shop', '3380 Tampa Road Palm Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0667999, -82.72276, '7-Eleven', '3398 Tampa Road Palm Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0670952, -82.72272, '7-Eleven', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0742618, -82.737287, 'Huntington Learning Center', '33231 US Highway 19 Palm Harbor', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(28.0742153, -82.7372853, 'Plato\'s Closet', '33211 US Highway 19 Palm Harbor', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(28.0745591, -82.7374657, 'Sport Clips', '33279 US Highway 19 Palm Harbor', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(28.0730572, -82.738297, 'AT&T', '33125 US Highway 19 Palm Harbor', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(28.0730888, -82.7373179, 'Einstein Bros. Bagels', '33119 US Highway 19 Palm Harbor', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(28.073323, -82.7373242, 'Edible Arrangements', '33139 US Highway 19 Palm Harbor', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(28.0494395, -82.7377098, 'Circle K', '30501 US Highway 19 Palm Harbor', '#3498db', 26, 'Unnamed Retail Center', false);
+addStore(28.0494108, -82.7379894, 'Circle K', '30501 US Highway 19 Palm Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.078196, -82.7375203, 'Barnes & Noble', '33591 US Highway 19 Palm Harbor', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(27.9654091, -82.7984294, 'Hyosung', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9653124, -82.8012896, 'Daf & Dream', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9651504, -82.8012958, 'One Stoppe Shoppe', '331 Cleveland Street Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9644397, -82.8029735, 'blink', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8950945, -82.7645159, 'Mark Holland - Upper Echelon Barbershop', '9031 Ulmerton Road Largo', '#3498db', 33, 'Unnamed Retail Center', false);
+addStore(27.8994474, -82.7275718, 'Florida Ink Studio', '14100 US Highway 19 North Clearwater', '#3498db', 36, 'Unnamed Retail Center', false);
+addStore(27.9431662, -82.7454174, 'Suds', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(27.94249, -82.7469803, 'Tao Massage Spa', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(27.9431957, -82.7468998, 'Liem Jewelers', '1484 2nd Street', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(27.9430585, -82.7469056, 'Barber King', '1490 2nd Street', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(27.9437618, -82.7469298, 'Smiling Nails & Spa', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9432935, -82.7469557, 'Mattesses by Gary', '1482 2nd Street', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(27.9436216, -82.7453981, 'D&E Donuts', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(27.9435302, -82.7469349, 'Suncoast Hospice', '1478 2nd Street', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9436056, -82.7469358, 'Janie Beane Florist Inc', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9437067, -82.7453672, 'Skyline Vape & Smoke Shop', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(27.9430419, -82.7454428, 'Grace International Market', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(27.9682674, -82.7627508, 'Chris Wireless', '1800 Drew Street', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0164694, -82.7336959, 'The Permanent Makeup Studio', '27001 US 19 Northbound Frontage Road Clearwater', '#e74c3c', 2, 'Countryside Mall', false);
+addStore(27.9605185, -82.7912785, 'Laundry Hero', '1107 Court Street', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.003432, -82.7758388, 'RCS Barbershop', '240 Patricia Avenue', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9167405, -82.7270602, 'Starbucks', '2600 Roosevelt Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9170122, -82.8074148, 'Belleair Barber', '1890 West Bay Drive Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8881504, -82.7636734, 'All 5 Elements Kava Lounge', '12682 Starkey Road', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9897211, -82.7322771, 'pOpshelf', '23682 US Highway 19 North Clearwater', '#e74c3c', 8, 'Sunset Point 19 Shopping Center', false);
+addStore(27.98993, -82.7328682, 'Domino\'s', '23698 US Highway 19 North Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9883462, -82.7324477, 'DSW', '23668 US Highway 19 N Clearwater', '#e74c3c', 8, 'Sunset Point 19 Shopping Center', false);
+addStore(27.9881711, -82.7324449, 'Kirkland\'s', '23668 US Highway 19 North Clearwater', '#e74c3c', 8, 'Sunset Point 19 Shopping Center', false);
+addStore(27.9880369, -82.7323153, 'Carter\'s', '23668 US Highway 19 North Clearwater', '#e74c3c', 8, 'Sunset Point 19 Shopping Center', false);
+addStore(27.989946, -82.7325199, 'Great Clips', '23690 US Highway 19 North Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9899464, -82.7326052, 'H&R Block', '23692 US Highway 19 North Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9899495, -82.7327264, 'Moc Nail Spa', '23694 US Highway 19 North Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0112215, -82.708469, 'Clearwater Cigar Company', '2454 McMullen Booth Road', '#e74c3c', 3, 'Northwood Plaza', false);
+addStore(27.9807311, -82.711192, 'Tobacco Depot', '1530 McMullen Booth Road', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(27.9608942, -82.7708405, 'Foolish Pride Tattoo Company', '1606 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9610657, -82.7521345, 'Florida Vapor Company', '2054 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9608266, -82.7522146, 'Coast to Coast Pawn', '2054 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9604799, -82.7914798, 'Roadrunner Food Store', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9960713, -82.7301866, 'Loft 804 - Clearwater Lash + Beauty Studio', '24600 US Highway 19 North Clearwater', '#3498db', 43, 'Unnamed Retail Center', false);
+addStore(28.0197199, -82.7535282, 'Family Cleaners', '1850 Main Street Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9796805, -82.7840037, 'A Choice Automotive', '1408 North Betty Lane', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9183369, -82.7607509, 'Black Harbor Gaming', '2480 East Bay Drive Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9162065, -82.7565623, 'Ladies & Gents', 'Gateway Centre Parkway St. Petersburg', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8789189, -82.7876223, 'Five Star Barbershop', '11602 Seminole Boulevard Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0050828, -82.7748281, 'BowlersMart Dunedin', '405 Patricia Avenue Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.050671, -82.7393326, 'Trulieve', '30600 US Highway 19', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8953331, -82.7794017, 'Wingstop', '10125 Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.8953329, -82.7794752, 'Club Pilates', '-', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.9287681, -82.7884271, 'IONNA', '1215 Missouri Ave North Largo', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(27.9164214, -82.8073654, 'Your CBD Store', '1901 West Bay Drive Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0172136, -82.7764889, 'AutoZone', '-', '#3498db', 28, 'Unnamed Retail Center', false);
+addStore(28.0175525, -82.7765212, 'Save-A-Lot', '950 Paticia Avenue Dunedin', '#3498db', 28, 'Unnamed Retail Center', false);
+addStore(28.0166672, -82.7764191, 'Dollar Tree', '-', '#f39c12', 28, 'Unnamed Retail Center', true);
+addStore(27.8928459, -82.7445, 'CMS Fabrication', '13355 Belcher Road South Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0190726, -82.7551738, 'Dunedin Mini Storage', 'Main St Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9773436, -82.8173869, 'Captn Kush', '280 Windward Passage Clearwater', '#3498db', 30, 'Unnamed Retail Center', false);
+addStore(27.9609993, -82.7374676, 'Jersey Mike\'s Subs', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9594156, -82.7448209, 'Presto', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(27.9600409, -82.7438172, 'ubreakifix', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(28.0286519, -82.7390574, 'Trek', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0287619, -82.7390584, 'Charles Schwab', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8941215, -82.7061497, 'Flock Safety', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9811729, -82.7083262, 'Applebee\'s', '1465 Mcmullen Booth Rd Safety Harbor', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(27.9157089, -82.8160909, 'Publix', '2770 West Bay Drive Belleair Bluffs', '#f39c12', 45, 'Unnamed Retail Center', true);
+addStore(27.9151274, -82.7978499, 'Publix', '857 West Bay Drive Largo', '#f39c12', 41, 'Unnamed Retail Center', true);
+addStore(27.9509812, -82.7860276, 'Publix', '1295 South Missouri Avenue Clearwater', '#f39c12', 46, 'Unnamed Retail Center', true);
+addStore(28.011764, -82.7348925, 'Red Lobster', '26320 US 19 North Clearwater', '#e74c3c', 2, 'Countryside Mall', false);
+addStore(28.018889, -82.7366521, 'Nordstrom Rack', '-', '#f39c12', 2, 'Countryside Mall', true);
+addStore(28.0128967, -82.789265, 'Truist', '825 Broadway Blvd Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0153284, -82.7891838, 'Holiday Inn Express & Suites Clearwater North/Dunedin', '975 Broadway Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0113941, -82.7315367, 'Office Depot', '26277 US Highway 19 Clearwater', '#f39c12', 2, 'Countryside Mall', true);
+addStore(27.9600332, -82.72624, 'Wells Fargo', '2699 Gulf to Bay Boulevard Clearwater', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.9515665, -82.7995915, 'The Attic Resale Shop', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9611416, -82.7285312, 'Mellow Mushroom', '2630 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9600357, -82.7255503, 'Jared', 'Gulf to Bay Boulevard Clearwater', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.9602066, -82.7225987, 'Burger King', '2765 Gulf To Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9612924, -82.7152643, 'Days Inn by Wyndham Clearwater/Gulf to Bay', '2940 Gulf To Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8838611, -82.7161838, 'Interprint', 'US 19 Pinellas Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8893449, -82.7201218, 'Pawn Depot', '12897 62nd St Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8966244, -82.7256116, 'Pro Build', 'US 19 Largo', '#3498db', 36, 'Unnamed Retail Center', false);
+addStore(27.8861877, -82.7156585, 'Bay City Plywood', '126th Avenue North Pinellas Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9172865, -82.7280926, 'CarMax', '2550 Roosevelt Boulevard Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9215114, -82.7293096, 'Rodeway Inn', '16405 US 19 Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8989396, -82.7251763, 'Sun Microstamping', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8963514, -82.7232934, 'Volvo of Clearwater', 'US 19 Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9158944, -82.7465189, 'Chase', 'East Bay Drive Largo', '#e74c3c', 6, 'East Bay Plaza', false);
+addStore(27.9157497, -82.7454977, 'Rainbow Muffler', '-', '#e74c3c', 6, 'East Bay Plaza', false);
+addStore(27.914914, -82.7463634, 'Tijuana Flats', '-', '#e74c3c', 6, 'East Bay Plaza', false);
+addStore(27.9609842, -82.7293937, 'Perkins', '2626 Gulf To Bay Blvd Clearwater', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.9603001, -82.7233568, 'Sport Clips', '2757 Mall Perimeter Dr Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0084732, -82.7298076, 'Chili\'s', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0189002, -82.7641909, 'Walgreens', '1477', '#f39c12', 9, 'Unnamed Retail Center', true);
+addStore(28.018364, -82.76419, 'Bank of America', '-', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(27.9560912, -82.8294518, 'Sheraton Sand Key Resort', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9557615, -82.8288682, 'Sheraton Sand Key Resort', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9168169, -82.7321704, 'Wells Fargo', 'East Bay Drive Largo', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(27.9168545, -82.7331894, 'Regions Bank', 'East Bay Drive Largo', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(27.9168601, -82.7336371, 'Applebee\'s', 'East Bay Drive Largo', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(27.915764, -82.7264544, 'McDonald\'s', '2675 Roosevelt Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9168044, -82.7355491, 'Wendy\'s', '4960 East Bay Drive Clearwater', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(27.9158223, -82.7324822, 'Taco Bell', '5225 East Bay Drive Clearwater', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(27.9165721, -82.7257065, 'Speedway', '2698 Roosevelt Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9157936, -82.7312037, 'LongHorn Steakhouse', '5375 E Bay Dr Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9168393, -82.7305633, 'Chili\'s', '5430 East Bay Drive Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0182503, -82.740313, 'BJ\'s Wholesale Club', '-', '#e74c3c', 2, 'Countryside Mall', false);
+addStore(28.0169979, -82.7400755, 'Lowe\'s', '26990 Enterprise Road Clearwater', '#f39c12', 2, 'Countryside Mall', true);
+addStore(27.8816124, -82.8190618, 'Publix', '13031 Walsingham Road Largo', '#f39c12', 47, 'Unnamed Retail Center', true);
+addStore(27.9686037, -82.7309822, 'Kane\'s', '21590 US Hwy 19 N Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0188528, -82.7549351, 'Tire Kingdom', 'Main St Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0188477, -82.7543879, 'Advance Auto Parts', 'Main St Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.96859, -82.7330945, 'Spectrum', 'Drew Street Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0432945, -82.6791094, 'Chick-fil-A', '3740 Tampa Road Oldsmar', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(28.0429366, -82.6786332, 'Walgreens', '-', '#f39c12', 14, 'Unnamed Retail Center', true);
+addStore(28.051594, -82.6987343, 'Pollo Tropical', 'Tampa Rd Oldsmar', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(28.0519311, -82.6992089, 'Regions Bank', '-', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(28.019887, -82.7355548, 'AT&T', '-', '#e74c3c', 2, 'Countryside Mall', false);
+addStore(28.0198239, -82.7367737, 'Sherwin-Williams', '-', '#e74c3c', 2, 'Countryside Mall', false);
+addStore(28.0198372, -82.7646597, 'Tire and Auto Tech', '1480 Main Street Dunedin', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(28.0200196, -82.73723, 'La-Z-Boy', '-', '#e74c3c', 2, 'Countryside Mall', false);
+addStore(28.0199931, -82.7455583, 'Main Street Thrift Shop', 'Main Street Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.016107, -82.7824589, 'Lucie-Mae\'s Beach House', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0197324, -82.7413516, 'Farm Stores', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0384987, -82.7369318, 'Northside Square', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0458599, -82.7400625, 'The Home Depot', '30144 US 19 Clearwater', '#f39c12', 23, 'Unnamed Retail Center', true);
+addStore(28.0470153, -82.7391755, 'IHOP', '-', '#3498db', 23, 'Unnamed Retail Center', false);
+addStore(28.0439316, -82.7377581, 'Pepboys Auto', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0478217, -82.7391814, 'Walgreens', 'US 19', '#f39c12', 23, 'Unnamed Retail Center', true);
+addStore(28.0302704, -82.7376793, 'Bob\'s Carpet Mart', '28363', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0445334, -82.739205, 'McDonald\'s', '29978 Congress Avenue Clearwater', '#3498db', 23, 'Unnamed Retail Center', false);
+addStore(28.0399939, -82.7375183, 'Olive Garden', 'Northside Dr Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0474433, -82.7379191, 'Arby\'s', '30263 US Highway 19 North Clearwater', '#3498db', 23, 'Unnamed Retail Center', false);
+addStore(28.0464893, -82.739106, 'Applebee\'s', '-', '#3498db', 23, 'Unnamed Retail Center', false);
+addStore(27.9600978, -82.7634815, 'Dollar Tree', 'Gulf to Bay Boulevard Clearwater', '#f39c12', 29, 'Unnamed Retail Center', true);
+addStore(27.960056, -82.7621109, 'Walgreens', '1801 Gulf to Bay Boulevard Clearwater', '#f39c12', 29, 'Unnamed Retail Center', true);
+addStore(27.9609011, -82.7615945, 'Taco Bell', '1824 Gulf to Bay Boulevard Clearwater', '#3498db', 29, 'Unnamed Retail Center', false);
+addStore(27.9609194, -82.7603951, 'McDonald\'s', '1860 Gulf to Bay Boulevard Clearwater', '#3498db', 29, 'Unnamed Retail Center', false);
+addStore(27.8947269, -82.747232, 'McDonald\'s', '7901 Ulmerton Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9075917, -82.746301, 'Fairway Discount Convenience Mart', 'S Belcher Rd Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.915988, -82.7447117, 'Goodyear', 'East Bay Drive Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9159882, -82.7452765, 'Boston Market', '4001 East Bay Drive Largo', '#e74c3c', 6, 'East Bay Plaza', false);
+addStore(27.9169054, -82.7402473, 'Famous Tate', 'East Bay Drive Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.915853, -82.7402944, 'Pizza Hut', '4535 East Bay Drive Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9159917, -82.7426102, 'Jiffy Lube', 'East Bay Drive Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9160154, -82.7409093, 'Verizon', '4465 East Bay Drive Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0116929, -82.7107683, 'BB&T', '3029 Enterprise Rd E Safety Harbor', '#e74c3c', 3, 'Northwood Plaza', false);
+addStore(28.0118716, -82.7085241, 'Taco Bell', '2456 McMullen Booth Road Safety Harbor', '#e74c3c', 3, 'Northwood Plaza', false);
+addStore(28.0117241, -82.7100007, 'Chase', '-', '#e74c3c', 3, 'Northwood Plaza', false);
+addStore(28.0104918, -82.708431, 'McDonald\'s', '2454 McMullen Booth Road Safety Harbor', '#e74c3c', 3, 'Northwood Plaza', false);
+addStore(28.0146645, -82.7095528, 'Wells Fargo', '-', '#e74c3c', 3, 'Northwood Plaza', false);
+addStore(28.0126617, -82.7125354, 'Bank of America', '3000 Enterprise Rd Clearwater', '#e74c3c', 3, 'Northwood Plaza', false);
+addStore(28.0125203, -82.7096975, 'Truist', '2500 McMullen Booth Road Clearwater', '#e74c3c', 3, 'Northwood Plaza', false);
+addStore(27.9601985, -82.7184074, 'McDonald\'s', '2871 Gulf To Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9610477, -82.7201554, 'Tire Kingdom', '2838 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9587529, -82.7315596, 'Sam\'s Club', '2575 Gulf-To-Bay Boulevard Clearwater', '#f39c12', 1, 'Clearwater Mall', true);
+addStore(28.0200486, -82.7580638, 'Ace Hardware', '1750 Main Street Dunedin', '#f39c12', 24, 'Unnamed Retail Center', true);
+addStore(28.0199343, -82.7549303, 'Charleys Philly Steaks', '1804 Main St Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0199008, -82.7553241, 'Wendy\'s', '1802 Main Street Dunedin', '#3498db', 24, 'Unnamed Retail Center', false);
+addStore(28.0198778, -82.755745, 'Taco Bell', '1800 Main Street Dunedin', '#3498db', 24, 'Unnamed Retail Center', false);
+addStore(28.0189502, -82.7661751, 'O\'Reilly Auto Parts', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0199737, -82.7334839, 'Fifth Third Bank', '3508 Main Street Clearwater', '#e74c3c', 2, 'Countryside Mall', false);
+addStore(28.0213467, -82.7329935, 'Kohl\'s', '2514 Main Street Clearwater', '#f39c12', 2, 'Countryside Mall', true);
+addStore(27.978327, -82.8262718, 'Walgreens', '401 Poinsettia Avenue', '#27ae60', -1, 'Standalone / Not in Plaza', true);
+addStore(27.9780743, -82.8272238, 'Hooters', '377 Mandalay Avenue', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(27.9775014, -82.8167537, 'Fifth Third Bank', '100 Island Way Clearwater', '#3498db', 30, 'Unnamed Retail Center', false);
+addStore(27.9768668, -82.8167628, 'Mobil', '-', '#3498db', 30, 'Unnamed Retail Center', false);
+addStore(27.9677266, -82.8268003, 'Speedway', '601 Bayway Boulevard Clearwater Beach', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9676051, -82.8265367, 'Speedway', '601 Bayway Boulevard Clearwater Beach', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9592782, -82.7990762, 'Publix', '619 South Ft Harrison Avenue Clearwater', '#f39c12', 19, 'Unnamed Retail Center', true);
+addStore(27.9585506, -82.7996352, 'Wells Fargo', 'S Ft Harrison Ave Clearwater', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(27.8943449, -82.7281407, 'Bank of America', 'Ulmerton Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8943552, -82.7337734, 'Bay Food & Gas', 'Ulmerton Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9171484, -82.7601739, 'Bank of America', 'East Bay Drive Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9160914, -82.7495761, 'Burger King', '3575 East Bay Drive Largo', '#e74c3c', 6, 'East Bay Plaza', false);
+addStore(27.9170512, -82.7633539, 'McDonald\'s', '2300 East Bay Drive Largo', '#e74c3c', 10, 'Keene Plaza', false);
+addStore(27.905686, -82.7296152, 'Topper King', '14696 US 19 Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9171748, -82.7464641, 'Verizon', '3950 East Bay Drive Largo', '#e74c3c', 6, 'East Bay Plaza', false);
+addStore(27.9241377, -82.7867251, 'Badcock Home Furniture &more', '900 Missouri Avenue North Largo', '#3498db', 39, 'Unnamed Retail Center', false);
+addStore(27.9311079, -82.7871953, 'McDonald\'s', '1590 Missouri Avenue North Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9273015, -82.7871589, 'Mavis Tires & Brakes', '1190 Missouri Avenue North Largo', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(27.9136177, -82.7870829, 'Holiday Inn Express & Suites Largo-Clearwater', '210 Seminole Boulevard Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9920681, -82.7311081, 'Ashley HomeStore', '24244 Highway 19 North Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9891656, -82.7342924, 'Truist', 'Sunset Point Rd Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9897577, -82.7627073, 'BP', 'Sunset Point Rd Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9903627, -82.7438779, 'Bank of America', '-', '#3498db', 32, 'Unnamed Retail Center', false);
+addStore(27.9897671, -82.7301939, 'Burger King', '23904 US 19 Southbound Frontage Road Clearwater', '#e74c3c', 8, 'Sunset Point 19 Shopping Center', false);
+addStore(27.9890552, -82.7303423, 'LensCrafters', '-', '#e74c3c', 8, 'Sunset Point 19 Shopping Center', false);
+addStore(27.9943227, -82.7290085, 'Main Street Motorcars', '24411 US Highway 19 N Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9895355, -82.7627253, 'Munchees Express', 'Sunset Point Rd Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9901975, -82.7308582, 'Regions Bank', '-', '#e74c3c', 8, 'Sunset Point 19 Shopping Center', false);
+addStore(27.9940959, -82.7302957, 'The Salvation Army', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9912967, -82.7301354, 'Shell', 'US Highway 19 N Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.990764, -82.7323878, 'Sunset Wine & Liquor', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9893363, -82.7466275, 'Walgreens', '1880 Belcher Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', true);
+addStore(27.9905325, -82.74284, 'Publix', '1921 North Belcher Road Clearwater', '#f39c12', 32, 'Unnamed Retail Center', true);
+addStore(27.9611426, -82.7266529, 'Carrabba\'s Italian Grill', '2680 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9849114, -82.730421, 'Honey Baked Ham', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9810645, -82.7304539, 'Super 8', 'US Highway 19 North Clearwater', '#3498db', 42, 'Unnamed Retail Center', false);
+addStore(27.9709402, -82.7288541, 'Clearwater Toyota', '21799 US Highway 19 North Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9833712, -82.7303305, 'Wendy\'s', '23072 US Highway 19 North Clearwater', '#3498db', 42, 'Unnamed Retail Center', false);
+addStore(27.9822674, -82.7291603, 'COACHMAN MART', '22995 US 19 Northbound Frontage Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9817412, -82.7290229, 'Advance Auto Parts', '22991 US 19 Northbound Frontage Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9170333, -82.7644769, 'Panda Express', '2200 East Bay Drive Largo', '#e74c3c', 10, 'Keene Plaza', false);
+addStore(27.9182682, -82.7616529, 'Winn-Dixie', '2460 East Bay Drive Largo', '#e74c3c', 10, 'Keene Plaza', false);
+addStore(27.9610281, -82.7329428, 'Chick-fil-A', '2516 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9611691, -82.7252899, 'Fifth Third Bank', '2710 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9586717, -82.7350534, 'The Home Depot', '2495 Gulf To Bay Boulevard Clearwater', '#f39c12', 35, 'Unnamed Retail Center', true);
+addStore(27.9611762, -82.7246904, 'Joe\'s Crab Shack', '2370 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9589792, -82.7306879, 'Sam\'s Club', 'US 19 Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', true);
+addStore(27.965498, -82.7309384, 'Rodeway Inn', '21252 US Highway 19 North Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9602837, -82.7330745, 'Raising Cane\'s', '2525 Gulf to Bay Boulevard Clearwater', '#3498db', 35, 'Unnamed Retail Center', false);
+addStore(27.9601269, -82.732423, 'Dunkin\'', '2551 Gulf To Bay Boulevard Clearwater', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.9645782, -82.730793, 'Hertz Car Sales', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0135862, -82.7876644, 'Jensen Bros. Seafood', 'Douglas Ave Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0183165, -82.7759643, 'KFC', '956 Patricia Avenue Dunedin', '#3498db', 28, 'Unnamed Retail Center', false);
+addStore(28.0191677, -82.7753015, 'Regions Bank', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0164426, -82.7805698, 'The Energy Conservatory', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8931324, -82.7143586, 'Dyco Paints', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8919587, -82.7008588, 'TownePlace Suites Saint Petersburg Clearwater (Permanently Closed)', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8959155, -82.729539, 'Anchor Golf Carts', '-', '#3498db', 36, 'Unnamed Retail Center', false);
+addStore(27.8945834, -82.7319894, 'Mitchell Marine', '6789 Ulmerton Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8970219, -82.728286, 'Mobile Home Depot', '-', '#f39c12', 36, 'Unnamed Retail Center', true);
+addStore(27.8952101, -82.7294715, 'U-Haul', '66th Street North Largo', '#3498db', 36, 'Unnamed Retail Center', false);
+addStore(27.8951762, -82.7782614, 'Chick-fil-A', '10075 Ulmerton Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8941305, -82.7330456, 'Jeepsters', 'Ulmerton Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8849791, -82.812526, 'HomeGuard', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8842934, -82.8130522, 'Charis Bookstore', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8798974, -82.8167397, 'O\'Reilly Auto Parts', '12850 Walsingham Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8796864, -82.8171623, 'Watersports West', '12900 Walsingham Road Largo', '#3498db', 47, 'Unnamed Retail Center', false);
+addStore(28.0143417, -82.7353371, 'Truist', '26627 US 19 North Clearwater', '#e74c3c', 2, 'Countryside Mall', false);
+addStore(28.0146951, -82.7344549, 'Chipotle', '2537 Countryside Boulevard Clearwater', '#e74c3c', 2, 'Countryside Mall', false);
+addStore(28.0136858, -82.7344027, 'Dick\'s Sporting Goods', '26583 US 19 North Clearwater', '#f39c12', 2, 'Countryside Mall', true);
+addStore(28.0138421, -82.7321417, 'Dollar Tree', '-', '#f39c12', 2, 'Countryside Mall', true);
+addStore(28.0141272, -82.7320392, 'HomeGoods', '2567 Countryside Boulevard Clearwater', '#f39c12', 2, 'Countryside Mall', true);
+addStore(28.0136136, -82.7333953, 'TJ Maxx', '2541 Countryside Boulevard Clearwater', '#f39c12', 2, 'Countryside Mall', true);
+addStore(28.0148904, -82.7320401, 'PNC Bank', '2575 Countryside Boulevard Clearwater', '#e74c3c', 2, 'Countryside Mall', false);
+addStore(28.0180936, -82.7334819, 'Dillard\'s', '-', '#e74c3c', 2, 'Countryside Mall', false);
+addStore(28.0175147, -82.7316516, 'JCPenney', '-', '#f39c12', 2, 'Countryside Mall', true);
+addStore(28.0165184, -82.7333161, 'Macy\'s', '-', '#f39c12', 2, 'Countryside Mall', true);
+addStore(28.0173264, -82.7336643, 'Countryside Mall', '27001 US 19 North Clearwater', '#e74c3c', 2, 'Countryside Mall', false);
+addStore(28.018215, -82.7619975, 'Publix', '1491 Main Street Dunedin', '#f39c12', 9, 'Unnamed Retail Center', true);
+addStore(27.9156065, -82.7141648, 'Walgreens', '2991 Roosevelt Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', true);
+addStore(27.9610377, -82.7072049, 'Sunoco', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9616788, -82.7099815, 'Fairfield Inn & Suites Clearwater', '3070 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9811359, -82.7112581, 'Dollar Tree', '-', '#f39c12', 16, 'Unnamed Retail Center', true);
+addStore(27.9800134, -82.7109493, 'Publix', '1520 North McMullen Booth Road Clearwater', '#f39c12', 16, 'Unnamed Retail Center', true);
+addStore(27.9810461, -82.709665, 'Bank of America', 'McMullen Booth Road Safety Harbor', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(27.9816081, -82.7083583, 'Chase', '-', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(27.981459, -82.7095846, 'Checkers', 'McMullen Booth Road Clearwater', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(27.9821132, -82.7098881, 'Tires Plus', '-', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(27.9590127, -82.7456087, 'Chase', '533 Belcher Road Clearwater', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(27.9576442, -82.7456303, 'Moss Feaster', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(27.9589982, -82.7445617, 'Office Depot', '529 3rd Street Clearwater', '#f39c12', 5, 'Unnamed Retail Center', true);
+addStore(27.959566, -82.7445146, 'Publix', '525 Belcher Road Clearwater', '#f39c12', 5, 'Unnamed Retail Center', true);
+addStore(27.9583616, -82.7456035, 'Regions Bank', '655 Belcher Road Clearwater', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(27.9891765, -82.7751191, 'Checkers', '-', '#3498db', 44, 'Unnamed Retail Center', false);
+addStore(27.9171638, -82.8002454, 'McDonald\'s', '1250 West Bay Drive Largo', '#3498db', 41, 'Unnamed Retail Center', false);
+addStore(28.014186, -82.7083319, 'Circle K', '-', '#e74c3c', 15, 'Northwood Oaks', false);
+addStore(28.014151, -82.7085833, 'Shell', '-', '#e74c3c', 3, 'Northwood Plaza', false);
+addStore(28.0127768, -82.7074635, 'Walgreens', 'McMullen Booth Road Safety Harbor', '#f39c12', 15, 'Northwood Oaks', true);
+addStore(27.9603359, -82.7718114, 'Pep Boys', '1559 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9603913, -82.7714926, 'Church\'s Chicken', '1575 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9603578, -82.7702767, 'Valley Bank', '1617 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9603897, -82.7687725, 'Leslie\'s Pool Supplies', '1641 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9601362, -82.7674272, 'AutoZone', '1675 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8947997, -82.7379795, 'Antonietti Marine Largo', '7249 Ulmerton Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9828425, -82.732488, 'Walmart Supercenter', '23106 US 19 Clearwater', '#f39c12', 42, 'Unnamed Retail Center', true);
+addStore(27.9719593, -82.8292365, 'McDonald\'s', '347 South Gulfview Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.973717, -82.8288196, 'Hyatt Regency', '301 South Gulfview Boulevard Clearwater Beach', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9562174, -82.7287094, 'Costco', '2665 Mall Perimeter Drive Clearwater', '#f39c12', 1, 'Clearwater Mall', true);
+addStore(27.9573636, -82.7285803, 'David\'s Bridal', 'US 19 Clearwater', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.9589153, -82.7288944, 'Lowe\'s', '2619 Gulf To Bay Boulevard Clearwater', '#f39c12', 1, 'Clearwater Mall', true);
+addStore(27.9576655, -82.7286381, 'Michaels', '2631 US 19 Clearwater', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.9580268, -82.728689, 'PetSmart', '2625 US 19 Clearwater', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.9173085, -82.7743974, '7-Eleven', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9980689, -82.7748432, 'Walgreens', '-', '#27ae60', -1, 'Standalone / Not in Plaza', true);
+addStore(27.8952013, -82.7960962, 'BP', 'Ulmerton Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.895912, -82.7930813, 'Lowe\'s', '11101 Ulmerton Road Largo', '#f39c12', 50, 'Unnamed Retail Center', true);
+addStore(27.8952834, -82.7948799, 'Fifth Third Bank', '-', '#3498db', 50, 'Unnamed Retail Center', false);
+addStore(28.0522122, -82.7003553, 'AMC Woodlands Square 20', '3128 Tampa Road Oldsmar', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0511413, -82.7009192, 'PetSmart', '3130 Tampa Road Oldsmar', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0500296, -82.7008064, 'Bealls', '-', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(27.9905528, -82.7328239, 'Waffle House', '2510 Sunset Point Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9854798, -82.7549087, 'Chevron', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9681873, -82.7542575, 'Citgo', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9675905, -82.746584, 'Speedway', '2185 Drew Street Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9675291, -82.7469158, 'Speedway', '2185 Drew Street Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9683385, -82.745815, '7-Eleven', '205 North Belcher Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.968353, -82.745479, '7-Eleven', '205 North Belcher Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9574197, -82.800123, 'Erik\'s Fine Cigars & Smoke Shop', '714 South Ft Harrison Avenue Clearwater', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(27.9617356, -82.7454592, 'Pizza Hut', '407 South Belcher Road Clearwater', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(28.0211984, -82.7323571, 'Total Wine', '2528 Main Street Clearwater', '#e74c3c', 2, 'Countryside Mall', false);
+addStore(27.9611491, -82.7308685, 'Holiday Inn Express & Suites Clearwater/US 19 N', '2580 Gulf to Bay Boulevard Clearwater', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.9501238, -82.7753963, 'Sunoco', 'South Highland Avenue Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9603993, -82.7613386, 'Amscot', '-', '#3498db', 29, 'Unnamed Retail Center', false);
+addStore(27.8854172, -82.78757, 'Ace Hardware', '12344 Seminole Boulevard Largo', '#f39c12', 48, 'Unnamed Retail Center', true);
+addStore(27.8842912, -82.7877099, 'Arby\'s', '12260 Seminole Boulevard Largo', '#3498db', 48, 'Unnamed Retail Center', false);
+addStore(27.8865649, -82.7876732, 'Dollar General', '12500 Seminole Boulevard', '#3498db', 48, 'Unnamed Retail Center', false);
+addStore(27.8886758, -82.7867175, 'House of Shades Lamps Lighting', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8805918, -82.7875374, 'Tires Plus', '11880 Seminole Boulevard Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8940738, -82.784132, 'Buffalo Wild Wings', '10500 Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.8933822, -82.7865032, 'Chili\'s', 'Seminole Blvd Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.8941168, -82.7878938, 'Circle K', 'Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.8940259, -82.7857853, 'Olive Garden', '10500 Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.8941299, -82.7875542, 'Shell', 'Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.8920872, -82.7864323, 'Staples', '10500 Seminole Boulevard Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.8941099, -82.7835702, 'Wells Fargo', 'Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.8935016, -82.7806944, 'Publix', '10500 Ulmerton Road Largo', '#f39c12', 0, 'Largo Mall', true);
+addStore(27.8965461, -82.7857718, 'The Home Depot', '10689 Ulmerton Road Largo', '#f39c12', 0, 'Largo Mall', true);
+addStore(27.8952196, -82.7849115, 'Steak \'n Shake', '10555 Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.8966085, -82.7838374, 'Publix', '10411 Ulmerton Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', true);
+addStore(27.8943992, -82.7009007, 'Checkers', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0421357, -82.6715812, '7-Eleven', '-', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(27.9969862, -82.7305455, 'ALDI', '24756 US 19 North Clearwater', '#f39c12', 43, 'Unnamed Retail Center', true);
+addStore(27.985074, -82.8268645, 'Speedway', '580 Mandalay Avenue Clearwater Beach', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9830436, -82.7079927, 'Walgreens', '1701 North Mcmullen Booth Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', true);
+addStore(27.9788989, -82.8172062, 'Publix', '200 Island Way Clearwater', '#f39c12', 30, 'Unnamed Retail Center', true);
+addStore(27.9686915, -82.8022763, 'Sandcastle Religious Retreat', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0435514, -82.6736365, 'Walmart Supercenter', '3801 Tampa Road Oldsmar', '#f39c12', 18, 'Unnamed Retail Center', true);
+addStore(27.9129864, -82.7277428, 'Walmart Supercenter', '2677 Roosevelt Boulevard Clearwater', '#f39c12', 37, 'Unnamed Retail Center', true);
+addStore(27.9151028, -82.7472631, 'Publix', '3825 East Bay Drive Largo', '#f39c12', 6, 'East Bay Plaza', true);
+addStore(28.0418236, -82.6738572, 'Goodyear', '-', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(28.0434771, -82.6760191, 'Advance Auto Parts', '-', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(28.0425929, -82.6772127, 'Thorntons', '-', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(28.0419706, -82.6755376, 'Famous Tate Appliance & Bedding Center', '-', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(28.0444661, -82.6790533, 'Chili\'s', '3701 Tampa Road Oldsmar', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(27.9169811, -82.7506402, 'Culver\'s', '3500 East Bay Drive Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0792704, -82.7667875, 'Fifth Third Bank', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9012003, -82.7283188, 'XTC', '6535 142nd Avenue North Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0794195, -82.7398857, 'Verizon', '-', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(27.895942, -82.7145895, 'Holiday Inn Express Clearwater East - Icot Center', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9170915, -82.78634, 'Hampton Inn & Suites', '100 East Bay Drive Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9168702, -82.7819903, 'East Bay Auto Service', '500 East Bay Drive Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9171909, -82.7871838, '7-Eleven', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9170492, -82.7752928, 'Ice Cold Air Discount Auto Repair', '1198 East Bay Drive Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9260874, -82.7872797, 'Burger King', '980 Missouri Avenue North Largo', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(27.9251215, -82.7872388, 'Denny\'s', '940 Missouri Avenue North Largo', '#3498db', 39, 'Unnamed Retail Center', false);
+addStore(27.925409, -82.7871386, 'Value Pawn & Jewelry', '950 Missouri Avenue North Largo', '#3498db', 39, 'Unnamed Retail Center', false);
+addStore(27.9910566, -82.6937032, 'Regions Bank', '601 Main Street Safety Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9238293, -82.7917671, 'Largo Self Storage', '750 4th Street Northwest Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9243174, -82.788226, 'Aaron\'s', '901 Missouri Avenue North Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9254961, -82.7880846, 'Amscot', '1001 Missouri Avenue North Largo', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(27.9258415, -82.7881594, 'Verizon', '113 Missouri Avenue North Largo', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(27.9281347, -82.78816, 'PNC Bank', '50 Rosery Road Northwest Largo', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(27.915903, -82.7995977, 'Ace Hardware', '1015 West Bay Drive Largo', '#f39c12', 41, 'Unnamed Retail Center', true);
+addStore(27.9199493, -82.7968058, 'Pinch A Penny', '311 Clearwater Largo Road North Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9172919, -82.7970899, 'Walgreens', 'W Bay Dr Largo', '#f39c12', 41, 'Unnamed Retail Center', true);
+addStore(28.077719, -82.7652433, 'Palm Harbor Barber Shop', '1122 Florida Avenue Palm Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0726911, -82.7669826, 'The Fix Coffee + Vino', '526 Alt 19 Palm Harbor', '#e74c3c', 38, 'Downtown Palm Harbor Historic District', false);
+addStore(28.0729159, -82.7669543, 'Antiques and Uniques', '530 US-19 ALT Palm Harbor', '#e74c3c', 38, 'Downtown Palm Harbor Historic District', false);
+addStore(28.0691032, -82.7763965, 'Antiques & Uniques in Ozona', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0776655, -82.7667919, 'Big Time Carts', '1003 Florida Avenue', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0783484, -82.7669149, 'Mobil', '993 Florida Avenue Palm Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0786825, -82.7666909, 'Moda Galleria Boutique', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0750249, -82.7664968, 'Dollar Tree', '-', '#f39c12', 38, 'Downtown Palm Harbor Historic District', true);
+addStore(28.0759968, -82.7669746, 'The Blue House Salon', '-', '#e74c3c', 38, 'Downtown Palm Harbor Historic District', false);
+addStore(28.0781832, -82.7398036, 'Walgreens', '33670 US 19 Palm Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', true);
+addStore(28.0799794, -82.7385323, 'McDonald\'s', '33817 US 19 Palm Harbor', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(28.0621156, -82.7091304, 'Publix', '500 East Lake Road Palm Harbor', '#f39c12', 11, 'The Shoppes of Boot Ranch', true);
+addStore(28.063741, -82.7077623, 'Target', '900 East Lake Road Palm Harbor', '#f39c12', 11, 'The Shoppes of Boot Ranch', true);
+addStore(28.0619067, -82.7076912, 'Chase', '600 East Lake Road Palm Harbor', '#e74c3c', 11, 'The Shoppes of Boot Ranch', false);
+addStore(28.0607029, -82.7092208, 'Wells Fargo', '100 East Lake Road Palm Harbor', '#e74c3c', 11, 'The Shoppes of Boot Ranch', false);
+addStore(28.0624186, -82.7072625, 'Wendy\'s', '750 East Lake Road Palm Harbor', '#e74c3c', 11, 'The Shoppes of Boot Ranch', false);
+addStore(28.0634539, -82.7060196, 'Fifth Third Bank', '1100 East Lake Road Palm Harbor', '#e74c3c', 11, 'The Shoppes of Boot Ranch', false);
+addStore(28.0669651, -82.7627011, 'Winn-Dixie', '1360 Tampa Street Palm Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0622487, -82.7396804, 'Outback Steakhouse', '31988 US HWY 19 N Palm Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.066244, -82.7382419, 'Burger King', '32375 U. South Highway 19 North Palm Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.066815, -82.721343, 'Circle K', '3414 Tampa Road Palm Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0631451, -82.7049913, 'SunTrust', '3500 East Lake Road Palm Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0618981, -82.7066663, 'Shell', '-', '#e74c3c', 11, 'The Shoppes of Boot Ranch', false);
+addStore(28.0620797, -82.7065257, 'Circle K', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0615233, -82.7071162, 'Papa John\'s', '3460 East Lake Road Palm Harbor', '#e74c3c', 11, 'The Shoppes of Boot Ranch', false);
+addStore(28.0624548, -82.7060557, 'McDonald\'s', '3480 East Lake Road Palm Harbor', '#e74c3c', 11, 'The Shoppes of Boot Ranch', false);
+addStore(28.0102399, -82.7881349, 'Twice as Nice', '674 Douglas Avenue Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0112188, -82.7881029, 'Raspberries', '728 Douglas Ave Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0493723, -82.7813565, 'Walgreens', '-', '#f39c12', 27, 'Unnamed Retail Center', true);
+addStore(28.0504855, -82.780267, 'McDonald\'s', '2618 Bayshore Boulevard Dunedin', '#3498db', 27, 'Unnamed Retail Center', false);
+addStore(27.9425528, -82.7464328, 'John\'s Fresh Produce', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(27.9322396, -82.7745715, 'Kwik Shop', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9908178, -82.7552524, 'McDonald\'s', '1934 North Hercules Avenue Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9917694, -82.7946656, 'Comfort Suites Clearwater - Dunedin', '1941 Edgewater Drive Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9903304, -82.7875559, 'Cole\'s Gun Shop', '1903 Douglas Avenue Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0156189, -82.7883341, 'Kafe Racer', '998 Douglas Avenue Dunedin', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9169515, -82.7433526, 'Advance Auto Parts', 'East Bay Drive Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9417742, -82.7463844, 'McDonald\'s', '1500 South Belcher Road Clearwater', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(27.9280563, -82.7871744, 'Subway', '1200 Missouri Avenue North Largo', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(27.9393185, -82.7745101, 'Regions Bank', '1500 Belleair Road Clearwater', '#3498db', 34, 'Unnamed Retail Center', false);
+addStore(28.0204811, -82.7565309, 'Pinch A Penny', '1120 Overcash Drive Dunedin', '#3498db', 24, 'Unnamed Retail Center', false);
+addStore(27.9888204, -82.7098005, 'La Petite Academy', '1880 McMullen Booth Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9895471, -82.7230234, 'Life Farms Clearwater', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9901512, -82.7267386, 'Pet Resort & Grooming Salon', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9861822, -82.7288751, 'Fitzgerald Used Car Outlet Center Clearwater', '23499 US 19 Northbound Frontage Road Clearwater', '#e74c3c', 8, 'Sunset Point 19 Shopping Center', false);
+addStore(27.9898341, -82.7290479, 'U-Haul', '23917 US 19 Northbound Frontage Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9903255, -82.7285635, 'U-Haul', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9905694, -82.7278507, 'Vip Auto Group, Inc.', '2635 Sunset Point Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9905802, -82.7273218, 'Maria\'s Flowers', '2645 Sunset Point Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9851039, -82.826273, 'Chase', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9730561, -82.8288907, 'Surf Style', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9671699, -82.8250944, 'Surf Style', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9592471, -82.7483366, 'Walmart Neighborhood Market', '2171 Gulf To Bay Boulevard Clearwater', '#f39c12', 21, 'Unnamed Retail Center', true);
+addStore(27.9600332, -82.7520141, 'Econo Lodge Inn & Suites', '2061 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8939878, -82.7630393, 'Wawa', '-', '#3498db', 33, 'Unnamed Retail Center', false);
+addStore(27.8936504, -82.7630653, 'Wawa', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8930691, -82.7642218, 'Walmart Neighborhood Market', '9020 Ulmerton Road Largo', '#f39c12', 33, 'Unnamed Retail Center', true);
+addStore(27.8940123, -82.7648482, 'Charleys Philly Steaks', '-', '#3498db', 33, 'Unnamed Retail Center', false);
+addStore(27.9037535, -82.7616379, 'KIOS Group USA', '1385 Starkey Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9071802, -82.7616728, 'Trico Transmission', '1125 Starkey Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9597998, -82.7871203, 'McDonald\'s', '539 South Missouri Avenue Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9605154, -82.7839769, 'Decks & Docks', '1281 Court Street Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9560246, -82.7872355, 'Lots O\' Suds', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9524206, -82.7871178, 'Wells Fargo', '-', '#3498db', 46, 'Unnamed Retail Center', false);
+addStore(27.8806927, -82.8203647, 'Village Inn', '13105 Walsingham Road Largo', '#3498db', 47, 'Unnamed Retail Center', false);
+addStore(27.8797598, -82.8154765, 'Wawa', '12750 Walsingham Road', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8907591, -82.7876274, 'McDonald\'s', '12976 Seminole Boulevard Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9828699, -82.7303566, 'Jiffy Lube', '23034 US 19 Northbound Frontage Road Clearwater', '#3498db', 42, 'Unnamed Retail Center', false);
+addStore(27.9900773, -82.7302399, 'Dunkin\'', '23924 US 19 Southbound Frontage Road Clearwater', '#e74c3c', 8, 'Sunset Point 19 Shopping Center', false);
+addStore(27.9903357, -82.7303053, 'Audibel Hearing Center', '23988 US 19 Northbound Frontage Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9894609, -82.741621, 'Wells Fargo', '-', '#3498db', 32, 'Unnamed Retail Center', false);
+addStore(27.9613481, -82.7873481, 'Papa John\'s', '411 South Missouri Avenue Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9658784, -82.782834, 'YoWash Laundromat', '1314 Cleveland Street Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9610002, -82.7697706, 'Advance Auto Parts', '1620 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9612234, -82.7678087, 'Synovus', '1680 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9609228, -82.7662542, 'Little Caesars', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.961091, -82.7844836, 'Honka Auto Repair', '1266 Court Street Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9613938, -82.7687351, 'Bank of America', '1640 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9611498, -82.7872909, 'Enterprise', '1200 Court Street Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9601957, -82.7645344, 'PJ\'s Auto World', '1751 Gulf to Bay Boulevard Clearwater', '#3498db', 29, 'Unnamed Retail Center', false);
+addStore(27.8901187, -82.7284626, 'Dunkin\'', '13013 66th Street North Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9558442, -82.7309162, 'Comfort Inn', '-', '#e74c3c', 1, 'Clearwater Mall', false);
+addStore(27.9600071, -82.7400818, 'O\'Reilly Auto Parts', '2355 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0124404, -82.7811265, 'Tree House', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9601572, -82.7155155, 'Robert\'s Christmas Wonderland', '2951 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9584791, -82.7239496, 'Target', '2747 Gulf To Bay Boulevard Clearwater', '#f39c12', 1, 'Clearwater Mall', true);
+addStore(27.9413926, -82.7454012, 'Walgreens', '1505 South Belcher Road Clearwater', '#f39c12', 7, 'Unnamed Retail Center', true);
+addStore(27.9153526, -82.7420489, 'Dollar Store', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9169302, -82.7555771, 'Enterprise', '3030 East Bay Drive Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9169397, -82.7534328, 'Ultimate Auto Repair', '3230 East Bay Drive Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9193546, -82.7620436, 'Giovanni\'s Bakery', '299 Keene Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.895265, -82.7864799, 'Walgreens', '-', '#f39c12', 0, 'Largo Mall', true);
+addStore(27.9159231, -82.7630314, 'Walgreens', '2295 East Bay Drive Largo', '#f39c12', 10, 'Keene Plaza', true);
+addStore(27.9152661, -82.763051, 'AutoZone', '200 Starkey Road Largo', '#e74c3c', 10, 'Keene Plaza', false);
+addStore(27.8804238, -82.7981734, '7-Eleven', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.88042, -82.7988709, 'Citgo', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8807, -82.7982507, '7-Eleven', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8940998, -82.7794703, 'Whataburger', '10150 Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.9159407, -82.7502352, 'Dunkin\'', '3515 East Bay Drive Largo', '#e74c3c', 6, 'East Bay Plaza', false);
+addStore(27.916058, -82.756207, 'Palm Island Coin and Currency', '2965 East Bay Drive Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8946675, -82.7517185, 'Citgo', 'Ulmerton Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8948404, -82.7517172, 'Citgo Express', 'Ulmerton Road Pinellas Park', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8950158, -82.7590938, 'Taco Bell', '8671 Ulmerton Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8950829, -82.7586189, 'O\'Reilly Auto Parts', '8651 Ulmerton Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8932272, -82.7294549, 'Mobil', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9630092, -82.7469199, 'United States Post Office', '100 South Belcher Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9610391, -82.7485662, 'Chicken Salad Chick', '2140 Gulf to Bay Boulevard Clearwater', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(27.9608649, -82.7514401, 'Take 5 Oil Change', '2070 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9610244, -82.7531501, '7-Eleven', 'Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9609781, -82.753907, 'Culver\'s', '2008 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.96181, -82.7464958, 'AYR Cannabis Dispensary Clearwater', '314 South Belcher Road Clearwater', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(27.9562616, -82.7881505, 'Wendy\'s', '900 South Missouri Avenue Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9616751, -82.7965555, 'Walgreens', '703 Court Street Clearwater', '#f39c12', 51, 'Unnamed Retail Center', true);
+addStore(27.9577826, -82.7879308, 'Scott Paint', '712 South Missouri Avenue Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9558351, -82.7882388, 'Visionworks', '912 South Missouri Avenue Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9620027, -82.793247, 'Residence Inn Clearwater Downtown', '940 Court Street Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9547449, -82.7994023, 'Fresenius Medical Care', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.002769, -82.7193285, 'Trading Post', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9916306, -82.729056, 'Enterprise', '24141 US 19 Northbound Frontage Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9668552, -82.7361886, 'Bookstore', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9610045, -82.7350129, 'Leader\'s', '2460 Gulf to Bay Boulevard Clearwater', '#3498db', 35, 'Unnamed Retail Center', false);
+addStore(27.9610447, -82.7343621, 'PNC Bank', '2498 Gulf to Bay Boulevard Clearwater', '#3498db', 35, 'Unnamed Retail Center', false);
+addStore(27.96108, -82.7361221, 'Advance Auto Parts', '2436 Gulf to Bay Boulevard Clearwater', '#3498db', 35, 'Unnamed Retail Center', false);
+addStore(27.9611981, -82.7390255, 'Dayton Andrews', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9609462, -82.7420398, 'Charleys Philly Steaks', '2300 Gulf to Bay Boulevard Clearwater', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(27.9609514, -82.7383573, 'Dayton Andrews', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9775172, -82.7387293, 'Sun Valley Farms Market', '2380 Northeast Coachman Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9630007, -82.7289851, 'Clarion Inn & Suites at International Drive', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9609337, -82.7212284, 'Hooters', '2800 Gulf To Bay Blvd Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9610505, -82.7195053, 'RaceTrac', 'Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9685579, -82.7962026, 'Chevron', 'North Myrtle Avenue', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8938549, -82.7463007, 'IHOP', '7800 Ulmerton Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8938446, -82.7593584, 'Popeyes', '8700 Ulmerton Road Seminole', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8939558, -82.7598743, 'Wendy\'s', '8770 Ulmerton Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0266058, -82.7392282, 'Howard Johnson by Wyndham Clearwater FL', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0319168, -82.739133, 'Rodeway Inn Clearwater-Dunedin', '28596 US Highway 19 North Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8794199, -82.7296209, 'Speedway', '11800 66th Street Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8795177, -82.7299697, 'Speedway', '11800 66th Street Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9902309, -82.7407168, 'Sunset Grill', '2328 Sunset Point Road Clearwater', '#3498db', 32, 'Unnamed Retail Center', false);
+addStore(27.9902574, -82.7409742, 'Easy Pick', '2320 Sunset Point Road Clearwater', '#3498db', 32, 'Unnamed Retail Center', false);
+addStore(27.9902659, -82.7343724, 'State Farm', '2476 Sunset Point Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9908279, -82.7320096, 'Caesar\'s Jewelers LLC', '2530 Sunset Point Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9915966, -82.7303669, 'FedEx Office', '24120 US 19 Northbound Frontage Road Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8921564, -82.6995701, 'Candlewood Suites Clearwater', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0416435, -82.6734578, 'Dairy Queen', '3850 Tampa Road Oldsmar', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(28.0424218, -82.6727372, 'Steak \'n Shake', '3853 Tampa Road Oldsmar', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(27.9750003, -82.8287223, 'Wyndham Grand', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9768632, -82.8166762, 'Mobil', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8943311, -82.7238919, '7-Eleven', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8940513, -82.7238876, '7-Eleven', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9180892, -82.7314152, 'LA Fitness', '5320 East Bay Drive Clearwater', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(27.9776154, -82.7963571, 'Family Dollar', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9600789, -82.7466256, 'Starbucks', '2195 Gulf to Bay Boulevard Clearwater', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(27.9596033, -82.7465664, 'Bob Evans', '2183 Gulf to Bay Boulevard Clearwater', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(27.9590776, -82.7466381, 'PDQ', '2181 Gulf to Bay Boulevard Clearwater', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(27.960111, -82.7484744, 'Mavis Tires & Brakes', '2165 Gulf to Bay Boulevard Clearwater', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(27.9598964, -82.7474283, 'Wawa', '2177 Gulf to Bay Boulevard Clearwater', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(27.8905896, -82.7837503, 'Regal Largo Mall', '-', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.9904433, -82.7415871, 'Chase', '2300 Sunset Point Road Clearwater', '#3498db', 32, 'Unnamed Retail Center', false);
+addStore(27.9880669, -82.8250909, 'Fairfield Inn & Suites Clearwater Beach', '650 Bay Esplanade Clearwater Beach', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9603986, -82.7200747, 'Starbucks', '2833 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.917545, -82.7200902, 'Woodcraft', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.013242, -82.7364379, 'Wawa', '26508 US 19 North Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.013548, -82.7367133, 'Wawa', '26508 US 19 North Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0133055, -82.7373271, 'Chick-fil-A', '2525 Countryside Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0777224, -82.7653512, 'Salon Raw', '1118 Florida Avenue Palm Harbor', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9610275, -82.73701, 'AutoZone', '2430 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0114264, -82.7095771, 'Walgreens', '-', '#f39c12', 3, 'Northwood Plaza', true);
+addStore(27.92875, -82.7884534, 'Wawa', '1215 Missouri Avenue North Largo', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(27.9287285, -82.78808, 'Wawa', '1215 Missouri Avenue North Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9283218, -82.7872079, 'Take 5 Oil Change', '1220 Missouri Avenue North Largo', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(28.0600024, -82.7077517, 'Walmart', '-', '#27ae60', -1, 'Standalone / Not in Plaza', true);
+addStore(27.9609075, -82.7681683, 'Extra Space Storage', '1660 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9715258, -82.8282681, 'AC Hotel by Marriott Clearwater Beach', '395 Coronado Drive Clearwater Beach', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9804107, -82.8254326, 'Courtyard Clearwater Beach', '455 East Shore Drive Clearwater Beach', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(27.9599598, -82.7406508, 'AAA Car Care Plus', '2347 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9732531, -82.8279096, 'SpringHill Suites Clearwater Beach', '309 Coronado Drive Clearwater Beach', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.97262, -82.8278835, 'Residence Inn Clearwater Beach', '309 Coronado Drive Clearwater Beach', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9663393, -82.7310691, 'La Quinta Inn Clearwater Central', '21338 US Highway 19 North Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9676347, -82.8281346, 'Holiday Inn & Suites Clearwater Beach', '521 South Gulfview Boulevard Clearwater Beach', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8959278, -82.7793473, 'Home2 Suites Largo', '10145 Ulmerton Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8954095, -82.7798784, 'AutoZone', '1035 Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.894345, -82.7338907, 'Citgo', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8943366, -82.733651, 'Citgo', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0503648, -82.6994945, 'Ulta Beauty', '3142 Tampa Road Oldsmar', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(28.0504025, -82.6979752, 'Marshalls', '-', '#f39c12', 20, 'Unnamed Retail Center', true);
+addStore(28.0499074, -82.6980825, 'Dollar Tree', '-', '#f39c12', 20, 'Unnamed Retail Center', true);
+addStore(28.0513785, -82.7009185, 'Five Below', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9639428, -82.7306078, 'TownePlace Suites', 'Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9611059, -82.7594162, 'Mister Car Wash;Mister HotShine', 'Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8951226, -82.7977802, 'Waffle House', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.915051, -82.7307894, 'WoodSpring Suites Clearwater', '15672 US Highway 19 North Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(28.0512106, -82.7822857, 'Hampton Inn Dunedin', '2641 Michael Place Dunedin', '#3498db', 27, 'Unnamed Retail Center', false);
+addStore(27.9162396, -82.7743918, 'RaceWay', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9159166, -82.7743687, 'RaceWay', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8949316, -82.7574801, 'Zaxby\'s', '8585 Ulmerton Road Largo', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9063656, -82.7305264, 'Southern Self Storage', '14770 US-19 Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.8940906, -82.7800501, 'Chipotle', '10160 Ulmerton Road Largo', '#e74c3c', 0, 'Largo Mall', false);
+addStore(27.9170151, -82.7648607, 'Twistee Treat', '2194 East Bay Drive Largo', '#e74c3c', 10, 'Keene Plaza', false);
+addStore(27.960968, -82.7469858, 'Andy\'s Frozen Custard', '2190 Gulf to Bay Boulevard Clearwater', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(27.9716295, -82.8292214, 'The Hiatus Clearwater Beach, Curio Collection by Hilton', '385 South Gulfview Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9266126, -82.7294838, 'CITY Furniture', '17011 US Highway 19 North Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.92845, -82.7895106, 'Extra Space Storage', '1225 Missouri Avenue North Largo', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(27.8927414, -82.7131389, 'A-AAAKey Mini Storage', '5830 Ulmerton Road', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9601865, -82.7474603, 'Wawa', '2177 Gulf to Bay Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9705333, -82.8293604, 'Opal Sol Resort', '400 Coronado Drive Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(27.9696043, -82.8301989, 'Opal Sands Resort', '430 South Gulfview Boulevard Clearwater', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+
+  map.on('overlayadd overlayremove', updateVisibility);
+  updateVisibility();
+
+  var overlays = {
+    '🔴  Multi-anchor plazas (2+ anchors)': layerMultiAnchor,
+    '⭕  Single-anchor plazas': layerSingleAnchor,
+    '🟣  Plaza Center Points': layerPlazaCenters,
+    '🟡  Anchor Stores (in Plaza)': layerAnchors,
+    '🔵🔴  Tenants (In Plaza)': layerTenants,
+    '🟢  Standalone Stores': layerStandalone,
+    '━━━━━━━━━━━━━━': L.layerGroup(),
+    '🔥  High Density Plazas (10+ tenants)': layerHighDensity,
+    '🔹  Lower Density (< 10 tenants)': layerLowDensity
+  };
+
+  var countyDivider = false;
+  for (var county in countyLayers) {
+    if (!countyDivider) {
+        overlays['━━━━━━━━━━━━━━ '] = L.layerGroup();
+        countyDivider = true;
+    }
+    overlays['📍 ' + county] = countyLayers[county];
+  }
+
+  L.control.layers(null, overlays, {
+    position: 'topright',
+    collapsed: false,
+  }).addTo(map);
+
+  var legend = L.control({position: 'bottomright'});
+  legend.onAdd = function() {
+    var div = L.DomUtil.create('div', 'legend');
+    div.innerHTML = '<b>Retail Centers – Clearwater, FL</b><br>'
+      + '<span class="legend-dot" style="background:#e74c3c"></span> Named plaza<br>'
+      + '<span class="legend-dot" style="background:#3498db"></span> Unnamed plaza<br>'
+      + '<span class="legend-dot" style="background:#8e44ad"></span> Plaza center point<br>'
+      + '<span class="legend-dot" style="background:#f39c12"></span> Anchor store (in plaza)<br>'
+      + '<span class="legend-dot" style="background:#27ae60"></span> Standalone store<br>'
+      + '⚓ = anchor &nbsp; 🔥 = 10+ tenants';
+    return div;
+  };
+  legend.addTo(map);
+</script>
+</body>
+</html>

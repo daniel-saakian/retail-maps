@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8' />
+  <title>Retail Centers – Burbank, CA</title>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' />
+  <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
+  <style>
+    body { margin: 0; font-family: sans-serif; }
+    #map { height: 100vh; width: 100%; }
+    .legend {
+      background: white; padding: 10px 14px; border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); line-height: 1.8;
+      font-size: 13px;
+    }
+    .legend-dot { display: inline-block; width: 12px; height: 12px;
+                   border-radius: 50%; margin-right: 6px; }
+  </style>
+</head>
+<body>
+<div id='map'></div>
+<script>
+  var map = L.map('map').setView([34.17507750443699, -118.33599845967845], 12);
+ 
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(map);
+ 
+  var plazasData = [];
+  var storesData = [];
+ 
+  var layerMultiAnchor = L.layerGroup().addTo(map);
+  var layerSingleAnchor = L.layerGroup().addTo(map);
+  var layerPlazaCenters = L.layerGroup().addTo(map);
+  var layerAnchors = L.layerGroup().addTo(map);
+  var layerTenants = L.layerGroup().addTo(map);
+  var layerStandalone = L.layerGroup().addTo(map);
+  var layerHighDensity = L.layerGroup().addTo(map);
+  var layerLowDensity = L.layerGroup().addTo(map);
+  var countyLayers = {};
+ 
+  function getOrCreateCountyLayer(county) {
+    if (!county || county === '-') county = 'Unknown';
+    if (!countyLayers[county]) {
+        countyLayers[county] = L.layerGroup().addTo(map);
+    }
+    return countyLayers[county];
+  }
+ 
+  function addPlaza(lat, lng, radius_m, plazaId, name, address, county, city, numAnchors, anchors, numTenants, tenants, color, leasingHtml) {
+    var popup = '<b>' + name + '</b><br>'
+      + (address !== '-' ? address + '<br>' : '')
+      + city + (county !== '-' ? ', ' + county + ' County' : '') + '<br>'
+      + leasingHtml
+      + '<br><b>' + numAnchors + ' anchor(s): </b><br>'
+      + anchors.split(', ').join('<br>')
+      + '<br><br><b>' + numTenants + ' other tenant(s):</b><br>'
+      + tenants.split(', ').join('<br>');
+    
+    var circle = L.circle([lat, lng], {
+      radius: radius_m,
+      color: color,
+      fillColor: color,
+      fillOpacity: 0.08,
+      weight: 2
+    });
+    if (numAnchors > 1) {
+      layerMultiAnchor.addLayer(circle);
+    } else {
+      layerSingleAnchor.addLayer(circle);
+    }
+ 
+    var center = L.circleMarker([lat,lng], {
+        radius: 9,
+        color: '#fff',
+        fillColor: '#8e44ad',
+        fillOpacity: 1,
+        weight: 2
+    }).bindPopup(popup, {maxHeight: 320, autoPanPadding: [20, 20]}).bindTooltip(name, {permanent: false, direction: 'top'});
+ 
+    var cleanCounty = (!county || county === '-') ? 'Unknown' : county;
+    getOrCreateCountyLayer(cleanCounty);
+ 
+    plazasData.push({
+        circle: circle,
+        center: center,
+        id: plazaId,
+        name: name,
+        county: cleanCounty,
+        numAnchors: numAnchors,
+        numTenants: numTenants
+    });
+  }
+ 
+  function addStore(lat, lng, name, address, color, plazaId, plaza, isAnchor) {
+    var size = isAnchor ? 11 : 9;
+    var icon = L.divIcon({
+      className: '',
+      html: '<div style="position:absolute;width:' + size + 'px;height:' + size + 'px;'
+          + 'border-radius:50%;background:' + color + ';border:2px solid white;'
+          + 'box-shadow:0 1px 3px rgba(0,0,0,0.4);top:50%;left:50%;'
+          + 'transform:translate(-50%,-50%)'
+          + (isAnchor ? ';outline:2px solid rgba(0,0,0,0.25)' : '')
+          + '"></div>',
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2]
+    });
+    var marker = L.marker([lat, lng], {icon: icon})
+      .bindPopup('<b>' + name + '</b>' + (isAnchor ? '⚓' : '')+ '<br>' 
+        + '<i>' + plaza + '</i><br>'
+        + address)
+      .bindTooltip(name, {direction: 'top'})
+    
+    storesData.push({
+      marker: marker,
+      plazaId: plazaId,
+      plazaLabel: plaza,
+      isAnchor: isAnchor
+    });
+  }
+ 
+  function updateVisibility() {
+    plazasData.forEach(function(p) {
+      var anchorMatch = (p.numAnchors > 1) ? map.hasLayer(layerMultiAnchor): map.hasLayer(layerSingleAnchor);
+      var densityMatch = (p.numTenants >= 10) ? map.hasLayer(layerHighDensity) : map.hasLayer(layerLowDensity);
+      var countyLayer = countyLayers[p.county];
+      var countyMatch = countyLayer ? map.hasLayer(countyLayer) : true;
+ 
+      var plazaVisible = anchorMatch && densityMatch && countyMatch;
+      p.isActive = plazaVisible;
+ 
+      if (plazaVisible) {
+        // FIX 2: Changed map.has() to map.hasLayer()
+        if (!map.hasLayer(p.circle)) p.circle.addTo(map);
+      } else {
+        if (map.hasLayer(p.circle)) map.removeLayer(p.circle);
+      }
+ 
+      if (plazaVisible && map.hasLayer(layerPlazaCenters)) {
+        if (!map.hasLayer(p.center)) p.center.addTo(map);
+      } else {
+        if (map.hasLayer(p.center)) map.removeLayer(p.center);
+      }
+    });
+      
+    storesData.forEach(function(s) {
+        var storeVisible = false;
+ 
+        if (s.plazaId === -1) {
+            // Standalone store
+            storeVisible = map.hasLayer(layerStandalone);
+ 
+        } else {
+            var parentPlaza = plazasData.find(function(p) {
+                return p.id === s.plazaId;
+            });
+ 
+            if (parentPlaza && parentPlaza.isActive) {
+                storeVisible = s.isAnchor
+                    ? map.hasLayer(layerAnchors)
+                    : map.hasLayer(layerTenants);
+            }
+        }
+ 
+        if (storeVisible) {
+            if (!map.hasLayer(s.marker))
+                s.marker.addTo(map);
+        } else {
+            if (map.hasLayer(s.marker))
+                map.removeLayer(s.marker);
+        }
+    });
+  }
+ 
+  addPlaza(34.18309331395349, -118.31152862093023, 336.4, 0, 'Burbank Town Center', '245 East Magnolia Boulevard Burbank', 'Los Angeles County', 'Burbank', 3, 'Burlington, Macy\'s, Ross', 40, 'AMC Burbank 16, AMC Burbank Town Center 8, ART Boutique Cellular, AT&T, Allstate, Ashley HomeStore, Ben & Jerry\'s, Buffalo Wild Wings, Burbank Hair Cut, Burbank YMCA, California Pizza Kitchen, Cold Stone Creamery, Dunkin\', El Pollo Loco, Five Guys, FlixBus Burbank, Floridens Flowers & Gifts, Gap Factory, Halo 13, Ike\'s Love and Sandwiches, It\'s Boba Time, Lilit Art Fashion Studio, Media Time, Men\'s Warehouse, Noah\'s Bagels, Panda Express, Pinkberry, Round1, Sears, Skechers, Spectrum, Starbucks, Sweetie\'s Candy, T-Mobile, Tender Greens, Tesla Supercharger, U.S. Bank, Urban Outfitters, World Market, Yard House', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://srsre.com/properties/lease/retail/california/burbank/201-e-magnolia-blvd/l10072" target="_blank" rel="noopener">SRS Real Estate Partners — Terrison Quinn</a><br><a href="https://srsre.com/properties/lease/retail/california/burbank/201-e-magnolia-blvd/l10072" target="_blank" rel="noopener">SRS Real Estate Partners — Casey Mahony</a><br><a href="https://srsre.com/properties/lease/retail/california/burbank/201-e-magnolia-blvd/l10072" target="_blank" rel="noopener">SRS Real Estate Partners — Bree Casas</a><br>');
+addPlaza(34.178592627586205, -118.3196166724138, 526.2, 1, 'IMX Auto Group', '510 North Victory Boulevard Burbank', 'Los Angeles County', 'Burbank', 2, 'ALDI, Big 5 Sporting Goods', 27, 'B&B Auto Body Works, Burbank Radiator, Burger King, City Electric Supply, Floorgoodz, Future Glass, Haio Kong Acupuncture & Herbs, Hobby Lobby, IMX Auto Group, K1 Speed, Leonard\'s Locksmith, Lovely Nails, Magnolia Island Car Care, Martino\'s Bakery, Media City Auto Repair, O\'Reilly Auto Parts, Pacific Sales, Primerica - Chamorro & Assoc., Shell, Stotts Bicycles, Sunstate Equipment Co., Tesla Supercharger, The Supply Sergeant, U M Liquor, Unpainted Furniture, Valero, de Cielo Salon & Spa', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-129297" target="_blank" rel="noopener">CBRE — Geoff Martin</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-129297" target="_blank" rel="noopener">CBRE — Ryan Burnett</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-129297" target="_blank" rel="noopener">CBRE — Brian Yoshimura</a><br>');
+addPlaza(34.19017374814815, -118.32950828518521, 503.4, 2, 'Burbank Empire Center', '1501 North Victory Place Burbank', 'Los Angeles County', 'Burbank', 7, 'Best Buy, BevMo!, Lowe\'s, Marshalls, Nordstrom Rack, TJ Maxx, Target', 20, 'Catherines, Courtyard Los Angeles Burbank Airport, Dave\'s Hot Chicken, Extended Stay America, GNC, Jamba, Krispy Kreme, Men\'s Wearhouse, Michaels, Nothing Bundt Cakes, Olive Garden, Outback Steakhouse, Panda Express, Staples, Starbucks, Tillys, Ulta Beauty, Wendy\'s, WestCoastCustoms, west elm', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://gallellire.com/property/mission-plaza-1512-north-h-street/" target="_blank" rel="noopener">Gallelli Real Estate — Phillip Kyle</a><br><a href="https://www.crexi.com/lease/properties/662435/california-2301-empire-ave" target="_blank" rel="noopener">illi Commercial Real Estate — Greg Offsay</a><br><a href="https://www.crexi.com/lease/properties/662435/california-2301-empire-ave" target="_blank" rel="noopener">illi Commercial Real Estate — Armen Tchapanian</a><br>');
+addPlaza(34.18797173749999, -118.31852679583335, 306.5, 3, 'Ralphs', '1100 North San Fernando Boulevard Burbank', 'Los Angeles County', 'Burbank', 2, 'Ralphs, Sprouts Farmers Market', 22, 'Blooming Nail Bar, Chuck\'s Corner Market 76, Comerica Bank, Crust Artesian Bakery, Full House Smoke Shop, IHOP, McDonald\'s, Original Tommy\'s, PMP Nail Bar, Popeyes, Quick Cuts, Rose Nails, Shakey\'s, Starbucks, State Farm, Supercuts, Taco Bell, Tesla Supercharger, The Legacy Barbership, Wells Fargo, Wingstop, Yoshinoya', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(34.16774600833333, -118.32344468333332, 309.5, 4, 'Unnamed Retail Center', '1615 West Verdugo Avenue Burbank', 'Los Angeles County', 'Burbank', 1, 'Grocery Outlet', 23, '7-Eleven, Burbank Cleaners, Cell Phone Repair, Centinella Feed & Pet Supplied, Chase, Coin-op Laundry, Domino\'s, Doodle Dose, Elite Lash And Brow Academy, Eros Auto Group, Fashion Nails, Five Star Massage, Hair Elements, LensCrafters, Linh\'s House of Barbering and Beauty, McDonald\'s, New Buenos Aires Bakery & Cafe, Raising Cane\'s, Starbucks, Starz Liquor, The Hair Place, Tulip Salon, Wear It Once Wear It Twice', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.nmrk.com/properties/1590-raley-court-suite-30-west-sacramento-lease" target="_blank" rel="noopener">Newmark — Sean Mahoney</a><br><a href="https://www.nmrk.com/properties/1590-raley-court-suite-30-west-sacramento-lease" target="_blank" rel="noopener">Newmark — Kevin Jasper</a><br>');
+addPlaza(34.16808862173912, -118.34728733478262, 289.7, 5, 'Unnamed Retail Center', '1033 North Hollywood Way Burbank', 'Los Angeles County', 'Burbank', 1, 'Target', 22, 'Allstate, American Cancer Society Discovery Shop, American Ship and Pack, Arco, Atomic Records, Aviva Cleaners, Burbank Sportscards, Burbank Unpainted Furniture, Chance Vintage, Chase, Crumbl Cookies, Dylan Keith Salon, Floyd\'s 99 Barbershop, Golden Nails, Gun World, Karabel Dancewear, Let\'s Ride Cyclery, Lily\'s Foot Spa, The Train Shack, Travelodge Burbank-Glendale, Vulture Culture Oddities, iColorHair', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(34.17370537058823, -118.30018235294118, 612.5, 6, 'CarMax', '1028 South San Fernando Boulevard Burbank', 'Los Angeles County', 'Burbank', 5, 'Harbor Freight Tools, Ralphs, The Home Depot, Trader Joe\'s, Walgreens', 12, 'Allen\'s Cleaners, Bidlane, CarMax, Chevron, Flock Safety, IKEA, Masis Bakery & Cafe, Splash Doggie, Starbucks, Tesla, The Habit Burger Grill, Vibe Nail Bar', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(34.17814232727273, -118.33968902727271, 289.7, 7, 'Unnamed Retail Center', '2500 Burbank Boulevard Burbank', 'Los Angeles County', 'Burbank', 1, 'Lucky Dog Grooming', 10, '7-Eleven, Audio Department, AutoZone, Edible Arrangements, George\'s Corner, Great American Auto Center, Lotus Nails and Spa, Matrix Au, Planet Massage Hollywood, Tool Time', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://gallellire.com/property/2530-douglas-boulevard/" target="_blank" rel="noopener">Gallelli Real Estate — Brandon Sessions</a><br><a href="https://gallellire.com/property/2530-douglas-boulevard/" target="_blank" rel="noopener">Gallelli Real Estate — Kannon Kuhn</a><br><a href="https://www.crexi.com/lease/properties/1101286/california-2529-n-ontario-st" target="_blank" rel="noopener">CBRE LA — Mike Zugsmith</a><br>');
+addPlaza(34.185540329999995, -118.31532597, 289.7, 8, 'Chuck\'s Corner Market 76', '901 North San Fernando Boulevard Burbank', 'Los Angeles County', 'Burbank', 2, 'Crunch Fitness, Office Depot', 8, 'AMC Burbank Town Center 6, Barnes & Noble, Bob\'s Discount Furniture, Chase, Corner Bakery, In-N-Out Burger, Mattress Firm, Starbucks', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(34.154591829999994, -118.34619149, 298.9, 9, 'Unnamed Retail Center', '301 North Pass Avenue Burbank', 'Los Angeles County', 'Burbank', 1, 'Vons', 9, 'Bank of America, Fantastic Sam\'s, Hank\'s...A Deli Of Sorts, Hotel Amarano Burbank-Hollywood, Mendocino Farms, Milt and Edie\'s Dry Cleaners, Panda Express, Starbucks, Togo\'s', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-200136" target="_blank" rel="noopener">CBRE — Diandra Dillon</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-200136" target="_blank" rel="noopener">CBRE — Shiho Takei Moore</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-158589" target="_blank" rel="noopener">CBRE — Cody Chiarella</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-197602" target="_blank" rel="noopener">CBRE — Houman Mahboubi</a><br><a href="https://www.crexi.com/lease/properties/1184436/california-flexible-workspace-in-burbank-business-district-book-a-tour-get-info" target="_blank" rel="noopener">Regus — IWG US 43</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-200136" target="_blank" rel="noopener">CBRE — Derrick Moore</a><br><a href="https://www.crexi.com/lease/properties/1184436/california-flexible-workspace-in-burbank-business-district-book-a-tour-get-info" target="_blank" rel="noopener">Regus — Regus US Admin</a><br>');
+addPlaza(34.17208971111111, -118.33412021111108, 289.7, 10, 'Unnamed Retail Center', '2306 West Magnolia Boulevard Burbank', 'Los Angeles County', 'Burbank', 1, 'Walgreens', 8, 'Discount Cigarettes, Handy Market, JVK Die Cast & Hobbies, Jewel Gallery, Random Acts of Breadness, Rapid 14, Taco Bell, Ugly Christmas Sweater Shop', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(34.152326977777776, -118.35173697777776, 289.7, 11, 'Unnamed Retail Center', '10130 Riverside Drive Toluca Lake', 'Los Angeles County', 'Toluca Lake', 1, 'Trader Joe\'s', 8, 'Cosmo Nails, Generales & Generales, Gillio & Associates, Kreation Organic, Paul Donnell, Rose & Sage, Spin The Bottle Wine Studio, The Coffee Bean & Tea Leaf', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.crexi.com/lease/properties/978117/california-10112-riverside-drive" target="_blank" rel="noopener">CBM1 West Los Angeles — Jason Ehrenpreis</a><br>');
+addPlaza(34.1736677625, -118.29279385000001, 289.7, 12, 'Unnamed Retail Center', '1850 West Glenoaks Boulevard Glendale', 'Los Angeles County', 'Glendale', 1, 'Smart & Final Extra!', 7, 'Beauty Mark, Nice n Clean, Paradise Pastry and Cafe, Salon Creer, Sevana Jewelery, Taco Bell, Valerie Confections', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(34.18516855, -118.3496113, 289.7, 13, 'Unnamed Retail Center', '3525 West Victory Boulevard Burbank', 'Los Angeles County', 'Burbank', 1, 'Petco', 5, '7-Eleven, Domino\'s, KFC, Party City, Subway', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(34.16022746666667, -118.34409526666666, 289.7, 14, 'Unnamed Retail Center', '509 North Hollywood Way Burbank', 'Los Angeles County', 'Burbank', 1, 'Smart & Final Extra!', 5, 'California Fish Grill, Jersey Mike\'s Subs, Popeyes, Shell, Starbucks', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-129297" target="_blank" rel="noopener">CBRE — Geoff Martin</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-129297" target="_blank" rel="noopener">CBRE — Ryan Burnett</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-129297" target="_blank" rel="noopener">CBRE — Brian Yoshimura</a><br>');
+addPlaza(34.15350153999999, -118.33701318000001, 357.5, 15, '68', '3401 West Olive Avenue Burbank', 'Los Angeles County', 'Burbank', 1, 'Whole Foods Market', 4, 'Claim Jumper, Juan Barraza - California Mortgage Lender, Starbucks, Wienerschnitzel', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(34.18472378, -118.33868698, 289.7, 16, 'Unnamed Retail Center', '2600 West Victory Boulevard Burbank', 'Los Angeles County', 'Burbank', 1, 'Ralphs', 4, '99 Cents Only Stores, Booze And Brews, Prime Time Cleaners, Unique Nails & Spa Salon', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.crexi.com/lease/properties/1024681/california-2601-2625-west-alameda-ave" target="_blank" rel="noopener">JLL - Los Angeles (West), California — Chris Isola</a><br><a href="https://www.crexi.com/lease/properties/1024681/california-2601-2625-west-alameda-ave" target="_blank" rel="noopener">JLL - Los Angeles (West), California — Carolyn Pasqualetto</a><br>');
+addPlaza(34.20033194, -118.36950443999999, 289.7, 17, 'Unnamed Retail Center', '10950 Sherman Way Burbank', 'Los Angeles County', 'Burbank', 1, 'Planet Fitness', 4, 'Fatburger, Starbucks, Vallarta Supermarket, WSS', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(34.187068319999995, -118.37050472000001, 289.7, 18, 'Unnamed Retail Center', '11051 Victory Boulevard North Hollywood', 'Los Angeles County', 'North Hollywood', 1, 'Target', 4, '99 Cents Only Stores, Chevron, McDonald\'s, Popeyes', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(34.16481118, -118.36708092, 289.7, 19, 'Unnamed Retail Center', '10900 Magnolia Boulevard North Hollywood', 'Los Angeles County', 'North Hollywood', 1, 'Ralphs', 4, 'Beer & Wine Market, Blues Smoke Shop, Project Cannabis, Riverton Liquors', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(34.17506445, -118.349518575, 289.7, 20, 'Unnamed Retail Center', '3523 Burbank Boulevard Burbank', 'Los Angeles County', 'Burbank', 1, 'Smart & Final', 3, '7-Eleven, Golden State Lock & Safe, Sinclair', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="http://www.naiglobal.com/listings?propertyId=3542-3546-e-imperial-hwy-lynwood-lease" target="_blank" rel="noopener">NAI Global — Patrick Ortiz</a><br><a href="https://www.crexi.com/lease/properties/1104789/california-executive-office" target="_blank" rel="noopener">SGL Advisors — Yansy Rolen</a><br>');
+  addStore(34.1778393, -118.318237, 'Shell', '400 North Victory Boulevard', '#e74c3c', 1, 'IMX Auto Group', false);
+addStore(34.1869185, -118.3187822, 'Sprouts Farmers Market', '1011 North San Fernando Boulevard Burbank', '#f39c12', 3, 'Ralphs', true);
+addStore(34.1882058, -118.3191305, 'Taco Bell', '1115 North San Fernando Boulevard Burbank', '#e74c3c', 3, 'Ralphs', false);
+addStore(34.1611268, -118.329908, 'G&M Oil Company #75', '2501 West Olive Avenue', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1557696, -118.346149, 'Togo\'s', '-', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(34.1557127, -118.3469468, 'Starbucks', '347 North Pass Avenue Burbank', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(34.1545905, -118.345549, 'Bank of America', '-', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(34.1716259, -118.334926, 'Rapid 14', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(34.1741334, -118.3163101, '7-Eleven', '265 West Olive Avenue Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1735213, -118.3167934, 'Subway', '101 North Victory Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1901763, -118.3270985, 'Panda Express', '1541 North Victory Place Burbank', '#e74c3c', 2, 'Burbank Empire Center', false);
+addStore(34.1909306, -118.328278, 'Catherines', '-', '#e74c3c', 2, 'Burbank Empire Center', false);
+addStore(34.1900698, -118.3269322, 'Krispy Kreme', '-', '#e74c3c', 2, 'Burbank Empire Center', false);
+addStore(34.1840627, -118.3395852, 'Ralphs', '2600 West Victory Boulevard Burbank', '#f39c12', 16, 'Unnamed Retail Center', true);
+addStore(34.1721064, -118.3352733, 'Walgreens', '-', '#f39c12', 10, 'Unnamed Retail Center', true);
+addStore(34.1914724, -118.3289189, 'Starbucks', '1711 North Victory Place Burbank', '#e74c3c', 2, 'Burbank Empire Center', false);
+addStore(34.186565, -118.3162034, 'Wells Fargo', '900 North San Fernando Boulevard Burbank', '#e74c3c', 3, 'Ralphs', false);
+addStore(34.1862628, -118.3164948, 'Chuck\'s Corner Market 76', '901 North San Fernando Boulevard Burbank', '#e74c3c', 3, 'Ralphs', false);
+addStore(34.1866921, -118.3170859, 'IHOP', '913 North San Fernando Boulevard Burbank', '#e74c3c', 3, 'Ralphs', false);
+addStore(34.1858224, -118.315068, 'Corner Bakery', '800 North San Fernando Boulevard', '#e74c3c', 8, 'Chuck\'s Corner Market 76', false);
+addStore(34.1691797, -118.343638, 'It\'s a Wrap', '3315 West Magnolia Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1689253, -118.3443726, 'Romancing the Bean', '3413 West Magnolia Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.169221, -118.3435023, 'Pizza Hut', '3311 West Magnolia Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1691309, -118.343756, 'Oasis Nail Spa', '3317 West Magnolia Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1680476, -118.347314, 'Arco', '3771 West Magnolia Boulevard', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.1972983, -118.3374084, 'Exxon', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.196725, -118.353431, 'USPS', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.180511, -118.3033226, 'Subway', '401 Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1620448, -118.2891759, 'Starbucks', '1401 Flower Street Glendale', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1932747, -118.345237, 'ChargePoint', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1750073, -118.325198, 'Fleet Feet', '1516 West Magnolia Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1686479, -118.3440534, 'Bank of America', '3400 West Magnolia Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1687981, -118.3436521, 'Crowning Glory Hair Studio', '3320 West Magnolia Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1690356, -118.3472918, 'The Train Shack', '1030 North Hollywood Way Burbank', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.1692617, -118.347384, 'Let\'s Ride Cyclery', '1038 North Hollywood Way Burbank', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.1694507, -118.3474714, 'Floyd\'s 99 Barbershop', '1040 North Hollywood Way Burbank', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.1661912, -118.2882818, 'Bank of America', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1660108, -118.2877031, 'New Image Cuts', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1661496, -118.287896, 'Citibank', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1715085, -118.2953653, 'Mountain View', '6750 San Fernando Road Glendale', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1657234, -118.287659, 'Volvo Pit Stop', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1661092, -118.2878383, '7-Eleven', '6350 San Fernando Glendale', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1673593, -118.2923585, 'Brewyard', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1520571, -118.343483, 'JINYA Ramen Bar', '4011 Riverside Drive Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1517618, -118.3430587, 'Koi', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1517752, -118.3429742, 'Subway', '4002 Riverside Drive Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1517863, -118.342891, 'Varnish Nail Bar', '4000 Riverside Drive Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1525355, -118.345783, 'Starbucks', '4207 Riverside Drive Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1788003, -118.3094417, 'BJ\'s', '107 South First Street Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1766098, -118.3184194, 'Media City Auto Repair', '329 North Victory Boulevard Burbank', '#e74c3c', 1, 'IMX Auto Group', false);
+addStore(34.1700926, -118.287751, 'Larry Larson Music Store', '1607 West Glenoaks Boulevard Glendale', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1794444, -118.3185631, 'Pacific Sales', '530 North Victory Boulevard', '#e74c3c', 1, 'IMX Auto Group', false);
+addStore(34.1840983, -118.321185, 'Discount Tire', '934 Victory Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1791232, -118.3206911, 'Hobby Lobby', '-', '#e74c3c', 1, 'IMX Auto Group', false);
+addStore(34.1794683, -118.3212382, 'Unpainted Furniture', '-', '#e74c3c', 1, 'IMX Auto Group', false);
+addStore(34.1795559, -118.3212718, 'O\'Reilly Auto Parts', '-', '#e74c3c', 1, 'IMX Auto Group', false);
+addStore(34.1754154, -118.3176962, 'Florin\'s Auto Repair', '301 North Victory Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1806895, -118.3041794, 'Dataflow Company', '345 E Verdugo Ave Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1723602, -118.370528, 'Fatburger', '11009 Burbank Boulevard North Hollywood', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1645265, -118.3612904, 'Superior Auto Clinic', '10560 Magnolia Boulevard North Hollywood', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1647016, -118.36204, '7-Eleven', '10610 Magnolia Boulevard North Hollywood', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1523894, -118.352278, 'Rose & Sage', '10143 Riverside Drive Toluca Lake', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(34.1523806, -118.352195, 'Generales & Generales', '10141 Riverside Drive Toluca Lake', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(34.1523766, -118.3521486, 'Spin The Bottle Wine Studio', '10139 Riverside Drive Toluca Lake', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(34.1523577, -118.351935, 'Cosmo Nails', '10137 Riverside Drive Toluca Lake', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(34.1524029, -118.351455, 'The Coffee Bean & Tea Leaf', '10121 Riverside Drive Toluca Lake', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(34.1523726, -118.3513134, 'Paul Donnell', '10117 Riverside Drive Toluca Lake', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(34.1523765, -118.351242, 'Kreation Organic', '10115 Riverside Drive Toluca Lake', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(34.1523846, -118.351146, 'Gillio & Associates', '10113 Riverside Drive Toluca Lake', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(34.1690023, -118.3441618, 'Best of Times Antiques', '3401 West Magnolia Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.168946, -118.344295, 'V & K Distributing Co', '3407 West Magnolia Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1688234, -118.344681, 'Scavenger\'s Paradise', '3425 West Magnolia Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1685613, -118.3444506, 'Catnip Coalition Vintage Mall', '3412 1/2 West Magnolia Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.168524, -118.3445654, 'Parlour Barber Shop', '3416 West Magnolia Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1499235, -118.3385476, 'WB Museum', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1703025, -118.3389488, 'Autobooks Aerobooks', '2900 West Magnolia Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1628831, -118.313221, 'Denny\'s', '1010 West Alameda Avenue', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1920188, -118.3333572, 'WestCoastCustoms', '2101 Empire Avenue', '#e74c3c', 2, 'Burbank Empire Center', false);
+addStore(34.1498299, -118.3268878, 'Forest Lawn Mortuary', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1521773, -118.3252125, 'Orlando\'s Resting Place', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1650966, -118.3684026, 'Beer & Wine Market', '-', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(34.1836616, -118.3121443, 'AMC Burbank Town Center 8', '201 Magnolia Boulevard Burbank', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1530943, -118.3442786, 'Milt and Edie\'s Dry Cleaners', '4021 W Alameda Ave Burbank', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(34.2000481, -118.368162, 'Planet Fitness', '-', '#f39c12', 17, 'Unnamed Retail Center', true);
+addStore(34.1786867, -118.3376121, 'Dunn Edwards Paints', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1780017, -118.3409882, 'Tool Time', '2713 W Burbank Blvd', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(34.1775265, -118.3406318, 'Lotus Nails and Spa', '2724 W Burbank Blvd', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(34.1775521, -118.340581, 'Lucky Dog Grooming', '2722 W Burbank Blvd', '#f39c12', 7, 'Unnamed Retail Center', true);
+addStore(34.1741875, -118.35073, 'Smart & Final', '-', '#f39c12', 20, 'Unnamed Retail Center', true);
+addStore(34.152486, -118.3375355, 'Claim Jumper', '-', '#e74c3c', 15, '68', false);
+addStore(34.1522582, -118.3424944, 'IM Hair Studio', '3913 Riverside Drive Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1834167, -118.3236166, 'Captain Paints', '1022 Burbank Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1828898, -118.3251302, 'Half Baked Co.', '1126 Burbank Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1807436, -118.3328566, 'Winebro', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1804883, -118.3334917, 'Vixen', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1798107, -118.3343109, 'Plumbing Wholesale', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1784073, -118.338136, '7-Eleven', '2500 Burbank Boulevard Burbank', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(34.1783242, -118.3384431, 'AutoZone', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(34.1785508, -118.3394647, 'George\'s Corner', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(34.1786564, -118.3392083, 'Great American Auto Center', '2523 Burbank Boulevard', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(34.1754951, -118.3489753, '7-Eleven', '3523 Burbank Boulevard Burbank', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(34.1751953, -118.349627, 'Sinclair', '-', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(34.1523107, -118.3367614, 'Starbucks', '3400 Warner Boulevard Ground Level', '#e74c3c', 15, '68', false);
+addStore(34.1849835, -118.315124, 'Crunch Fitness', '761 North San Fernando Boulevard Burbank', '#f39c12', 8, 'Chuck\'s Corner Market 76', true);
+addStore(34.1522787, -118.3446609, 'Priscilla\'s Coffee', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.182272, -118.3103634, 'It\'s Boba Time', '234 North San Fernando Boulevard', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1823951, -118.3105056, 'U.S. Bank', '240 North San Fernando Boulevard', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1825305, -118.3107376, 'Starbucks', '300 North San Fernando Boulevard Burbank', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1825571, -118.310769, 'Ike\'s Love and Sandwiches', '-', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1827845, -118.3110943, 'T-Mobile', '-', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1830696, -118.3114068, 'Urban Outfitters', '-', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.183053, -118.3114859, 'AT&T', '-', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1833026, -118.3117287, 'Five Guys', '201 East Magnolia Boulevard Burbank', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1825485, -118.3112729, 'Tender Greens', '325 North San Fernando Boulevard Burbank', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1812646, -118.3116502, 'Yard House', '-', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.181596, -118.311298, 'Pinkberry', '-', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1819275, -118.3109802, 'Skechers', '-', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1818206, -118.311482, 'Buffalo Wild Wings', '-', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1818776, -118.311425, 'Cold Stone Creamery', '-', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1810649, -118.309234, 'Ra Organic Spa', '119 North San Fernando Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1812635, -118.3094837, 'Richard\'s Hair Salon', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1814082, -118.3096831, 'Purpose LA Men\'s Grooming Cave', '147 N San Fernando Blvd', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1815897, -118.3094797, 'Boba Loca', '148 North San Fernando Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1819269, -118.3104171, 'Sweetie\'s Candy', '164 Palm Avenue', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1820272, -118.3107357, 'Ben & Jerry\'s', '-', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1803127, -118.3082311, 'Make-Up Designery', '129', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1807321, -118.308287, 'Gyu-Kaku', '116 South San Fernando Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1807676, -118.308329, 'European Wax Center', '114 South San Fernando Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1811348, -118.308194, 'Armenta\'s Barbershop', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1808665, -118.3084682, 'BMO', '100 South San Fernando Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1936399, -118.370552, 'Shell', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1936306, -118.3707917, 'Shell', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1525572, -118.341634, 'Dry Bar', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1522248, -118.3425895, 'Kaylee Organic Nails and Spa', '3915 Riverside Drive Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.152045, -118.3433177, 'Lou\'s', '4007 Riverside Drive Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1745355, -118.3007048, 'Starbucks', '113 East Alameda Avenue The Gateway', '#e74c3c', 6, 'CarMax', false);
+addStore(34.1743802, -118.300452, 'The Habit Burger Grill', '103 East Alameda Avenue Burbank', '#e74c3c', 6, 'CarMax', false);
+addStore(34.1894564, -118.3269073, 'Men\'s Wearhouse', '-', '#e74c3c', 2, 'Burbank Empire Center', false);
+addStore(34.1885144, -118.3277359, 'Best Buy', '1501 North Victory Place Burbank', '#f39c12', 2, 'Burbank Empire Center', true);
+addStore(34.1525465, -118.3379417, 'Juan Barraza - California Mortgage Lender', '3500 W Olive Ave Burbank', '#e74c3c', 15, '68', false);
+addStore(34.1961987, -118.3546025, 'Wolfgang Puck Express', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1958182, -118.3545367, 'Peet\'s Coffee', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1961017, -118.3545837, 'Pasadena Marketplace', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1774999, -118.3188881, 'U M Liquor', '401 North Victory Boulevard', '#e74c3c', 1, 'IMX Auto Group', false);
+addStore(34.1907986, -118.3362991, 'Allianz', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1678154, -118.3477795, 'Aviva Cleaners', '3723 West Magnolia Boulevard Burbank', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.1677886, -118.3478852, 'Lily\'s Foot Spa', '3725 West Magnolia Boulevard', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.1677716, -118.3479528, 'American Ship and Pack', '3727 West Magnolia Boulevard Burbank', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.1685461, -118.3455471, 'Golden Nails', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.1693855, -118.3435244, 'Red Wing', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1694856, -118.3433708, 'US Hair Cutters & Beauty Supply', '3303 West Magnolia Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1695175, -118.3432599, 'Magnolia Village Flowers', '3301 West Magnolia Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1693266, -118.3420284, 'Mystic Museum', '3204 West Magnolia Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1671282, -118.3468588, 'Allstate', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.1670665, -118.3468301, 'iColorHair', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.1661552, -118.346359, 'Flirt Salon', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1662357, -118.3459704, 'An Open Invitation', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1656144, -118.288277, 'Goodwill', '6343 San Fernando Road Glendale', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1912385, -118.329544, 'Dave\'s Hot Chicken', '1781 Victory Place Burbank', '#e74c3c', 2, 'Burbank Empire Center', false);
+addStore(34.1910138, -118.3296035, 'BevMo!', '1775 North Victory Place', '#f39c12', 2, 'Burbank Empire Center', true);
+addStore(34.1851664, -118.311983, 'FlixBus Burbank', '-', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.173531, -118.29354, 'Taco Bell', '1850 West Glenoaks Boulevard Glendale', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(34.1662114, -118.32396, 'Cell Phone Repair', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.1662868, -118.323867, 'Starz Liquor', '1800 West Olive Avenue', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.1672145, -118.3238617, 'Burbank Cleaners', '1728 West Verdugo Avenue Burbank', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.1726789, -118.3709481, 'ninety eight cents G store', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1660017, -118.353314, 'Taco Bell', '4301 West Magnolia Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.168844, -118.34793, 'Target', '1033 North Hollywood Way Burbank', '#f39c12', 5, 'Unnamed Retail Center', true);
+addStore(34.1719269, -118.2896597, 'Jons Fresh Marketplace', '1717 Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1848094, -118.3153197, 'AMC Burbank Town Center 6', '770 North First Street Burbank', '#e74c3c', 8, 'Chuck\'s Corner Market 76', false);
+addStore(34.1832017, -118.305794, 'G & M Food Mart', '100 South Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1887587, -118.3283729, 'Michaels', '1551 North Victory Place Burbank', '#e74c3c', 2, 'Burbank Empire Center', false);
+addStore(34.1889386, -118.328814, 'Nordstrom Rack', '1601 Victory Place', '#f39c12', 2, 'Burbank Empire Center', true);
+addStore(34.1891101, -118.3292856, 'TJ Maxx', '1651 Victory Place', '#f39c12', 2, 'Burbank Empire Center', true);
+addStore(34.1892564, -118.329621, 'Marshalls', '1701 Victory Place', '#f39c12', 2, 'Burbank Empire Center', true);
+addStore(34.1541437, -118.3372797, 'Whole Foods Market', '3401 West Olive Avenue Burbank', '#f39c12', 15, '68', true);
+addStore(34.1950849, -118.350281, 'Starbucks', '2575 North Hollywood Way Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1712455, -118.289332, 'Subway', '1651 West Glenoaks Boulevard Glendale', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1680392, -118.2908202, 'Roy\'s Liquor', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1717576, -118.289455, 'Starbucks', '1703 Glenoaks Boulevard Glendale', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.163821, -118.3131885, 'Subway', '1009 West Alameda Avenue Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1626441, -118.31399, 'El Pollo Loco', '1150 West Alameda Avenue Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.162472, -118.3145937, 'Starbucks', '1190 Alameda Avenue Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1751275, -118.3157482, 'Nickelodeon Animation Studio', '231 Olive Avenue', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1800597, -118.3213364, 'ALDI', '687 North Victory Boulevard Burbank', '#f39c12', 1, 'IMX Auto Group', true);
+addStore(34.1679121, -118.2859145, 'Chocolato', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1680952, -118.28635, 'Ani Grocery', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1677382, -118.2858547, 'Pamper Parlour', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1659443, -118.2886072, '99 Cents Only Stores', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1632011, -118.311852, 'Geeky Teas & Games', '900 West Alameda Avenue Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1850581, -118.3497889, 'Petco', '3525 West Victory Boulevard Burbank', '#f39c12', 13, 'Unnamed Retail Center', true);
+addStore(34.1850869, -118.3488474, '7-Eleven', '2000 North Hollywood Way Burbank', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(34.1855258, -118.3496131, 'Domino\'s', '2015 North Hollywood Way Burbank', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(34.1855191, -118.3495299, 'Subway', '2017 North Hollywood Way Burbank', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(34.1853239, -118.3497552, 'Party City', '2011 Hollywood Way Burbank', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(34.1650995, -118.3656095, 'Blues Smoke Shop', '10751 Magnolia Boulevard North Hollywood', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(34.1698816, -118.3613206, 'Toluca Auto & Body Repair', '5438 Cahuenga Boulevard North Hollywood', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1700181, -118.301421, 'Bidlane', '1107 South Flower Street Burbank', '#e74c3c', 6, 'CarMax', false);
+addStore(34.1581738, -118.3081958, 'Glenroys Equestrian Gifts', '480 W Riverside Dr Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.2232752, -118.357327, 'Haytech Inc TV Mounting', '8403 Outland View Drive Sun Valley', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1674582, -118.3251808, 'Eros Auto Group', '1827 West Verdugo Avenue Burbank', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.1746097, -118.3172486, 'Game Realms', '137 North Victory Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1671616, -118.3485399, 'Atomic Records', '3812 West Magnolia Boulevard Burbank', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.1668645, -118.307488, '76', 'South Victory Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1912727, -118.3234586, 'Miracle Bakery', '1529 North San Fernando Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1818449, -118.3097709, 'Shake Shack', '200 North San Fernando Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1671536, -118.291654, 'Super King', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1871303, -118.3687787, '99 Cents Only Stores', 'Victory Boulevard', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(34.1982859, -118.3267692, 'BWP EV Charge 2116 Glenoaks', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1583868, -118.2981586, 'DaMoor\'s Feed and Tack', '1532 Riverside Drive Glendale', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1801116, -118.3091949, 'Bank of America', '142 East Olive Avenue Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1811573, -118.3087124, 'Village Liquor', '211 East Olive Avenue', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1801744, -118.3091876, 'Bank of America', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1692809, -118.2924308, 'Print on All', 'San Fernando Road', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1744661, -118.298688, 'Walgreens', '1028 South San Fernando Boulevard Burbank', '#f39c12', 6, 'CarMax', true);
+addStore(34.1634126, -118.2913122, 'Modern Engine Inc.', '715 Sonora Avenue', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1639879, -118.2906911, 'RENew Collision Center', '727B Sonora Avenue', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1871411, -118.3111094, '7 Eleven', 'Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1858085, -118.3101266, 'Flawless Skin Center', '435 Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1856516, -118.3099933, 'Domino\'s', '433 Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1743883, -118.2934728, 'Nice n Clean', '1901 Glenoaks Boulevard Glendale', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(34.171107, -118.2891945, 'A-1', 'Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1710447, -118.28905, 'Chase', '1635 Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1772671, -118.297538, 'Del Taco', 'Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1728492, -118.2915649, 'Beauty Mark', '-', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(34.1665384, -118.282971, 'Liquor Market', 'Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1589635, -118.3287445, 'Bank of America', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1786411, -118.3390581, 'Planet Massage Hollywood', '2521', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(34.1785408, -118.3393437, 'Matrix Au', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(34.1679508, -118.3461492, 'Chance Vintage', '3606 West Magnolia Boulevard Burbank', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.1682802, -118.3452876, 'Dylan Keith Salon', '3508 West Magnolia Boulevard Burbank', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.1716194, -118.3352506, 'Handy Market', '2514 West Magnolia Boulevard', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(34.1719229, -118.3343491, 'Jewel Gallery', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(34.1718195, -118.3342921, 'Discount Cigarettes', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(34.1723425, -118.3331711, 'JVK Die Cast & Hobbies', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(34.1724157, -118.3329424, 'Ugly Christmas Sweater Shop', '2306 West Magnolia Boulevard Burbank', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(34.1726537, -118.3322167, 'Random Acts of Breadness', '2214 West Magnolia Boulevard Burbank', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(34.172731, -118.3319809, 'Rustic Roots', '2208 West Magnolia Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1727932, -118.3313498, 'Tansy', '2120 West Magnolia Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1729976, -118.3311922, 'Hair To Dye For', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1730506, -118.3310408, 'Mary La Shaum\'s Antique Shop', '2110 West Magnolia Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.173022, -118.331115, 'Fade Factory Barber Shop 2', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1732482, -118.3304452, 'Fade Factory Barber Shop', '2022 West Magnolia Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1735803, -118.3304289, 'Wish House', '2019 West Magnolia Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1742959, -118.3282742, 'US Auto Collision Center Body Shop Burbank', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1745667, -118.3275445, 'Impulse Hair Design', '1723 West Magnolia Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.174618, -118.327577, 'Nail Event Jenny\'s Nails', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1747172, -118.3270261, 'Serj Custom Suits & Tailoring', '1707 West Magnolia Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1748216, -118.3268646, 'Burbank Scales \'N\' Tails', '1701 West Magnolia Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1750901, -118.3265226, 'Burbank Auto Doctor', '1619 West Magnolia Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.17469, -118.3261199, 'Oscar\'s Barber Shop', '1614 West Magnolia Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1764272, -118.3224224, 'Burbank Auto Repair Technicians', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1771604, -118.3204415, 'B&B Auto Body Works', '1017 West Magnolia Boulevard', '#e74c3c', 1, 'IMX Auto Group', false);
+addStore(34.1769014, -118.3183233, 'Martino\'s Bakery', '335 North Victory Boulevard Burbank', '#e74c3c', 1, 'IMX Auto Group', false);
+addStore(34.1774687, -118.298, 'Papa John\'s', '904 Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1745125, -118.2925494, 'Smart & Final Extra!', '-', '#f39c12', 12, 'Unnamed Retail Center', true);
+addStore(34.1869814, -118.3178649, 'Starbucks', '1001 North San Fernando Boulevard Burbank', '#e74c3c', 3, 'Ralphs', false);
+addStore(34.1676053, -118.2916515, 'Extra Space Storage', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1754999, -118.3010464, 'Harbor Freight Tools', '822 South San Fernando Boulevard Burbank', '#f39c12', 6, 'CarMax', true);
+addStore(34.1911014, -118.3232033, 'Burbank Dry Cleaners', '1514 North San Fernando Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1830185, -118.3090664, 'The UPS Store', '221 3rd Street Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.186718, -118.3163797, 'The Legacy Barbership', '910 North San Fernando Boulevard Burbank', '#e74c3c', 3, 'Ralphs', false);
+addStore(34.1663003, -118.2955593, 'Public Storage', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1881369, -118.3194032, 'Supercuts', '1121 San Fernando Boulevard Burbank', '#e74c3c', 3, 'Ralphs', false);
+addStore(34.1804855, -118.3019265, 'Burbank Market and Liquor', '500 Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1796504, -118.3009026, 'Red Top Market and Kitchen', '600 Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1815973, -118.3076987, 'FedEx Office', '250 East Olive Avenue Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1824985, -118.3112012, 'Dunkin\'', '321 North San Fernando Boulevard Burbank', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1610808, -118.2997311, 'Chevron', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1611987, -118.2995255, 'ExtraMile', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1673395, -118.325154, 'Linh\'s House of Barbering and Beauty', '1823 West Verdugo Avenue', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.1776629, -118.3189801, 'Lovely Nails', '407 North Victory Boulevard Burbank', '#e74c3c', 1, 'IMX Auto Group', false);
+addStore(34.1684864, -118.322578, 'LensCrafters', '1601 West Verdugo Avenue', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.1861763, -118.3708107, 'McDonald\'s', '11000 Victory Boulevard North Hollywood', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(34.1599943, -118.3433973, 'Popeyes', '509 North Hollywood Way Burbank', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(34.1825919, -118.3089564, 'Compton\'sShoe Repair', '265 E Orange Grove Ave', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1829129, -118.3055623, 'Venice Classic Pastery', '130 Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1765556, -118.298203, 'Masis Bakery & Cafe', '321 East Alameda Avenue Burbank', '#e74c3c', 6, 'CarMax', false);
+addStore(34.1813496, -118.3034685, 'MK Beauty Salon', '344 South Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1812769, -118.3033636, 'De Vaze', '348 South Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1803903, -118.3034247, 'Quality Window Blinds', '401 South Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1848362, -118.3375197, '99 Cents Only Stores', '2407 West Victory Boulevard Burbank', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(34.1688132, -118.3318522, 'Otto\'s Import Store & Delicatessen', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1809906, -118.3029485, 'Helix PC', '404 South Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1520248, -118.346569, 'Veggie Grill', '4300 Riverside Drive Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1753799, -118.348742, 'Golden State Lock & Safe', '3517 Burbank Boulevard Burbank', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(34.172551, -118.2799451, 'Village French Bakery', '1414 West Kenneth Road', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.18101, -118.3029812, 'Ines Tours and Travel', '402 South Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1518439, -118.3467408, 'FedEx Office', '4310 Riverside Drive Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1518451, -118.346966, 'Robeks', '4314 Riverside Drive Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1524154, -118.346773, 'Mendocino Farms', '4301 Riverside Drive Burbank', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(34.1520055, -118.347359, 'Sweetgreen', '4320 Riverside Drive', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.173258, -118.2922252, 'Paradise Pastry and Cafe', '1825 Glenoaks Boulevard', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(34.1826845, -118.305255, 'Media City Mail Box', '150 Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.185039, -118.3092778, 'Citibank', '360 Magnolia Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1824738, -118.3055335, 'Cleaning Place', '147 South Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1828026, -118.30641, 'Lana Thai Spa', '360 East Olive Avenue Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1833979, -118.3067776, 'ChargePoint', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1833545, -118.306721, 'ChargePoint', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1833066, -118.3066478, 'ChargePoint', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1831544, -118.3066678, 'ChargePoint', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.183124, -118.3066217, 'ChargePoint', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1832162, -118.3065282, 'ChargePoint', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1813724, -118.3096275, 'Orangetheory Fitness', '139 N San Fernando Blvd', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1796992, -118.3017853, 'Burbank Washette', '551 South Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1798623, -118.3018558, 'ChargePoint', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1804089, -118.3027073, 'Papa\'s Meat & Seafood Co.', '445 South Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1803843, -118.3026473, 'Glen Herbs', '447 South Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1796957, -118.3019749, 'Burbank Auto Tech', '533 South Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1805591, -118.3032781, 'Oak Massage', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1804721, -118.3033651, 'Allstate', '401 South Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.180418, -118.3034968, 'Burbank Hair Studio', '401 South Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1804943, -118.3035826, 'Ballerina Dancewear', '401 South Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1805954, -118.3031969, 'Farmers Insurance', '401 South Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1774193, -118.2979521, 'Ari Deli And Market', '906 Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1775784, -118.2989111, 'Mane Teasers', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1803358, -118.3016956, 'Nice \'n Clean Too', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1582836, -118.3295781, 'Quest Diagnostics', '2601 West Alameda Avenue', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1778369, -118.3189967, 'Floorgoodz', '409 North Victory Boulevard Burbank', '#e74c3c', 1, 'IMX Auto Group', false);
+addStore(34.1782732, -118.3190668, 'The Supply Sergeant', '503 North Victory Boulevard', '#e74c3c', 1, 'IMX Auto Group', false);
+addStore(34.1784771, -118.3192333, 'Haio Kong Acupuncture & Herbs', '511 North Victory Boulevard', '#e74c3c', 1, 'IMX Auto Group', false);
+addStore(34.1789426, -118.3193379, 'Future Glass', '529 North Victory Boulevard', '#e74c3c', 1, 'IMX Auto Group', false);
+addStore(34.1790327, -118.3193916, 'Primerica - Chamorro & Assoc.', '533 North Victory Boulevard', '#e74c3c', 1, 'IMX Auto Group', false);
+addStore(34.1815263, -118.307768, 'Wells Fargo', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1913106, -118.3246941, 'Roy\'s Liquor', '1627 North San Fernando Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1871596, -118.3168986, 'Wingstop', '928 North San Fernando Boulevard Burbank', '#e74c3c', 3, 'Ralphs', false);
+addStore(34.19141, -118.3243437, 'Muller\'s Burbank Mercedes', '1617 North San Fernando Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1908877, -118.3227472, 'Woody\'s Screens Center', '1509 North San Fernando Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1892289, -118.3204066, 'State Farm', '1303 North San Fernando Boulevard Burbank', '#e74c3c', 3, 'Ralphs', false);
+addStore(34.1840097, -118.3116558, 'Round1', '201 Magnolia Boulevard Burbank', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1864693, -118.3156177, 'Chase', '-', '#e74c3c', 8, 'Chuck\'s Corner Market 76', false);
+addStore(34.1776864, -118.3037455, 'Burbank Paint &Hardware', '548 South San Fernando Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1732742, -118.3004297, 'Splash Doggie', '116 East Alameda Avenue Burbank', '#e74c3c', 6, 'CarMax', false);
+addStore(34.1740117, -118.299862, 'Chevron', '-', '#e74c3c', 6, 'CarMax', false);
+addStore(34.1855963, -118.3092344, 'Powder Beauty Salon', '400 North Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1856461, -118.3093323, 'Oriental Orchid', '400 North Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1863704, -118.3103328, 'Hair By Roxy', '516 North Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1864458, -118.3104496, 'Universal Classic Toys', '520 North Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1866827, -118.310742, 'Coral Path Designs', '536 North Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1867045, -118.3108116, 'Studio Nail', '538 North Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.186762, -118.310896, 'Gaby\'s Hair Studio', '542 North Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1857371, -118.3094471, 'Valenciaga', '416 North Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1857656, -118.3095059, 'Magnolia Fresh Market', '418 North Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.185932, -118.3094236, 'Water & Ice U Love', '420 North Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1860505, -118.3095606, 'Burbank Lawn Mower Shop', '422 North Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.186007, -118.3097922, 'Thirst Quencher Liquor', '440 North Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1863029, -118.3111613, 'Natures Moon', '539 North Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1862572, -118.3107428, 'Glenoaks Shoe Repair', '525 North Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1861938, -118.3106478, 'H&R Block', '521 North Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1861403, -118.3105968, 'Cam Photo & Imaging', '519 North Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1850833, -118.3091867, 'Citibank', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1850368, -118.3098251, 'Burbank Hair Cut', '355 Magnolia Boulevard', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1850123, -118.3098538, 'Floridens Flowers & Gifts', '353 Magnolia Boulevard', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1841802, -118.3072882, 'CA Finance Group', '210 Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1851886, -118.3096663, 'Allstate', '361 Magnolia Boulevard', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1851481, -118.3097123, 'Lilit Art Fashion Studio', '361 Magnolia Boulevard', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1844738, -118.3077078, 'Aria Meat & BBQ', '228 Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1845187, -118.3077743, 'GetYoked', '236 Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.184603, -118.3078912, 'Gallery Nails & Spa', '244 Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1847067, -118.3080017, 'Mr. Tobacco', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.2031747, -118.3348646, 'Altadena Bakery', '2801 North Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1691729, -118.3218191, 'Centinella Feed & Pet Supplied', '1505 West Verdugo Avenue', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.1694466, -118.3213638, 'Tulip Salon', '1421 West Verdugo Avenue', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.1694649, -118.3214158, 'The Hair Place', '1431 West Verdugo Avenue', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.1651638, -118.3061748, 'Baskin-Robbins', '1201 South Victory Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1819095, -118.3098983, 'Spectrum', '202 North San Fernando Boulevard', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1837933, -118.311849, 'Media Time', '201 E Magnolia Blvd', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1836203, -118.3129832, 'Men\'s Warehouse', '201 E Magnolia Blvd', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1833445, -118.3126256, 'World Market', '201 E Magnolia Blvd', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.181012, -118.3091403, 'Artelice Patisserie', '117 North San Fernando Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1857116, -118.3159694, 'Bob\'s Discount Furniture', '851 North San Fernando Boulevard Burbank', '#e74c3c', 8, 'Chuck\'s Corner Market 76', false);
+addStore(34.1848776, -118.3389882, 'Unique Nails & Spa Salon', '2501 Victory Boulevard', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(34.1849254, -118.3387411, 'Prime Time Cleaners', '2501 Victory Boulevard', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(34.184917, -118.3386007, 'Booze And Brews', '2501 Victory Boulevard', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(34.1674323, -118.3248537, 'Fashion Nails', '1811 West Verdugo Avenue', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.1674909, -118.3246977, 'Coin-op Laundry', '1807 West Verdugo Avenue', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.167834, -118.3243065, 'Doodle Dose', '202 North Orchard Drive Burbank', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.1676905, -118.3242137, 'Wear It Once Wear It Twice', '1725 West Verdugo Avenue Burbank', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.1677047, -118.3241178, 'New Buenos Aires Bakery & Cafe', '1723 West Verdugo Avenue Burbank', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.1677743, -118.3239103, 'Elite Lash And Brow Academy', '1715 West Verdugo Avenue Burbank', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.1674227, -118.3239545, 'Five Star Massage', '1720 West Verdugo Avenue Burbank', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.167316, -118.3238989, 'Hair Elements', '1724 West Verdugo Avenue Burbank', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.1596428, -118.3446901, 'Jersey Mike\'s Subs', '531 North Hollywood Way Burbank', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(34.1798176, -118.3095729, 'Andy\'s Pet Grooming and Supplies', '116 East Olive Avenue', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1736873, -118.3170461, 'Moonlight Liquer', '101 North Victory Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1523768, -118.3470931, 'Hank\'s...A Deli Of Sorts', '4315 Riverside Drive', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(34.1681208, -118.346885, 'Crumbl Cookies', '3619 West Magnolia Boulevard', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.1721872, -118.3170797, 'American Legion Hall', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1557303, -118.3461966, 'Panda Express', '353 North Pass Avenue Burbank', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(34.1658375, -118.2831426, 'Domino\'s', '1244 West Glenoaks Boulevard Glendale', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1659628, -118.28762, 'Wingstop', '6340 San Fernando Road Glendale', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.2036002, -118.3491592, 'Wingstop', '3013 North Hollywood Way Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.2089337, -118.3706234, 'KFC', '7617 Vineland Avenue Sun Valley', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.186938, -118.370787, 'Popeyes', '11011 Victory Boulevard North Hollywood', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(34.1911008, -118.3287896, 'Jamba', '1739 North Victory Place Burbank', '#e74c3c', 2, 'Burbank Empire Center', false);
+addStore(34.1986471, -118.327127, 'Starbucks', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1853113, -118.3151469, 'Starbucks', '-', '#e74c3c', 8, 'Chuck\'s Corner Market 76', false);
+addStore(34.1851378, -118.3148381, 'Barnes & Noble', '-', '#e74c3c', 8, 'Chuck\'s Corner Market 76', false);
+addStore(34.1688345, -118.3613974, 'The Iliad Bookshop', '5400 Cahuenga Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1647774, -118.3673618, 'Project Cannabis', '10842 Magnolia Boulevard North Hollywood', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(34.2036619, -118.3491708, 'Jersey Mike\'s Subs', '3015 North Hollywood Way', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1730871, -118.2920076, 'Salon Creer', '1813 Glenoaks Boulevard', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(34.173048, -118.2919667, 'Sevana Jewelery', '1811 Glenoaks Boulevard', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(34.1911293, -118.3288671, 'Nothing Bundt Cakes', '1737 North Victory Place', '#e74c3c', 2, 'Burbank Empire Center', false);
+addStore(34.1911189, -118.3289547, 'GNC', '1735 North Victory Place', '#e74c3c', 2, 'Burbank Empire Center', false);
+addStore(34.2006423, -118.3687637, 'Vallarta Supermarket', '10950 Sherman Way Burbank', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(34.189239, -118.3195143, 'Quick Cuts', '1212 North San Fernando Boulevard', '#e74c3c', 3, 'Ralphs', false);
+addStore(34.1893231, -118.3196132, 'Full House Smoke Shop', '1212 North San Fernando Boulevard', '#e74c3c', 3, 'Ralphs', false);
+addStore(34.1867602, -118.3164047, 'Blooming Nail Bar', '912 North San Fernando Boulevard Burbank', '#e74c3c', 3, 'Ralphs', false);
+addStore(34.1867485, -118.3180893, 'Crust Artesian Bakery', '-', '#e74c3c', 3, 'Ralphs', false);
+addStore(34.1865606, -118.3182669, 'PMP Nail Bar', '-', '#e74c3c', 3, 'Ralphs', false);
+addStore(34.1740087, -118.3291865, 'MS Travel and Tours', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1734805, -118.3308472, 'D|2 Floral Studio', '2101 West Magnolia Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1894079, -118.3197603, 'Rose Nails', '1212 North San Fernando Boulevard', '#e74c3c', 3, 'Ralphs', false);
+addStore(34.1846481, -118.3104655, 'Burbank YMCA', '321 Magnolia Boulevard Burbank', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1757124, -118.3244031, 'Guns Direct', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1616318, -118.3174256, 'Burbank Deli & Market', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1723631, -118.3722753, 'McDonald\'s', '11055 Burbank Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1775697, -118.3405364, 'Edible Arrangements', '2720 W Burbank Blvd', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(34.1579127, -118.3333014, 'Eurozone', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1594099, -118.331632, 'Village Liquor & Market', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1593795, -118.3316664, 'Katz\' Deli', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1596157, -118.3314318, 'Big O\'s', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1591384, -118.3320079, 'VCA Animal Hospital', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1604908, -118.3305131, 'Tony\'s Deli', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1605731, -118.3304055, 'Art of Moulding', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1564488, -118.3341701, 'Shell', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1738563, -118.3611879, 'Ari\'s Pet Grooming & Supply', '5670 Cahuenga Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1737208, -118.3611622, 'Hi Life Barbering', '5662 Cahuenga Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1689293, -118.2997444, 'Flock Safety', '-', '#e74c3c', 6, 'CarMax', false);
+addStore(34.1719877, -118.2962364, 'Castle Liquors', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1713936, -118.2960312, 'Danny\'s Handcrafted Furniture', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1914519, -118.3226716, 'CPAP Cloud', '1516 North San Fernando Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1914242, -118.3226343, 'Allen\'s Cleaners II', '1516 North San Fernando Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1913495, -118.3225343, 'Blooming Flowers', '1516 North San Fernando Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.17938, -118.32097, 'Tesla Supercharger', '677 North Victory Boulevard Burbank', '#e74c3c', 1, 'IMX Auto Group', false);
+addStore(34.18756, -118.3182, 'Tesla Supercharger', '1009 North San Fernando Boulevard Burbank', '#e74c3c', 3, 'Ralphs', false);
+addStore(34.18487, -118.31167, 'Tesla Supercharger', '495 North Third Street Burbank', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1555714, -118.3468725, 'Fantastic Sam\'s', '343 North Pass Avenue', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(34.177795, -118.340188, 'Audio Department', '2700 West Burbank Blvd Burbank', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(34.1764862, -118.2982558, 'Allen\'s Cleaners', '321 East Alameda Avenue', '#e74c3c', 6, 'CarMax', false);
+addStore(34.1762889, -118.2982557, 'Vibe Nail Bar', '321 East Alameda Avenue', '#e74c3c', 6, 'CarMax', false);
+addStore(34.1768014, -118.3195455, 'Magnolia Island Car Care', '1000 West Magnolia Boulevard', '#e74c3c', 1, 'IMX Auto Group', false);
+addStore(34.1770642, -118.3201009, 'Burbank Radiator', '-', '#e74c3c', 1, 'IMX Auto Group', false);
+addStore(34.1772766, -118.3194318, 'de Cielo Salon & Spa', '-', '#e74c3c', 1, 'IMX Auto Group', false);
+addStore(34.1773185, -118.3192792, 'Leonard\'s Locksmith', '-', '#e74c3c', 1, 'IMX Auto Group', false);
+addStore(34.1826303, -118.3206021, 'Sherwin Williams', '814 North Victory Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1822664, -118.3204305, 'City Electric Supply', '800 North Victory Boulevard', '#e74c3c', 1, 'IMX Auto Group', false);
+addStore(34.1836045, -118.3122936, 'Panda Express', '201 Magnolia Boulevard', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1697195, -118.2883321, 'Skin Deep Tattoo', '1602 West Glenoaks Boulevard Glendale', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1708879, -118.3385766, 'Black Moon Cosmetics', '2815 West Magnolia Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1810516, -118.3030477, 'Stella May Art Studio', '400 South Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1772624, -118.2977396, 'Empire Auto Sales & Leasing', '914 Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1772926, -118.2977765, 'Shiny Dollars', '912 Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1695235, -118.3415469, 'The Horror Boodega', '3116 West Magnolia Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.166539, -118.3071783, 'All City Collision Center', '1020 S Victory Blvd Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1826928, -118.3126836, 'Halo 13', '201 Magnolia Boulevard Burbank', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.2008703, -118.3698742, 'Fatburger', '10970 Sherman Way Burbank', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(34.1690863, -118.294652, 'Five star plumbing and fire supply', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1994846, -118.3278566, 'The Fresh Cycle', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1990997, -118.3269777, 'SirQochar', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1925753, -118.3084164, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.186188, -118.2945946, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1827811, -118.3054044, 'Gini', '140-142 South Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1888377, -118.2998251, '158146', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1732077, -118.2805094, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1965273, -118.3514963, 'Starbucks', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1963985, -118.3503095, 'Glendale Crossing', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1964171, -118.3522513, 'Hudson of Burbank', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.174668, -118.2950242, 'Valerie Confections', '1936 Glenoaks Boulevard', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(34.1683445, -118.3673748, 'Cake Monkey North Hollywood Production Kitchen', '10844 Chandler Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1640521, -118.2853744, 'Glendale Commercial Kitchens', '6222 San Fernando Road', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1863555, -118.3156623, 'Chase', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1866359, -118.3160568, 'Wells Fargo', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1867187, -118.3144968, 'Office Depot', '228 Burbank Boulevard Burbank', '#f39c12', 8, 'Chuck\'s Corner Market 76', true);
+addStore(34.1841153, -118.3132955, 'Macy\'s', '200 Cypress Avenue', '#f39c12', 0, 'Burbank Town Center', true);
+addStore(34.1825831, -118.3131648, 'Sears', '111 Magnolia Boulevard Burbank', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1843073, -118.3113149, 'Burlington', '245 East Magnolia Boulevard Burbank', '#f39c12', 0, 'Burbank Town Center', true);
+addStore(34.1890499, -118.3182813, 'Ralphs', '1100 North San Fernando Boulevard Burbank', '#f39c12', 3, 'Ralphs', true);
+addStore(34.1889099, -118.3192983, 'Popeyes', '1200 North San Fernando Boulevard Burbank', '#e74c3c', 3, 'Ralphs', false);
+addStore(34.1896287, -118.3202122, 'Shakey\'s', '1300 North San Fernando Boulevard Burbank', '#e74c3c', 3, 'Ralphs', false);
+addStore(34.189726, -118.3204458, 'Original Tommy\'s', '1310 North San Fernando Boulevard Burbank', '#e74c3c', 3, 'Ralphs', false);
+addStore(34.1900877, -118.3206356, 'Carl\'s Jr.', '1320 North San Fernando Road Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1851545, -118.3150825, 'Barnes & Noble', '731 North San Fernando Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1854631, -118.3155865, 'Mattress Firm', '801 North San Fernando Boulevard Burbank', '#e74c3c', 8, 'Chuck\'s Corner Market 76', false);
+addStore(34.1849762, -118.3160926, 'In-N-Out Burger', '761 First Street Burbank', '#e74c3c', 8, 'Chuck\'s Corner Market 76', false);
+addStore(34.1827868, -118.3146868, 'El Pollo Loco', '521 North First Street Burbank', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1818847, -118.3137726, 'Ashley HomeStore', '-', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1712801, -118.3016597, 'CarMax', '-', '#e74c3c', 6, 'CarMax', false);
+addStore(34.1824823, -118.3212396, 'IMX Auto Group', '811 North Victory Boulevard', '#e74c3c', 1, 'IMX Auto Group', false);
+addStore(34.1860134, -118.3243367, 'Costco', '1051 Burbank Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', true);
+addStore(34.1862185, -118.3166969, 'Chuck\'s Corner Market 76', '901 North San Fernando Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1739362, -118.3151371, 'Pep Boys', '254 West Olive Avenue', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1746629, -118.31443, 'Community Chevrolet', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1564728, -118.3260209, 'Disney Store; Castmember Center', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1886697, -118.3712919, 'Target', '11051 Victory Boulevard North Hollywood', '#f39c12', 18, 'Unnamed Retail Center', true);
+addStore(34.1682298, -118.3230604, 'Grocery Outlet', '1615 West Verdugo Avenue Burbank', '#f39c12', 4, 'Unnamed Retail Center', true);
+addStore(34.1676952, -118.3230784, '7-Eleven', '1611 West Olive Avenue Burbank', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.1613051, -118.313632, 'Pavilions', '1110 West Alameda Ave Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1519019, -118.3519198, 'Trader Joe\'s', '10130 Riverside Drive Toluca Lake', '#f39c12', 11, 'Unnamed Retail Center', true);
+addStore(34.1819195, -118.3120039, 'AMC Burbank 16', '125 East Palm Avenue Burbank', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1623596, -118.2895213, 'Mickey\'s of Glendale', '1401 Flower Street', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1942638, -118.3698897, 'Arco', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1942958, -118.3696903, 'ampm', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1915338, -118.344076, 'All-Phase', '3020 West Empire Avenue Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1944269, -118.3645451, 'Pacific Coast Foods', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1940078, -118.3480446, 'Los Angeles Marriott Burbank Airport', '2500 North Hollywood Way Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1802648, -118.3676702, 'Vallarta', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1863381, -118.3698581, '7-Eleven', '6364 Vineland Avenue North Hollywood', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1781773, -118.3087604, 'Black Angus', '235 Ikea Way', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1943306, -118.349321, 'Denny\'s', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1888839, -118.320149, 'Yoshinoya', '1215 North San Fernando Boulevard Burbank', '#e74c3c', 3, 'Ralphs', false);
+addStore(34.1885572, -118.3197203, 'McDonald\'s', '1127 North San Fernando Boulevard Burbank', '#e74c3c', 3, 'Ralphs', false);
+addStore(34.2106847, -118.3476307, 'Easy Storage', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.2108729, -118.3482647, 'Shell', '7710 North Hollywood Way', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.2108164, -118.3480805, 'Shell', '7710 North Hollywood Way Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1677485, -118.2857623, 'Pizza Hut', '1428 Glenoaks Boulevard Glendale', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1674005, -118.349325, 'Karabel Dancewear', '3901 West Magnolia Boulevard Burbank', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.1676937, -118.3484438, 'Burbank Unpainted Furniture', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.1724584, -118.3699357, 'Circus Liquor', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1646806, -118.3662156, 'Riverton Liquors', '-', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(34.1644018, -118.3678151, 'Ralphs', '10900 Magnolia Boulevard North Hollywood', '#f39c12', 19, 'Unnamed Retail Center', true);
+addStore(34.1716868, -118.3709459, 'Anawalt Lumber', '11000 Burbank Boulevard North Hollywood', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1718714, -118.3611193, '7-Eleven', '5570 Cahuenga Boulevard North Hollywood', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1844975, -118.3501333, 'KFC', '3530 West Victory Boulevard Burbank', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(34.205315, -118.3395814, '7-Eleven', '3227 Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1997555, -118.3707551, 'WSS', '-', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(34.2172845, -118.3622777, 'Best West Fasteners', '7949 Wheatland Avenue Sun Valley', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1547937, -118.3465562, 'Vons', '301 North Pass Avenue Burbank', '#f39c12', 9, 'Unnamed Retail Center', true);
+addStore(34.1558636, -118.3455001, 'Hotel Amarano Burbank-Hollywood', '322 North Pass Avenue Burbank', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(34.1510797, -118.3393394, '4', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1516176, -118.3433589, 'Chipotle', '4012 Riverside Drive Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1518553, -118.3422843, 'Best Western Plus Media Center Inn and Suites', '3910 Riverside Drive Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.2068808, -118.342384, 'Hampton Inn', '7501 North Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.193824, -118.3492767, 'Del Taco', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1946406, -118.3492543, 'McDonald\'s', '2565 Hollywood Way Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1954112, -118.3492556, 'Panda Express', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1816891, -118.3036719, 'Raffi\'s Market', '324 Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1810287, -118.3038482, 'Mobil Mart', '349 South Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1810212, -118.3026048, 'Formula Automotive Group', '416 South Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.179574, -118.3016285, 'Yum Yum Donuts', '555 Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1784059, -118.3192035, 'Stotts Bicycles', '509 North Victory Boulevard Burbank', '#e74c3c', 1, 'IMX Auto Group', false);
+addStore(34.1786551, -118.3185886, 'Big 5 Sporting Goods', '510 North Victory Boulevard Burbank', '#f39c12', 1, 'IMX Auto Group', true);
+addStore(34.1767108, -118.3214645, 'Walt\'s Transmission and Auto Repair', '1121 West Magnolia Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1810185, -118.321765, 'K1 Speed', '-', '#e74c3c', 1, 'IMX Auto Group', false);
+addStore(34.1793341, -118.3196689, 'Burger King', '545 North Victory Boulevard Burbank', '#e74c3c', 1, 'IMX Auto Group', false);
+addStore(34.1781865, -118.3177449, 'Sunstate Equipment Co.', '205 West Magnolia Boulevard Burbank', '#e74c3c', 1, 'IMX Auto Group', false);
+addStore(34.1704972, -118.2882101, 'Coldwell Banker', '1625 Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1727265, -118.2788288, 'Shell', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1680067, -118.3219568, 'Starbucks', '1520 West Olive Avenue Burbank', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.1677146, -118.322233, 'Domino\'s', '1600 West Olive Avenue Burbank', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.1673775, -118.3234562, 'McDonald\'s', '1701 West Verdugo Avenue Burbank', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.1702615, -118.3477436, 'Travelodge Burbank-Glendale', '1112 North Hollywood Way Burbank', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.1696814, -118.3425779, 'DIY Home Center', '3221 West Magnolia Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1691387, -118.3438812, 'Mindfulnest', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1702803, -118.3404928, 'Halloween Town Kids', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1702491, -118.340857, 'Halloween Town', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.16991, -118.3418688, 'Blast From the Past', '3117 West Magnolia Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.170584, -118.3398458, 'Halloween Town', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1685489, -118.3457529, 'Chase', 'Burbank', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.1986657, -118.3270734, 'Starbucks', '2130 North Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1913308, -118.324604, 'The Landing', '1623 North San Fernando Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1686759, -118.3222247, 'Chase', '1551 West Olive Avenue', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.1723014, -118.3346606, 'Taco Bell', '2425 West Magnolia Boulevard Burbank', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(34.1730015, -118.3166246, 'Jiffy Lube', '107 South Victory Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1656591, -118.345692, 'Ace Dog Grooming Studio', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1647928, -118.3451494, 'Chevron', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1696111, -118.3409822, 'Playclothes', '3100 West Magnolia Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1680811, -118.3455077, 'American Cancer Society Discovery Shop', '3516 West Magnolia Boulevard Burbank', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.1651272, -118.3453444, 'Charles Crenshaw Pianos', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1690467, -118.3425923, 'Goodwill', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1684113, -118.2854317, 'El Pollo Loco', '1437 Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1676493, -118.2841116, 'Extended Stay America', '1377 West Glenoaks Boulevard Glendale', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1700063, -118.2888305, 'Goodwill', '1622 Glenoaks Boulevard Glendale', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.168889, -118.2916881, 'Del Taco', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1677033, -118.2902124, 'AY Flowers', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1705086, -118.2894658, 'McDonald\'s', '1634 West Glenoaks Boulevard Glendale', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1730831, -118.3020985, 'Ralphs', '25 East Alameda Avenue Burbank', '#f39c12', 6, 'CarMax', true);
+addStore(34.1750061, -118.2988227, 'Trader Joe\'s', '214 East Alameda Avenue Burbank', '#f39c12', 6, 'CarMax', true);
+addStore(34.1698019, -118.2990755, 'The Home Depot', '1200 Flower Street Burbank', '#f39c12', 6, 'CarMax', true);
+addStore(34.174899, -118.3012878, 'Tesla', '811 South San Fernando Boulevard Burbank', '#e74c3c', 6, 'CarMax', false);
+addStore(34.1663629, -118.346603, 'Electropedic Beds', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1672128, -118.3480546, 'Gun World', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.1673981, -118.3474863, 'Burbank Sportscards', '935', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.1671723, -118.3481884, 'Vulture Culture Oddities', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.1605058, -118.343959, 'California Fish Grill', '551 North Hollywood Way Burbank', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(34.1605116, -118.3442817, 'Starbucks', '3714 West Verdugo Avenue Burbank', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(34.1598809, -118.3450903, 'Smart & Final Extra!', 'Burbank', '#f39c12', 14, 'Unnamed Retail Center', true);
+addStore(34.1812836, -118.3058352, 'Boys & Girls Club', '300 East Angeleno Avenue Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1817187, -118.3047718, 'J\'s Auto Clinic', '249 South Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1824777, -118.3048162, 'Dunkin\'', '200 Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1821158, -118.3051646, 'Fosters Freeze', '201 Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1918084, -118.3250174, 'Shell', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.191982, -118.3250531, 'Shell', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1880978, -118.3180377, 'Comerica Bank', '1090 North San Fernando Boulevard Burbank', '#e74c3c', 3, 'Ralphs', false);
+addStore(34.1775064, -118.3077181, 'Residence Inn', '321 South Ikea way Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1826615, -118.3117473, 'Ross', '349 North San Fernando Boulevard Burbank', '#f39c12', 0, 'Burbank Town Center', true);
+addStore(34.169641, -118.3053956, 'Shell', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1694907, -118.3055659, 'Shell', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1560208, -118.3355476, 'Wienerschnitzel', '3203 West Alameda Avenue Burbank', '#e74c3c', 15, '68', false);
+addStore(34.1564232, -118.33504, 'Chick-fil-A', '3113 West Olive Avenue Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1895254, -118.3325076, 'Lowe\'s', '2000 Empire Avenue Burbank', '#f39c12', 2, 'Burbank Empire Center', true);
+addStore(34.1913957, -118.3324423, 'REI', '1900 Empire Avenue Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.197747, -118.3382974, 'Jack in the Box', '2511 North San Fernando Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.190261, -118.3293465, 'Tillys', '-', '#e74c3c', 2, 'Burbank Empire Center', false);
+addStore(34.1891424, -118.3307533, 'Target', '1800 Empire Avenue Burbank', '#f39c12', 2, 'Burbank Empire Center', true);
+addStore(34.1899757, -118.3280008, 'west elm', '-', '#e74c3c', 2, 'Burbank Empire Center', false);
+addStore(34.1901238, -118.3342674, 'Extended Stay America', '-', '#e74c3c', 2, 'Burbank Empire Center', false);
+addStore(34.1898655, -118.3336092, 'Staples', '2080 Empire Avenue Burbank', '#e74c3c', 2, 'Burbank Empire Center', false);
+addStore(34.1934501, -118.3334158, 'Cydwoq', '2012 Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1912239, -118.3339139, 'Courtyard Los Angeles Burbank Airport', '2100 Empire Avenue Burbank', '#e74c3c', 2, 'Burbank Empire Center', false);
+addStore(34.1882118, -118.3251378, 'Walmart Supercenter', '1301 North Victory Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', true);
+addStore(34.1905671, -118.3278227, 'Wendy\'s', '1575 North Victory Place Burbank', '#e74c3c', 2, 'Burbank Empire Center', false);
+addStore(34.1908056, -118.3327139, 'David\'s Bridal', '2050 West Empire Avenue Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1906345, -118.3290224, 'Olive Garden', '1741 Victory Place Burbank', '#e74c3c', 2, 'Burbank Empire Center', false);
+addStore(34.1907208, -118.3295662, 'Outback Steakhouse', '1761 Victory Place Burbank', '#e74c3c', 2, 'Burbank Empire Center', false);
+addStore(34.1975831, -118.3384657, 'Quality Inn Burbank Airport', '2255 North Buena Vista Street Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1883473, -118.3268333, 'Ulta Beauty', '1351 North Victory Place Burbank', '#e74c3c', 2, 'Burbank Empire Center', false);
+addStore(34.177109, -118.3184988, 'Valero', '-', '#e74c3c', 1, 'IMX Auto Group', false);
+addStore(34.1744754, -118.303093, 'IKEA', '600 South Ikea Way Burbank', '#e74c3c', 6, 'CarMax', false);
+addStore(34.1781463, -118.3057804, 'Hilton Garden Inn', '401 South San Fernando Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.167253, -118.3080182, 'U-Haul', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1844791, -118.3141021, 'California Pizza Kitchen', '601 North San Fernando Boulevard Burbank', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.2003435, -118.3699672, 'Starbucks', '10980 Sherman Way Burbank', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(34.1687287, -118.2857796, '76', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1768245, -118.2968826, '7-Eleven', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1810563, -118.3037611, 'Mobil', '349 South Glenoaks Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1821241, -118.3043251, 'United Oil', '250 Glenoaks Boulevard', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1831619, -118.3057496, 'Chevron', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1531038, -118.3404106, 'Chevron', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1608294, -118.3431532, 'Shell', '550 North Hollywood Way Burbank', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(34.1664579, -118.3235096, 'Raising Cane\'s', '1750 West Olive Avenue Burbank', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.177427, -118.3045437, 'Springhill Suites Burbank Downtown', '549 South San Fernando Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1577455, -118.3282833, 'Starbucks', '501 South Buena Vista Street Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1690965, -118.3060011, 'Arco', '201 West Alameda Avenue Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1864273, -118.3708553, 'Chevron', '-', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(34.1791071, -118.3706223, 'Shell', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1565532, -118.3339873, 'Shell', '3020 West Olive Avenue Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1918917, -118.3250199, 'Shell', '1638 North San Fernando Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1740176, -118.3115052, 'Extra Space Storage', '175 West Verdugo Avenue Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.2054311, -118.349547, 'Cambria', '3501 North San Fernando Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.2108547, -118.3481491, 'Shell', '7710 North Hollywood Way Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.1825035, -118.311513, 'ART Boutique Cellular', '331 North San Fernando Boulevard', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1822703, -118.3110834, 'Gap Factory', '-', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.1823431, -118.3111834, 'Noah\'s Bagels', '-', '#e74c3c', 0, 'Burbank Town Center', false);
+addStore(34.18374, -118.3218782, 'McDonald\'s', '900 West Burbank Boulevard Burbank', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+ 
+  map.on('overlayadd overlayremove', updateVisibility);
+  updateVisibility();
+ 
+  var overlays = {
+    '🔴  Multi-anchor plazas (2+ anchors)': layerMultiAnchor,
+    '⭕  Single-anchor plazas': layerSingleAnchor,
+    '🟣  Plaza Center Points': layerPlazaCenters,
+    '🟡  Anchor Stores (in Plaza)': layerAnchors,
+    '🔵🔴  Tenants (In Plaza)': layerTenants,
+    '🟢  Standalone Stores': layerStandalone,
+    '━━━━━━━━━━━━━━': L.layerGroup(),
+    '🔥  High Density Plazas (10+ tenants)': layerHighDensity,
+    '🔹  Lower Density (< 10 tenants)': layerLowDensity
+  };
+ 
+  var countyDivider = false;
+  for (var county in countyLayers) {
+    if (!countyDivider) {
+        overlays['━━━━━━━━━━━━━━ '] = L.layerGroup();
+        countyDivider = true;
+    }
+    overlays['📍 ' + county] = countyLayers[county];
+  }
+ 
+  L.control.layers(null, overlays, {
+    position: 'topright',
+    collapsed: false,
+  }).addTo(map);
+ 
+  var legend = L.control({position: 'bottomright'});
+  legend.onAdd = function() {
+    var div = L.DomUtil.create('div', 'legend');
+    div.innerHTML = '<b>Retail Centers – Burbank, CA</b><br>'
+      + '<span class="legend-dot" style="background:#e74c3c"></span> Named plaza<br>'
+      + '<span class="legend-dot" style="background:#3498db"></span> Unnamed plaza<br>'
+      + '<span class="legend-dot" style="background:#8e44ad"></span> Plaza center point<br>'
+      + '<span class="legend-dot" style="background:#f39c12"></span> Anchor store (in plaza)<br>'
+      + '<span class="legend-dot" style="background:#27ae60"></span> Standalone store<br>'
+      + '⚓ = anchor &nbsp; 🔥 = 10+ tenants';
+    return div;
+  };
+  legend.addTo(map);
+</script>
+</body>
+</html>

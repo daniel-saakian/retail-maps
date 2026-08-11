@@ -1,0 +1,1383 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8' />
+  <title>Retail Centers – Isla Vista, CA</title>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' />
+  <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
+  <style>
+    body { margin: 0; font-family: sans-serif; }
+    #map { height: 100vh; width: 100%; }
+    .legend {
+      background: white; padding: 10px 14px; border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); line-height: 1.8;
+      font-size: 13px;
+    }
+    .legend-dot { display: inline-block; width: 12px; height: 12px;
+                   border-radius: 50%; margin-right: 6px; }
+  </style>
+</head>
+<body>
+<div id='map'></div>
+<script>
+  var map = L.map('map').setView([34.43004828754065, -119.75127440340685], 12);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(map);
+
+  var plazasData = [];
+  var storesData = [];
+
+  var layerMultiAnchor = L.layerGroup().addTo(map);
+  var layerSingleAnchor = L.layerGroup().addTo(map);
+  var layerPlazaCenters = L.layerGroup().addTo(map);
+  var layerAnchors = L.layerGroup().addTo(map);
+  var layerTenants = L.layerGroup().addTo(map);
+  var layerStandalone = L.layerGroup().addTo(map);
+  var layerHighDensity = L.layerGroup().addTo(map);
+  var layerLowDensity = L.layerGroup().addTo(map);
+  var countyLayers = {};
+
+  function getOrCreateCountyLayer(county) {
+    if (!county || county === '-') county = 'Unknown';
+    if (!countyLayers[county]) {
+        countyLayers[county] = L.layerGroup().addTo(map);
+    }
+    return countyLayers[county];
+  }
+
+  function addPlaza(lat, lng, radius_m, plazaId, name, address, county, city, numAnchors, anchors, numTenants, tenants, color, leasingHtml) {
+    var popup = '<b>' + name + '</b><br>'
+      + (address !== '-' ? address + '<br>' : '')
+      + city + (county !== '-' ? ', ' + county + ' County' : '') + '<br>'
+      + leasingHtml
+      + '<br><b>' + numAnchors + ' anchor(s): </b><br>'
+      + anchors.split(', ').join('<br>')
+      + '<br><br><b>' + numTenants + ' other tenant(s):</b><br>'
+      + tenants.split(', ').join('<br>');
+    
+    var circle = L.circle([lat, lng], {
+      radius: radius_m,
+      color: color,
+      fillColor: color,
+      fillOpacity: 0.08,
+      weight: 2
+    });
+    if (numAnchors > 1) {
+      layerMultiAnchor.addLayer(circle);
+    } else {
+      layerSingleAnchor.addLayer(circle);
+    }
+
+    var center = L.circleMarker([lat,lng], {
+        radius: 9,
+        color: '#fff',
+        fillColor: '#8e44ad',
+        fillOpacity: 1,
+        weight: 2
+    }).bindPopup(popup, {maxHeight: 320, autoPanPadding: [20, 20]}).bindTooltip(name, {permanent: false, direction: 'top'});
+
+    var cleanCounty = (!county || county === '-') ? 'Unknown' : county;
+    getOrCreateCountyLayer(cleanCounty);
+
+    plazasData.push({
+        circle: circle,
+        center: center,
+        id: plazaId,
+        name: name,
+        county: cleanCounty,
+        numAnchors: numAnchors,
+        numTenants: numTenants
+    });
+  }
+
+  function addStore(lat, lng, name, address, color, plazaId, plaza, isAnchor) {
+    var size = isAnchor ? 11 : 9;
+    var icon = L.divIcon({
+      className: '',
+      html: '<div style="position:absolute;width:' + size + 'px;height:' + size + 'px;'
+          + 'border-radius:50%;background:' + color + ';border:2px solid white;'
+          + 'box-shadow:0 1px 3px rgba(0,0,0,0.4);top:50%;left:50%;'
+          + 'transform:translate(-50%,-50%)'
+          + (isAnchor ? ';outline:2px solid rgba(0,0,0,0.25)' : '')
+          + '"></div>',
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2]
+    });
+    var marker = L.marker([lat, lng], {icon: icon})
+      .bindPopup('<b>' + name + '</b>' + (isAnchor ? '⚓' : '')+ '<br>' 
+        + '<i>' + plaza + '</i><br>'
+        + address)
+      .bindTooltip(name, {direction: 'top'})
+    
+    storesData.push({
+      marker: marker,
+      plazaId: plazaId,
+      plazaLabel: plaza,
+      isAnchor: isAnchor
+    });
+  }
+
+  function updateVisibility() {
+    plazasData.forEach(function(p) {
+      var anchorMatch = (p.numAnchors > 1) ? map.hasLayer(layerMultiAnchor): map.hasLayer(layerSingleAnchor);
+      var densityMatch = (p.numTenants >= 10) ? map.hasLayer(layerHighDensity) : map.hasLayer(layerLowDensity);
+      var countyLayer = countyLayers[p.county];
+      var countyMatch = countyLayer ? map.hasLayer(countyLayer) : true;
+
+      var plazaVisible = anchorMatch && densityMatch && countyMatch;
+      p.isActive = plazaVisible;
+
+      if (plazaVisible) {
+        // FIX 2: Changed map.has() to map.hasLayer()
+        if (!map.hasLayer(p.circle)) p.circle.addTo(map);
+      } else {
+        if (map.hasLayer(p.circle)) map.removeLayer(p.circle);
+      }
+
+      if (plazaVisible && map.hasLayer(layerPlazaCenters)) {
+        if (!map.hasLayer(p.center)) p.center.addTo(map);
+      } else {
+        if (map.hasLayer(p.center)) map.removeLayer(p.center);
+      }
+    });
+      
+    storesData.forEach(function(s) {
+        var storeVisible = false;
+
+        if (s.plazaId === -1) {
+            // Standalone store
+            storeVisible = map.hasLayer(layerStandalone);
+
+        } else {
+            var parentPlaza = plazasData.find(function(p) {
+                return p.id === s.plazaId;
+            });
+
+            if (parentPlaza && parentPlaza.isActive) {
+                storeVisible = s.isAnchor
+                    ? map.hasLayer(layerAnchors)
+                    : map.hasLayer(layerTenants);
+            }
+        }
+
+        if (storeVisible) {
+            if (!map.hasLayer(s.marker))
+                s.marker.addTo(map);
+        } else {
+            if (map.hasLayer(s.marker))
+                map.removeLayer(s.marker);
+        }
+    });
+  }
+
+  addPlaza(34.419060667441855, -119.698860148062, 857.5, 0, 'Paseo Nuevo Mall', '651 Paseo Nuevo Santa Barbara', 'Santa Barbara County', 'Santa Barbara', 3, 'Dollar Tree, H&M, Marshalls', 126, '33 Jewels, 7-Eleven, 805 University, Ablitt\'s Fine Cleaners & Launderers, Above & Beyond Body Arts, Ace of Fade, Alessia Patisserie & Cafe, Alo, American Eagle Outfitters, Anatola, Anna Janelle Jewelry, Antique Alley, Apple Store, Aveda, BCycle, Banana Republic, Bank of America, Bank of the Sierra, Bath & Body Works, Bonika\'s Boutique, Brandy Melville, Bruxie, Bryant & Sons, Bungalow West, Charles Schwab, Chocolate Maya, Coach, Coast Supply Co., Courtney Burke, Creations Boutique, Crossroads Trading, D\'Angelo Bread, Drift Hotel, Elenita, F45 Training, Fastrack Bicycles, Float Luxury Spa, Folio Press & Paperie, Foot Locker, Game Seeker, Gap, Gap Kids, Golden Eagle Tattoo, Grassini Family Vineyards, Handlebar Coffee Roasters, Hollister, Hotel Virginia, Insomnia Cookies, Inspire, Italian Pottery Outlet, Jamie Sloan Wines, Kariella, Kimpton Canary Hotel, Kiwi\'s Auto Repair, Kristina Sklar Art, La Aroma de Havana Cigar Lounge, La Bomba, Layla Threading, Le Reve Organic Spa, Levi\'s, Lighthouse Skate Shop, Little Rainbow Foot Spa, Lokum, Longoria Wines, Loubud Wines, Lovebird, Lululemon, Mayberry, McConnell‘s, Men\'s Wearhouse, Miss Behavin\', Mister Softee, Moxy Santa Barbara, N&S Expressions, Namaste, Neez Goodz, Nick The Greek, O\' My Sole, PacSun, Pampel Design, Panda Express, Paseo Nuevo Mall, Peppermint Parlor, Pink, Pink Browny, Poke House, Pressed Juicery, Prop & Decor Outlet, REI, Reid\'s Appliances, Rejuvenation Spa & Nails, Riviera Towel Company, Santa Barbara Autowerks, Santa Barbara Travel Bureau, Seaside Makers, Sephora, Silver And..., Sit\'n Sleep, Skechers, Solstice Sunglass Boutique, Starbucks, State Street Beverages, State Street Smoke Shop, Sunglass Hut, T-Mobile, Te Amo Jewelers, The Adult Store, The Closet Trading Co., The Polar Bear, Thrifty Beaches, Tilly Timm\'s, Tillys, Tokyo Japanese Lifestyle, Tri County Office Furniture, Tribal Rugs, U.S. Bank, Urban Flea Market, Victoria\'s Secret, Viva Santa Barbara, World Market, Zitzilin Imports, Zumiez, bluemercury, claire\'s, d\'Offay, oat bakery', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(34.42923134354838, -119.87266482903229, 698.1, 1, 'Camino Real Marketplace', '7035 Marketplace Drive Goleta', 'Santa Barbara County', 'Goleta', 12, 'Albertsons, Best Buy, BevMo!, Costco, Costco Food Court, HomeGoods, Lucky Coin Laundry, Planet Fitness, Ross, Smart & Final Extra!, Target, The Home Depot', 50, 'AT&T, Anna\'s Bakery, Aura Beauty Spa, Chili\'s, Chipotle, Continental Liquor, CorePower Yoga, Electrify America, Ergomotion, ExtraMile, Fido House, Fine Line Custom Cabinets, Hahka Kitchens, Hilton Garden Inn, Hollister Optometric Center, IHOP, Indo China Market, Jack in the Box, Jersey Mike\'s Subs, KeyMe, Kinecta, L&L Hawaiian Barbecue, Little Free Library, Little Rainbow Foot Spa, Los Agaves, Lovely Spa & Nails, Mattress Firm, McDonald\'s, One Plant, PetSmart, Polished Nail Spa, Rigo\'s Windows & Patio Doors, Santa Barbara Fish Market, See\'s Candies, Shear & Color, Sleep Number, Staples, Starbucks, Subway, T-Mobile, Tesla Supercharger, The Point Market, The UPS Store, Tillys, U.S. Bank, Ulta Beauty, University Chevron, Vans, Verizon, Wolf\'s Head Barbershop', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://gallellire.com/property/7025-el-camino-real/" target="_blank" rel="noopener">Gallelli Real Estate — Phillip Kyle</a><br>');
+addPlaza(34.43925952459016, -119.74935462295083, 565.1, 2, 'La Cumbre Plaza', '3855 State Street Santa Barbara', 'Santa Barbara County', 'Santa Barbara', 6, 'Bristol Farms, Macy\'s, Petco, Ross, Target, Whole Foods Market', 55, 'A Crimson Holiday, AT&T, Ageless Men\'s Health, BMO, Bank of America, Barbie\'s Pet Salon, Bayside Watch, Berkshire Hathaway HomeServices, Champagne Nail Bar, Channel City Hardware and Gifts, Chase, Chevron, Chipotle, Conservmart, CorePower Yoga, Eco Friendly Cleaners, Electrify America, European Wax Center, ExtraMile, FOUND Hotels, Santa Barbara, Series by Marriott, Fashion Hair Salon, FedEx Office, Fidelity Investments, Furniture Gallery by Mattress Mike, Habit Burger & Grill, Hertz, Islands, J.Jill, Jack in the Box, La-Z-Boy, LensCrafters, Massage Envy, Mattress Firm, Miss Daisy\'s, Nutrishop, O\'Reilly Auto Parts, Orchid Thai Massage And Spa, Panda Express, Peet\'s Coffee, Phenix Salon Suites, Pottery Barn, Santa Barbara Herb Clinic, See\'s Candies, St. Paul Cleaners, Starbucks, Subway, Thai Massage, Thairapy Salon, The UPS Store, Town & Country Distinct Event Rentals & Services, True Zero, Velo Pro Cyclery, Wells Fargo, Williams-Sonoma, uBreakiFix', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(34.439071147727276, -119.72815121363638, 580.6, 3, 'Petersen Plaza', '3025 De La Vina Street Santa Barbara', 'Santa Barbara County', 'Santa Barbara', 3, 'BevMo!, Grocery Outlet, Trader Joe\'s', 41, '76, Alebrije Homewares, Amigos Hair Cutting, Amy\'s Skin Care, Asia Warren Skin Care, ChargePoint, Coastal Design Drapery and Shade, Creative Kitchen Spaces, Creative Nails, Cris Market & Restaurant, De La Vina Barbers, Dimensional Millwork, Inc. Windows & Doors, Domino\'s, GM Auto & Smog, GV Optical, Goodland Tattoo, Happy Little Hippo, Island View Outfitters, Jaz Hair Salon, Launderland, Legends Salon, Paws & Claws, Petersen Plaza, Plaza Liquor, Pueblo Del Rey Funeral Services, Rainbow Nails, San Roque Market & Liquors, Santa Barbara Audiology, Santa Barbara Screen & Shade, Santa Barbara Spa, Shaddai Print & Design, Shell, Soapy Suds Laundromat, Starbucks, State Street Jewelry, Team Hair & Makeup, The Palms Barbershop, Verizon, Vishions Smoke Shop, Wellness Therapy Center, Whitney Chic Boutique', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(34.441192328947366, -119.82555856052628, 331.8, 4, 'Unnamed Retail Center', '5811 Calle Real Goleta', 'Santa Barbara County', 'Goleta', 3, 'Albertsons, Trader Joe\'s, Walgreens', 35, 'Allstate, Bank of America, Carl\'s Jr., Chase, Club Pilates, Cold Stone Creamery, Country Catering Company, Crumbl Cookies, Cutting Edge, Darin Jon Studio, Dune Coffee Roasters, FedEx Office, Golden 1 Credit Union, KFC, Kumon, LaserAway, Lemos Feed & Pet Supply, Little Rainbow Foot Spa, Motel 6, Mācher, Nikka Fish Market and Grill, Nikka Japanese Market, Nothing Bundt Cakes, Ocean Nails & Spa, Orangetheory Fitness, Pet House, Sally Beauty, Sport Clips, State Farm, Subway, The Joint Chiropractic, The UPS Store, Trimnasium, Victra Goleta, Yogurtland', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://srsre.com/properties/lease/retail/california/goleta/5652-5820-calle-real-goleta-ca-93317/l14450" target="_blank" rel="noopener">SRS Real Estate Partners — Mike Hieshima</a><br><a href="https://srsre.com/properties/lease/retail/california/goleta/5652-5820-calle-real-goleta-ca-93317/l14450" target="_blank" rel="noopener">SRS Real Estate Partners — Caden Westwick</a><br><a href="https://srsre.com/properties/lease/retail/california/goleta/5652-5820-calle-real-goleta-ca-93317/l14450" target="_blank" rel="noopener">SRS Real Estate Partners — Bree Casas</a><br>');
+addPlaza(34.442243645, -119.83226338499999, 289.7, 5, 'Unnamed Retail Center', '175 North Fairview Avenue Goleta', 'Santa Barbara County', 'Goleta', 3, 'Dollar Tree, Miner\'s Ace Hardware, Sprouts Farmers Market', 17, 'Berkshire Hathaway HomeServices, EVgo, Fairview Barbers, Fairview Theater, H&R Block, Jersey Mike\'s Subs, JustFoodForDogs, Michaels, Panda Express, Shear Artistry, Spherion Staffing & Recruiting, St. Paul Cleaners Laundry Tailoring, Starbucks, T-Mobile, U.S. Bank, Union Bank, Wingstop', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.nmrk.com/properties/160-north-6th-street-brooklyn-lease" target="_blank" rel="noopener">Newmark — Ariel Schuster</a><br><a href="https://www.nmrk.com/properties/160-north-6th-street-brooklyn-lease" target="_blank" rel="noopener">Newmark — Michael Paster</a><br><a href="https://www.nmrk.com/properties/160-north-6th-street-brooklyn-lease" target="_blank" rel="noopener">Newmark — Tyler King</a><br><a href="https://www.crexi.com/lease/properties/1219820/california-167-north-fairview-avenue" target="_blank" rel="noopener">Hayes Commercial Group — Kris Roth</a><br><a href="https://www.crexi.com/lease/properties/1219820/california-167-north-fairview-avenue" target="_blank" rel="noopener">Hayes Commercial Group — Caitlin McCahill</a><br><a href="https://www.crexi.com/lease/properties/1219820/california-167-north-fairview-avenue" target="_blank" rel="noopener">Hayes Commercial Group — Marissa Ruelas</a><br>');
+addPlaza(34.40185183333334, -119.7228399888889, 289.7, 6, 'Mesa Shopping Center', '2010 Cliff Drive Santa Barbara', 'Santa Barbara County', 'Santa Barbara', 2, 'Rite Aid, Vons', 16, '7-Eleven, American Cleaners & Tailoring, Charming Nails, Dero, Lazy Acres, McDonald\'s, Mesa Bookstore, Mesa Produce, Montecito Bank, Starbucks, Subway, Taco Bell, The Little Things Bakery, The Point Market, Union Bank, Zip Kleen', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.crexi.com/lease/properties/59225/california-mesa-center" target="_blank" rel="noopener">Investec Real Estate Companies — Crosby Slaught</a><br><a href="https://www.crexi.com/lease/properties/59225/california-mesa-center" target="_blank" rel="noopener">Crexi Listing — Isaiah Bolton</a><br>');
+addPlaza(34.43566491666666, -119.8031811, 289.7, 7, 'Magnolia Shopping Center', '5170 Hollister Avenue Goleta', 'Santa Barbara County', 'Goleta', 1, 'Ralphs', 17, 'Eco Friendly Cleaners, F45 Training, Lane Farms Produce Stand, Lassens Natural Foods & Vitamins, Magnolia Barber Shop, Magnolia Liquors, Magnolia Shopping Center, Magnolia Smoke Shop, Minh Ly\'s Nails, Rent-A-Center, Santa Barbara Paint Depot, Shell, Starbucks, Supercuts, The Point Market, U.S. Bank, United Family Association Thrift Shoppe', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(34.420736399999996, -119.70471269411765, 377.9, 8, 'Victoria Court', '100 West Carrillo Street Santa Barbara', 'Santa Barbara County', 'Santa Barbara', 1, 'Ralphs', 16, 'Anna Janelle Jewelry, Coastal, CorePower Yoga, Dunn-Edwards Paints, Econo Auto Center, Favorites, Fiesta Cash & Loans, Fuzion Glass Gallery & Boutique, Goodwill, Hempwise, Impact Hub, Modern Laundry, Puff Club, Red Sand Market, Starbucks, Tino\'s Italian Grocery', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(34.43997846923077, -119.73535813076923, 292.0, 9, 'Loreto Plaza', '3305 State Street Santa Barbara', 'Santa Barbara County', 'Santa Barbara', 1, 'Gelson\'s', 12, '7 Day Nursery, 7-Eleven, Chaucer\'s Books, Cox Store, Fantastic Sams, Farmers Insurance, Leslie\'s Pool Supplies, Malai Thai Massage, Renaud\'s Patisserie and Bistro, Salon Patine, Singer\'s Big & Tall, United States Postal Service', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(34.43686318461538, -119.79052493846153, 289.7, 10, 'Turnpike Shopping Center', '163 South Turnpike Road Santa Barbara', 'Santa Barbara County', 'Santa Barbara', 1, 'Vons', 12, 'Bank of America, Fitness 19, Four Seasons Cleaners, GV Optical, Jersey Mike\'s Subs, Kim Nails & Spa, Kin Bakeshop, Mobil, Mobil Mart, Play It Again Sports, Rusty\'s Pizza Parlor, The Salvation Army', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://srsre.com/properties/lease/retail/california/santa-barbara/161-s-turnpike-rd/l14552" target="_blank" rel="noopener">SRS Real Estate Partners — Mike Hieshima</a><br><a href="https://srsre.com/properties/lease/retail/california/santa-barbara/161-s-turnpike-rd/l14552" target="_blank" rel="noopener">SRS Real Estate Partners — Caden Westwick</a><br>');
+addPlaza(34.41990216923077, -119.69174363076922, 432.6, 11, 'Unnamed Retail Center', '217 East Gutierrez Street Santa Barbara', 'Santa Barbara County', 'Santa Barbara', 1, 'Smart & Final', 12, 'Apex Smoke & Vape, Avis, Buena Tool, Dago Hardwood & Flooring, Exit Auto Collision, Higgins Muffler & Brake, Linde Welding Gas & Equipment Center, Los Tarascos Bakery and Deli, OfficeMax, Rad Power Bikes, Santa Barbara Fasteners, VCA Care Specialty and Emergency Animal Hospital', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(34.440006658333324, -119.75292123333332, 289.7, 12, 'Five Points Shopping Center', '3943 State Street Santa Barbara', 'Santa Barbara County', 'Santa Barbara', 2, 'Big 5 Sporting Goods, Smart & Final', 10, 'Allpoint, Club Pilates, Firestone, Jiffy Lube, McDonald\'s, Quest Diagnostics, SalonCentric, Santa Barbara Supercharger, The Good Feet Store, WDC Kitchen & Bath Center', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.crexi.com/lease/properties/614231/california-five-points-shopping-center" target="_blank" rel="noopener">Regency Centers — Erin Saltzman</a><br><a href="https://www.crexi.com/lease/properties/22315/california-3944-state-st" target="_blank" rel="noopener">Hayes Commercial Group — Caitlin McCahill</a><br><a href="https://www.crexi.com/lease/properties/22315/california-3944-state-st" target="_blank" rel="noopener">Hayes Commercial Group — Kris Roth</a><br><a href="https://www.crexi.com/lease/properties/22315/california-3944-state-st" target="_blank" rel="noopener">Hayes Commercial Group — Dan Ferrick</a><br>');
+addPlaza(34.424359044444444, -119.68219935555554, 289.7, 13, 'Unnamed Retail Center', '222 North Milpas Street Santa Barbara', 'Santa Barbara County', 'Santa Barbara', 1, 'Trader Joe\'s', 8, 'Arco, AutoZone, Canopy Club, Classic Design German Car Specialist, House of Laundry, PetSmart, Starbucks, Winchell\'s Donut House', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(34.42130298, -119.67878221999999, 289.7, 14, 'Unnamed Retail Center', '29 South Milpas Street Santa Barbara', 'Santa Barbara County', 'Santa Barbara', 2, 'Rite Aid, Sprouts Farmers Market', 3, 'Cal Coast Adventures, Little Caesars, McDonald\'s', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+  addStore(34.4293877, -119.7224112, 'Pueblo Care Complex', '317 West Pueblo Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4156123, -119.8446974, 'The Store at Buchanan', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4114691, -119.84817, 'Starbucks', '1180 University Center Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4117516, -119.847913, 'Wells Fargo', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4117597, -119.8482593, 'UCSB Campus Store', '1 UCEN Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4142384, -119.846487, 'Bank of America', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4115514, -119.8477701, 'SB Printer', 'UCEN Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4116315, -119.847895, 'Panda Express', 'Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.411781, -119.8478257, 'The Corner Store', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4002857, -119.7216572, 'Lazy Acres', '302 Meigs Road Santa Barbara', '#e74c3c', 6, 'Mesa Shopping Center', false);
+addStore(34.4025023, -119.723794, 'Vons', '2010 Cliff Drive Santa Barbara', '#f39c12', 6, 'Mesa Shopping Center', true);
+addStore(34.4018295, -119.7223439, 'McDonald\'s', '1906 Cliff Drive Santa Barbara', '#e74c3c', 6, 'Mesa Shopping Center', false);
+addStore(34.4359096, -119.803846, 'Ralphs', '5170 Hollister Avenue Goleta', '#f39c12', 7, 'Magnolia Shopping Center', true);
+addStore(34.4296881, -119.8670757, 'Indo China Market', '6831 Hollister Avenue Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4389102, -119.728945, 'Trader Joe\'s', '3025 De La Vina Street Santa Barbara', '#f39c12', 3, 'Petersen Plaza', true);
+addStore(34.4354273, -119.8039003, 'Supercuts', '5182 Hollister Avenue Goleta', '#e74c3c', 7, 'Magnolia Shopping Center', false);
+addStore(34.4367148, -119.8030004, 'Santa Barbara Paint Depot', '5148 Hollister Avenue Santa Barbara', '#e74c3c', 7, 'Magnolia Shopping Center', false);
+addStore(34.4430869, -119.831074, 'Fairview Theater', '225 North Fairview Avenue Goleta', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.4407952, -119.826197, 'Albertsons', '5811 Calle Real Goleta', '#f39c12', 4, 'Unnamed Retail Center', true);
+addStore(34.4407421, -119.8250202, 'Trader Joe\'s', '5767 Calle Real Goleta', '#f39c12', 4, 'Unnamed Retail Center', true);
+addStore(34.4416296, -119.8327241, 'Panda Express', '131 North Fairview Avenue Goleta', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.4400964, -119.7346999, '7 Day Nursery', '3301 State Street Santa Barbara', '#e74c3c', 9, 'Loreto Plaza', false);
+addStore(34.4355567, -119.8028904, 'Magnolia Barber Shop', '5116 Hollister Avenue Santa Barbara', '#e74c3c', 7, 'Magnolia Shopping Center', false);
+addStore(34.4356917, -119.8028919, 'Minh Ly\'s Nails', '5120 Hollister Avenue Santa Barbara', '#e74c3c', 7, 'Magnolia Shopping Center', false);
+addStore(34.4367115, -119.802901, 'Magnolia Smoke Shop', '5146 Hollister Avenue Santa Barbara', '#e74c3c', 7, 'Magnolia Shopping Center', false);
+addStore(34.4367126, -119.8028073, 'Eco Friendly Cleaners', '5144 Hollister Avenue Santa Barbara', '#e74c3c', 7, 'Magnolia Shopping Center', false);
+addStore(34.4367215, -119.803473, 'Lassens Natural Foods & Vitamins', '5154 Hollister Avenue Santa Barbara', '#e74c3c', 7, 'Magnolia Shopping Center', false);
+addStore(34.4367325, -119.8038037, 'United Family Association Thrift Shoppe', '5156 Hollister Avenue Santa Barbara', '#e74c3c', 7, 'Magnolia Shopping Center', false);
+addStore(34.4352581, -119.803956, 'F45 Training', '5186 Hollister Avenue Santa Barbara', '#e74c3c', 7, 'Magnolia Shopping Center', false);
+addStore(34.4351519, -119.80395, 'U.S. Bank', '5190 Hollister Avenue Goleta', '#e74c3c', 7, 'Magnolia Shopping Center', false);
+addStore(34.4353499, -119.8039151, 'Rent-A-Center', '5184 Hollister Avenue Santa Barbara', '#e74c3c', 7, 'Magnolia Shopping Center', false);
+addStore(34.5117047, -119.8227506, 'Cielo Store', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4175525, -119.6967592, 'Starbucks', '539 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.41254, -119.689941, 'Wheel Fun', '29 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4218488, -119.702642, 'Lokum', '1019 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4295715, -119.8724395, 'Starbucks', '7030 Marketplace Drive Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.439347, -119.735372, 'Gelson\'s', '3305 State Street Santa Barbara', '#f39c12', 9, 'Loreto Plaza', true);
+addStore(34.4297229, -119.8742927, 'Mattress Firm', '7078 Marketplace Drive Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4268139, -119.7094893, 'Cantwell\'s Market & Deli', '1533 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4365961, -119.7912523, 'Bank of America', '-', '#e74c3c', 10, 'Turnpike Shopping Center', false);
+addStore(34.41151, -119.84764, 'Subway', 'UCEN Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4385132, -119.7502858, 'Chevron', '115 South La Cumbre Road Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4388069, -119.7525581, 'Starbucks', '3957 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4394341, -119.7452961, 'Whole Foods Market', '3761 State Street Santa Barbara', '#f39c12', 2, 'La Cumbre Plaza', true);
+addStore(34.419686, -119.704823, 'Modern Laundry', '1015 De La Vina Street Santa Barbara', '#e74c3c', 8, 'Victoria Court', false);
+addStore(34.42913, -119.869455, 'Chipotle', '270 Storke Road Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.430767, -119.703209, 'Riviera Market', '416 East Micheltorena Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.425474, -119.702372, 'Victor the Florist', '135 East Anapamu Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4249151, -119.7068445, 'Distinctive Framing \'N\' Art', '1333 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4245655, -119.7063662, 'Panache Bridal', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4244284, -119.7061521, 'Canvas', '1307 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4242689, -119.705971, 'Christian Science Reading Room', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4241061, -119.7057427, 'Starbucks', '1235 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4240421, -119.7056335, 'Natasha', '1231 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4239473, -119.7055047, 'Sofa-U-Love', '1227 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4238275, -119.7053592, 'Domecil', '1223 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4237718, -119.7052781, 'Danuta', '1221 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4235082, -119.7049773, 'UnityShoppe', '1209 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4229557, -119.705063, 'Meritage Wine Market', '18 West Anapamu Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4227834, -119.704941, 'Springtide Nails', '15 West Anapamu Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4225477, -119.705195, 'The UPS Store', '27 West Annapamu Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.422582, -119.7054933, 'Salt Wholesale', '32 West Anapamu Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4223917, -119.7053582, 'Fiesta Cash & Loans', '-', '#e74c3c', 8, 'Victoria Court', false);
+addStore(34.423549, -119.705895, 'Lola', '14 West Victoria Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4221127, -119.6893995, 'Bici Centro', '434 Olive Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4023711, -119.7233736, 'Starbucks', '1990 Cliff Drive Santa Barbara', '#e74c3c', 6, 'Mesa Shopping Center', false);
+addStore(34.4053919, -119.6964609, 'Dero', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4275413, -119.8720907, 'Staples', '7015 Marketplace Drive Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4275467, -119.8725597, 'HomeGoods', '7035 Marketplace Drive Goleta', '#f39c12', 1, 'Camino Real Marketplace', true);
+addStore(34.4275413, -119.8731328, 'Ross', '7055 Marketplace Drive Goleta', '#f39c12', 1, 'Camino Real Marketplace', true);
+addStore(34.4429684, -119.83224, 'Michaels', '187 North Fairview Avenue Goleta', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.440291, -119.761033, 'The Riv', '4135 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4281986, -119.876441, 'The UPS Store', '7127 Hollister Avenue Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4283741, -119.8765902, 'L&L Hawaiian Barbecue', '7127 Hollister Avenue Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4284972, -119.8766303, 'Lovely Spa & Nails', '7127 Hollister Avenue Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4295883, -119.8722792, 'Los Agaves', '7024 Marketplace Drive Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4425365, -119.780929, 'ChargePoint', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4256995, -119.703228, 'eVgo', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4254838, -119.703597, 'ChargePoint', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4226953, -119.690246, 'ChargePoint', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4419423, -119.729854, 'ChargePoint', '-', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4402556, -119.7515615, 'Peet\'s Coffee', '3905 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4175911, -119.856247, 'Dero', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4186691, -119.8625713, 'Dero', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.409839, -119.8456311, 'Dero', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4113617, -119.8525446, 'Dero', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4078423, -119.692591, 'Harbor Snack Shack', '305 West Cabrillo Boulevard Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4405871, -119.7318663, 'Pueblo Del Rey Funeral Services', '3120 State Street Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4132257, -119.8562189, 'Dero', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4147729, -119.7201721, 'Captain Jack\'s Tours & Events', '1025 West Micheltorena Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4107033, -119.6979299, 'JJ\'s Liquor', '311 Castillo Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4163632, -119.6894664, 'Metropulos Fine Foods Merchant', '216 East Yanonali Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4181495, -119.697592, 'Yogurtland', '621 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4212987, -119.701355, 'Apple Store', '928 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4279962, -119.7111691, 'IHOP', '1701 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4204655, -119.6667587, 'Gift Store', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4184879, -119.697435, 'Habit Burger & Grill', '628 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4377325, -119.750905, 'True Zero', '150 South La Cumbre Road Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4311319, -119.8740171, 'Shear & Color', '7060 Hollister Avenue Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4188449, -119.69231, 'Smart & Final', '217 East Gutierrez Street Santa Barbara', '#f39c12', 11, 'Unnamed Retail Center', true);
+addStore(34.4192498, -119.6920587, 'OfficeMax', '219 East Gutierrez Street Santa Barbara', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(34.4144546, -119.6906741, 'Santa Barbara Wine Collective', '131 Anacapa Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4144132, -119.6907277, 'Helena Avenue Bakery', '131 Anacapa Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4223119, -119.6985395, 'Handlebar Coffee Roasters', '128 East Canon Perdido Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4175848, -119.8668325, 'Dero', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4194219, -119.698832, 'McConnell‘s', '728 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4195756, -119.6990669, 'N&S Expressions', '736 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4245904, -119.6851531, 'Sunshine Collision & Auto Spa', '402 North Nopal Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4417208, -119.8256748, 'Nothing Bundt Cakes', '5784 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4294552, -119.8670759, 'Subway', '6831 Hollister Avenue Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4268542, -119.709592, 'Bank of America', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4375083, -119.7261472, 'Grocery Outlet', '2840 De La Vina Street Santa Barbara', '#f39c12', 3, 'Petersen Plaza', true);
+addStore(34.4202273, -119.7004511, 'H&M', '827 State Street Santa Barbara', '#f39c12', 0, 'Paseo Nuevo Mall', true);
+addStore(34.4110043, -119.8570832, 'International Food Market', '6551 Trigo Road Isla Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4279519, -119.876259, 'Starbucks', '7127 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4178901, -119.699945, 'Kanaloa Seafood', '715 Chapala Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4093795, -119.8528286, 'Dero', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.413616, -119.689596, 'Wheel Fun', '24 East Mason Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4180593, -119.6974732, 'Nu-Image Nails & Spa', '617 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.413622, -119.6908582, 'Melville Winery', '120 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4132932, -119.688789, 'Loveworn', '11 Anacapa Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4184242, -119.6992705, 'Viva Santa Barbara', '505 Paseo Nuevo Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4185938, -119.6993601, 'Victoria\'s Secret', '320 Paseo Nuevo Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4191172, -119.70019, 'Inspire', '209 Paseo Nuevo Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4191387, -119.7005038, 'American Eagle Outfitters', '-', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4287903, -119.7139336, 'Yani Skin Care Santa Barbara', '221 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4397409, -119.744314, 'Velo Pro Cyclery', '15 Hitchcock Way Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4307075, -119.8462412, 'Atlas Fence Co. of Santa Barbara', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4356121, -119.803849, 'Starbucks', '5170 Hollister Avenue Santa Barbara', '#e74c3c', 7, 'Magnolia Shopping Center', false);
+addStore(34.4147495, -119.6906344, 'Riverbench Winery', '137 Anacapa Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4148021, -119.6905756, 'Orgullo Wine', '137 Anacapa Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4148727, -119.6905063, 'The Shopkeepers', '137 Anacapa Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4286836, -119.8628806, 'Deckers Brands', '250 Coromar Drive Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4303202, -119.8795541, 'IPT Acroamatics', '7230 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4303872, -119.8823699, 'Cheer\'s Liquor', '7320 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4303861, -119.8824692, 'Monarch Hair Studio', '7320 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4293695, -119.8768978, 'IHOP', '7127 Hollister Avenue Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4311362, -119.874114, 'Polished Nail Spa', '7060 Hollister Avenue Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4304285, -119.8739501, 'Verizon', '7050 Hollister Avenue Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4305217, -119.8724922, 'Sleep Number', '7000 Hollister Avenue Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4305308, -119.8722243, 'Raising Cane\'s', '7000 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4297187, -119.8738688, 'BevMo!', '7070 Marketplace Drive Goleta', '#f39c12', 1, 'Camino Real Marketplace', true);
+addStore(34.4293877, -119.8739305, 'AT&T', '7060 Marketplace Drive Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4293768, -119.8732982, 'Vans', '7054 Marketplace Drive Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4293774, -119.873147, 'Tillys', '7046 Marketplace Drive Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4295537, -119.8725158, 'Jersey Mike\'s Subs', '7034 Marketplace Drive Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4293801, -119.8719442, 'Ulta Beauty', '7000 Marketplace Drive Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4294764, -119.8721522, 'Anna\'s Bakery', '7018 Marketplace Drive Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4283612, -119.8692773, 'Little Rainbow Foot Spa', '290 Storke Road Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4283586, -119.8691099, 'Continental Liquor', '290 Storke Road Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4283907, -119.8687817, 'One Plant', '290 Storke Road Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4284047, -119.87468, 'Costco Food Court', '-', '#f39c12', 1, 'Camino Real Marketplace', true);
+addStore(34.4294574, -119.871413, 'CorePower Yoga', '6992 Marketplace Drive Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4184624, -119.8689556, 'Dero', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.436546, -119.8366183, 'Goleta Building Materials', '91 Frederick Lopez Road Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.43543, -119.825446, 'Santa Cruz Market', '5757 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4355104, -119.8276544, 'Santa Barbara Gift Baskets', '230 Magnolia Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4352695, -119.8275512, 'Glass America', '236 Magnolia Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.434713, -119.82814, 'Speedshop', '5865 Gaviota Street Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.435211, -119.828146, 'Arosha', '255 Magnolia Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4358118, -119.8284861, 'Hollister Barbershop', '5879 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4352776, -119.8113593, 'Legacy Audiology, Inc.', '5360 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4360519, -119.8276159, 'Paperback Alley', '5840 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4362939, -119.8304545, 'Taco Bell', '5980 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.44083, -119.828674, 'Country Catering Company', '5925 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.442608, -119.806387, 'Patterson 101 Self-Storage', '98 North Patterson Avenue Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.435279, -119.8027867, 'Magnolia Liquors', '5110 Hollister Avenue Santa Barbara', '#e74c3c', 7, 'Magnolia Shopping Center', false);
+addStore(34.4408577, -119.7283271, 'Legends Salon', '9 East Calle Laureles Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.440708, -119.737845, '7-Eleven', '3430 State Street Santa Barbara', '#e74c3c', 9, 'Loreto Plaza', false);
+addStore(34.440707, -119.736799, 'Malai Thai Massage', '3400 State Street Santa Barbara', '#e74c3c', 9, 'Loreto Plaza', false);
+addStore(34.4405846, -119.7398689, 'Vices & Spices', '3558 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.434515, -119.72446, 'The Dirty Dog', '2601 De La Vina Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4375629, -119.7274428, 'Alebrije Homewares', '2915 De La Vina Street Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4389803, -119.7280599, 'The Palms Barbershop', '37 West Calle Laureles Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4382504, -119.7275035, 'Santa Barbara Screen & Shade', '2930 De La Vina Street Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4402183, -119.7283501, 'Dimensional Millwork, Inc. Windows & Doors', '3001 State Street Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.422399, -119.703931, 'Fuzion Glass Gallery & Boutique', '1115 State Street Santa Barbara', '#e74c3c', 8, 'Victoria Court', false);
+addStore(34.4156346, -119.6892885, 'American Riviera Bike Tours and Rentals', '122 Gray Avenue Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.41595, -119.690032, 'Mollusk Surf Shop', '208 Gray Avenue Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4214581, -119.6877484, 'Vista Paint', '516 East Gutierrez Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.425334, -119.685003, 'Deux Bakery', '824 Reddick Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.422593, -119.688976, 'Santa Barbara Adventure Company', '520 East Haley Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.424562, -119.691288, 'Sport Cycle Pacific', '627 North Salsipuedes Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4222641, -119.6802126, 'McDonald\'s', '29 North Milpas Street Santa Barbara', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(34.4375443, -119.7910187, 'Kim Nails & Spa', '179 South Turnpike Road Santa Barbara', '#e74c3c', 10, 'Turnpike Shopping Center', false);
+addStore(34.4377732, -119.7899709, 'Play It Again Sports', '157 South Turnpike Road Santa Barbara', '#e74c3c', 10, 'Turnpike Shopping Center', false);
+addStore(34.4316303, -119.868602, 'Google', '6868 Cortona Drive Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.417449, -119.6928543, 'Kiwi\'s Auto Repair', '111 East Gutierrez Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4417106, -119.8255888, 'LaserAway', '5782 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4415986, -119.8241912, 'Orangetheory Fitness', '5700 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4342146, -119.8615771, 'Dero', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4232038, -119.680693, 'Canopy Club', '118 North Milpas Street Santa Barbara', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(34.4348206, -119.8201128, 'Bicycle Bob\'s', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4381655, -119.7274689, 'Amy\'s Skin Care', '2928 De La Vina Street Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.439435, -119.735853, 'Renaud\'s Patisserie and Bistro', '3315 State Street Santa Barbara', '#e74c3c', 9, 'Loreto Plaza', false);
+addStore(34.4355801, -119.8247132, 'Habit Burger & Grill', '5735 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.443851, -119.830982, 'Union Bank', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.4422916, -119.832381, 'Sprouts Farmers Market', '175 North Fairview Avenue Goleta', '#f39c12', 5, 'Unnamed Retail Center', true);
+addStore(34.4422341, -119.8310298, 'Wells Fargo', '195 North Fairview Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4249233, -119.68148, 'PetSmart', '222 North Milpas Street Santa Barbara', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(34.4249852, -119.681662, 'Trader Joe\'s', '222 North Milpas Street Santa Barbara', '#f39c12', 13, 'Unnamed Retail Center', true);
+addStore(34.4272928, -119.6870488, 'Chapala Market', '605 North Milpas Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.421474, -119.677476, 'Rite Aid', '-', '#f39c12', 14, 'Unnamed Retail Center', true);
+addStore(34.4398008, -119.7359347, 'Chaucer\'s Books', '3321 State Street Santa Barbara', '#e74c3c', 9, 'Loreto Plaza', false);
+addStore(34.440001, -119.7364028, 'United States Postal Service', '3345 State Street', '#e74c3c', 9, 'Loreto Plaza', false);
+addStore(34.4241786, -119.682718, 'Arco', '-', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(34.4193097, -119.7159088, 'Super Cuca\'s Carnicería', '626 West Micheltorena Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4208708, -119.7013246, 'Tillys', '917 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4289694, -119.8679517, 'Starbucks', '6865 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.441603, -119.8242842, 'Cold Stone Creamery', '5718 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4384133, -119.7522997, 'Ross', '3965 State Street Santa Barbara', '#f39c12', 2, 'La Cumbre Plaza', true);
+addStore(34.4388859, -119.7526437, 'SalonCentric', '3953 State Street Santa Barbara', '#e74c3c', 12, 'Five Points Shopping Center', false);
+addStore(34.4389257, -119.752682, 'Club Pilates', '3951 State Street Santa Barbara', '#e74c3c', 12, 'Five Points Shopping Center', false);
+addStore(34.439133, -119.752984, 'Smart & Final', '3943 State Street Santa Barbara', '#f39c12', 12, 'Five Points Shopping Center', true);
+addStore(34.4397264, -119.7533689, 'Big 5 Sporting Goods', '3935 State Street Santa Barbara', '#f39c12', 12, 'Five Points Shopping Center', true);
+addStore(34.4386904, -119.7515477, 'Petco', '3985 State Street Santa Barbara', '#f39c12', 2, 'La Cumbre Plaza', true);
+addStore(34.4386527, -119.7518472, 'Eco Friendly Cleaners', '3969 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4387187, -119.7518561, 'Subway', '3967 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4394969, -119.7519315, 'Mattress Firm', '3987 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4393891, -119.7512519, 'European Wax Center', '3993 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4243071, -119.836198, 'Alamo', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4243547, -119.836207, 'Budget', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4129939, -119.8567549, 'The B Boutique', '900 Embarcadero del Mar Isla Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4346378, -119.7459718, 'The Hitchcock Cinema & Public House', '371 South Hitchcock Way Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4309534, -119.8787306, 'Weddle Industries', '7200 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4304511, -119.8824684, 'Goodland Barber Shop', '7320 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4308118, -119.8824272, 'Interior Cabinet Corporation', '7330 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4129806, -119.8550859, 'Campus Cuts', '910 Embarcadero del Norte Isla Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4003339, -119.7219417, 'Dero', '-', '#e74c3c', 6, 'Mesa Shopping Center', false);
+addStore(34.402474, -119.7239908, 'The Little Things Bakery', '2018 Cliff Drive Santa Barbara', '#e74c3c', 6, 'Mesa Shopping Center', false);
+addStore(34.4150609, -119.6947924, 'D\'Angelo Bread', '25 West Gutierrez Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4149448, -119.6946413, 'Le Reve Organic Spa', '21 West Gutierrez Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4416593, -119.8269671, 'Yogurtland', '5880 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4187063, -119.8677344, 'Dero', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4187604, -119.716466, 'Foodland Market', '1501 San Andres Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4185219, -119.6737289, 'Tri-County Produce', '335 South Milpas Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4025192, -119.7249451, 'Mesa Produce', '2036 Cliff Dr Santa Barbara', '#e74c3c', 6, 'Mesa Shopping Center', false);
+addStore(34.4222999, -119.6980041, 'Cheese Shop Santa Barbara', '827 Santa Barbara Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4331748, -119.884754, '7-Eleven', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4165248, -119.695651, 'oat bakery', '5 West Haley Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4037474, -119.6935088, 'Blue Water Hunter Dive Shop', '117 Harbor Way Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4393013, -119.734562, 'Fantastic Sams', '3303 State Street', '#e74c3c', 9, 'Loreto Plaza', false);
+addStore(34.4394165, -119.7345582, 'Singer\'s Big & Tall', '-', '#e74c3c', 9, 'Loreto Plaza', false);
+addStore(34.4192258, -119.7046102, 'Tino\'s Italian Grocery', '210 West Carrillo Street Santa Barbara', '#e74c3c', 8, 'Victoria Court', false);
+addStore(34.4281735, -119.7156223, 'Mission Audio/Video', '1910 De La Vina Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4197489, -119.701764, 'Charles Schwab', '900 Chapala Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4375831, -119.7917037, 'Fitness 19', '187 South Turnpike Road Santa Barbara', '#e74c3c', 10, 'Turnpike Shopping Center', false);
+addStore(34.4407414, -119.7277917, 'Petersen Plaza', '-', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4408015, -119.7283319, 'Asia Warren Skin Care', '-', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4288846, -119.8732394, 'Electrify America', '-', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4279025, -119.8762419, 'KeyMe', '-', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4142076, -119.846615, 'Subway', 'Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4356598, -119.82647, 'AutoZone', '5799 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4400156, -119.738427, 'Union Bank', '3451 State Street', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4400214, -119.738456, 'Union Bank', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4110323, -119.8551209, 'The Crafter\'s Library Express', '6529 Trigo Road Isla Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.40231, -119.7230407, 'Rite Aid', '1976 Cliff Drive Santa Barbara', '#f39c12', 6, 'Mesa Shopping Center', true);
+addStore(34.4229426, -119.7036161, 'Lewis & Clark', '1116 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4230616, -119.7032895, 'La Arcada Barber Shop', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4137443, -119.692217, 'BCycle', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4235553, -119.704465, 'First Republic Bank', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4231079, -119.7044214, 'Old Navy', '1137 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4291663, -119.8766708, 'Planet Fitness', '7127 Hollister Avenue Goleta', '#f39c12', 1, 'Camino Real Marketplace', true);
+addStore(34.4022161, -119.7227005, 'Union Bank', '-', '#e74c3c', 6, 'Mesa Shopping Center', false);
+addStore(34.4022316, -119.7225225, 'Subway', '1940 Cliff Drive Santa Barbara', '#e74c3c', 6, 'Mesa Shopping Center', false);
+addStore(34.4285272, -119.8768891, 'Rigo\'s Windows & Patio Doors', '7127 Hollister Avenue Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4248232, -119.8365822, 'Santa Barbara News & Gifts', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4249372, -119.836479, 'Santa Barbara Roasting Co.', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4322059, -119.8682903, 'Skate One', '6860 Cortona Drive Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4352709, -119.811217, 'Quest Diagnostics', '5360 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4420515, -119.832227, 'Dollar Tree', '175 North Fairview Avenue Goleta', '#f39c12', 5, 'Unnamed Retail Center', true);
+addStore(34.4418617, -119.8322678, 'Starbucks', '173 North Fairview Avenue Goleta', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.4406318, -119.8266832, 'Subway', '5801 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.441148, -119.82836, 'State Farm', '5915 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4409809, -119.8283469, 'Trimnasium', '5915 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4413301, -119.8283523, 'Dune Coffee Roasters', '5915 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4361501, -119.837471, 'Precision Motorcycle Service', '6150 Francis Botello Road Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4436342, -119.732631, 'Indigo Interiors', '3211 Calle Cedro Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4381465, -119.7483785, 'Islands', '3825 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4157038, -119.8469888, 'FedEx', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4142428, -119.841163, 'UPS', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.402276, -119.7244369, 'Montecito Bank', '2034 Cliff Drive Santa Barbara', '#e74c3c', 6, 'Mesa Shopping Center', false);
+addStore(34.4257107, -119.7052518, 'Crushcakes & Cafe', '1315 Anacapa Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4336273, -119.7454536, 'Tesla', '400 Hitchcock Way Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4348836, -119.7459965, 'The Natural Cafe', '361 Hitchcock Way Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4224215, -119.698406, 'Alessia Patisserie & Cafe', '134 East Canon Perdido Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.420461, -119.6995794, 'Grassini Family Vineyards', '24 El Paseo Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.420452, -119.6989648, 'Jamie Sloan Wines', '23 East De La Guerra Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4035826, -119.6937093, 'Santa Barbara Fish Market', '117 Harbor Way Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.403626, -119.6935958, 'Paddle Sports Center', '117 Harbor Way Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4038346, -119.6931863, 'Seacoast Yachts', '125 Harbor Way Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4037305, -119.6933196, 'The Chandlery', '125 Harbor Way Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4037542, -119.6929721, 'West Marine', '132 Harbor Way Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4040123, -119.6932938, 'The Store', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.417634, -119.6997619, 'Idyll Mercantile', '703 Chapala Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4186809, -119.6991748, 'Miss Behavin\'', '322 Paseo Nuevo Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4185769, -119.6992909, 'Pink', '320 Paseo Nuevo Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4180625, -119.696947, 'World Market', '610 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4179709, -119.6973742, 'Levi\'s', '611 State Street', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4183426, -119.6973859, 'Urban Outfitters', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4181774, -119.6971474, 'Silver And...', '616 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4184439, -119.6980057, 'Only in Santa Barbara', '633 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4184879, -119.6980627, 'The Shade Store', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4568705, -119.7096232, 'Botanic Gardens Gift Shop', '1212 Mission Canyon Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4207854, -119.7314095, 'Hello Bag', '1103 Portesuello Ave Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4216866, -119.6778499, 'Sprouts Farmers Market', '29 South Milpas Street Santa Barbara', '#f39c12', 14, 'Unnamed Retail Center', true);
+addStore(34.4047578, -119.6882472, 'Mutt Mitt', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4097362, -119.6854477, 'Madame Rosinka Palm Reader', '221 Stearns Wharf Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4099953, -119.685808, 'Old Wharf Trading Company', '217 Stearns Wharf Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4228627, -119.702912, 'The Crafter\'s Library', '9 East Figueroa Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4230806, -119.7029275, 'Pocket Shop', '17 East Figueroa Street', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4230217, -119.7031101, 'Coast 2 Coast Collection', '1114 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4231789, -119.7033376, 'Catherine Gee', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4229931, -119.7033924, 'Urban Optics', '1114 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.422977, -119.703707, 'Renaissance Fine Consignment', '1118 State Street', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4225643, -119.7045963, 'CorePower Yoga', '1129 State Street Santa Barbara', '#e74c3c', 8, 'Victoria Court', false);
+addStore(34.4228061, -119.7039784, 'Anthropologie', '1123 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4225924, -119.7036864, 'A Royal Suite Home Furnishings', '1109 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4223819, -119.7033974, 'Favorites', '-', '#e74c3c', 8, 'Victoria Court', false);
+addStore(34.4219011, -119.7026949, 'O\' My Sole', '1021 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4216944, -119.7024351, 'Tri County Office Furniture', '1013 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4188798, -119.6981324, '7-Eleven', '700 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4189827, -119.6987429, 'Men\'s Wearhouse', '719 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.418564, -119.6996035, 'Bath & Body Works', '619 Paseo Nuevo Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4186099, -119.6996988, 'Gap Kids', '615 Paseo Nuevo Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4212153, -119.7018082, 'Mister Softee', '935 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4189263, -119.6999694, 'Aveda', '307 Paseo Nuevo Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4192199, -119.6999292, 'Bruxie', '12 West de la Guerra Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4187845, -119.6999597, 'Tokyo Japanese Lifestyle', '651 Paseo Nuevo Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4190887, -119.7003926, 'Pink Browny', '-', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4212434, -119.7018727, 'Brandy Melville', '939 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4192728, -119.7003844, 'Elenita', '-', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4213547, -119.7014938, 'Prop & Decor Outlet', '930 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4211044, -119.7016473, 'Italian Pottery Outlet', '929 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4210113, -119.7014975, 'Mayberry', '923 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4211055, -119.7011847, 'Game Seeker', '920 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4185649, -119.6977022, 'SB Nail Bar', '632 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.418749, -119.6999078, 'Ace of Fade', '651 Paseo Nuevo Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.417509, -119.6967077, 'Game Seeker', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4166274, -119.6950473, 'Insomnia Cookies', '430 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4166428, -119.6955274, 'State Street Beverages', '439 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.439542, -119.7345569, 'Cox Store', '3303 State Street Santa Barbara', '#e74c3c', 9, 'Loreto Plaza', false);
+addStore(34.4411319, -119.8327715, 'Miner\'s Ace Hardware', '125 North Fairview Avenue Goleta', '#f39c12', 5, 'Unnamed Retail Center', true);
+addStore(34.4354128, -119.8287694, 'Eric Kreb\'s Auto Repair', '234 Orange Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4357895, -119.8279794, 'Larry\'s Auto Parts', '5855 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4361697, -119.8269452, '7-Eleven', '5810 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4136964, -119.6909934, 'Starbucks', '120 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.422194, -119.7013666, 'Bank of the Sierra', '21 East Carrillo Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4193624, -119.6993073, 'Banana Republic', '735 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.429384, -119.8730268, 'See\'s Candies', '7044 Marketplace Drive Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4356022, -119.8095419, 'Choi\'s Oriental Market', '185 South Patterson Avenue Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4229154, -119.704133, 'Paper Source', '1125 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4229525, -119.7041915, 'Free People', '1127 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4201006, -119.6996662, 'Bryant & Sons', '812 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.413585, -119.6901002, 'Margerum Wine Company', '19 East Mason Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4225468, -119.6885342, 'Just 4 Fun Party Rentals', '423 North Salsipuedes Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4225109, -119.6517755, 'Orlebar Brown', '1016 Coast Village Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4225108, -119.6517309, 'Mate Gallery', '1024 Coast Village Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4225644, -119.6516395, 'Sunspel', '1016 Coast Village Road Montecito', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4225105, -119.6515885, 'Hudson Grace', '1014 Coast Village Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4225642, -119.6515279, 'Poppy Marché', '1014 Coast Village Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4225641, -119.6514331, 'DÔEN', '1014 Coast Village Road Montecito', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4228796, -119.6515182, 'Montecito Barbers', '1028 Coast Village Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4227586, -119.6515111, 'George Pet Store', '1026 Coast Village Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4228126, -119.6515725, 'Toy Crazy', '1026 Coast Village Road Montecito', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.42288, -119.6516267, 'Malia Mills', '1026 Coast Village Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4228131, -119.6517028, 'Emily Joubert', '1026 Coast Village Road Montecito', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4228804, -119.6517563, 'Montecito Cleaners', '1024 Coast Village Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4227597, -119.6518073, 'Clare V', '1024 Coast Village Road Montecito', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4410793, -119.7460596, 'Electrify America', '-', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4213825, -119.6903742, 'Cajé Coffee Roasters', '416 East Haley Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4200014, -119.8620881, 'DogiPot', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4193181, -119.8635922, 'DogiPot', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4218006, -119.8646371, 'Storke FSH Laundry Room', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4222827, -119.8631559, 'Storke FSH Community Swap Shop', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4188793, -119.8620822, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4215472, -119.8622384, 'DogiPot', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4216272, -119.8636166, 'DogiPot', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4220342, -119.8649321, 'DogiPot', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4217846, -119.8645244, 'Pepsi', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4358964, -119.8304732, 'Megan\'s Organic Market', '5999 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4129481, -119.8561111, 'Sweet Jane Party Store', '6549 Pardall Road Isla Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4123305, -119.8568616, 'Mutt Mitt', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4109522, -119.8555681, 'Amazon Locker', '6533 Trigo Road Isla Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4118456, -119.8555685, 'Mutt Mitt', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4129079, -119.8565923, 'The Farmacy', '6555 Pardall Road Isla Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4232921, -119.8567421, 'UCSB Surplus Sales', 'Mesa Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4189267, -119.8607156, 'DogiPot', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4086409, -119.6851987, 'Stearns Wharf Bait and Tackle', '230 Stearns Wharf Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4160954, -119.6947818, 'La Aroma de Havana Cigar Lounge', '411 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4158895, -119.6945996, 'The Adult Store', '405 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4182352, -119.6977159, 'Nectar Clothing', '623 1/2 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4159568, -119.6946141, 'Golden Eagle Tattoo', '407 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4159407, -119.6946612, 'Above & Beyond Body Arts', '407 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4197048, -119.6991898, 'Lululemon', '740 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.419787, -119.6998286, 'Sunglass Hut', '809 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4197617, -119.6992913, 'bluemercury', '742 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4264288, -119.8632728, 'Mutt Mitt', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4272304, -119.8624401, 'Mutt Mitt', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.426171, -119.860008, 'Mutt Mitt', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4270656, -119.8632798, 'Mutt Mitt', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4076939, -119.8506979, 'DogiPot', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4290864, -119.8693199, 'Wolf\'s Head Barbershop', '270 Storke Road Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4294639, -119.8691203, 'Lucky Coin Laundry', '250 Storke Road Goleta', '#f39c12', 1, 'Camino Real Marketplace', true);
+addStore(34.4300177, -119.8612826, 'Mutt Mitt', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4298948, -119.8632696, 'Mutt Mitt', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4237563, -119.8660041, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4291468, -119.872584, 'U.S. Bank', '-', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.418762, -119.86997, 'ChargePoint', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4400459, -119.7536842, 'Santa Barbara Supercharger', '3943 State Street Santa Barbara', '#e74c3c', 12, 'Five Points Shopping Center', false);
+addStore(34.42888, -119.87338, 'Tesla Supercharger', '7004 Market Place Drive Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.41896, -119.69708, 'Santa Barbara Supercharger', '621 Anacapa Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4286445, -119.876674, 'Santa Barbara Fish Market', '7127 Hollister Avenue Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4174456, -119.8706578, 'DogiPot', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4227622, -119.7033186, 'Andersen\'s Danish Bakery and Restaurant', '1106 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4363956, -119.8299579, 'Destined for Grace', '5960 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4358334, -119.8298334, 'Destined For Grace', '5949 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4415298, -119.8229023, 'Crumbl Cookies', '5660 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4183429, -119.6978634, 'Caravan', '631 State Street', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4360836, -119.8093745, 'La Sumida Nursery', '165 South Patterson Avenue Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4187391, -119.6996993, 'Te Amo Jewelers', '651 Paseo Nuevo', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4186693, -119.6998102, 'Gap', '615 Paseo Nuevo Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4187187, -119.7001884, 'Panda Express', '605 Paseo Nuevo Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4190197, -119.7002763, 'Anna Janelle Jewelry', '711 Paseo Nuevo Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.419205, -119.7003394, 'Neez Goodz', '205 Paseo Nuevo Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4190036, -119.6998995, 'Pressed Juicery', '651 Paseo Nuevo Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4186609, -119.6995191, 'PacSun', '319 Paseo Nuevo Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4186832, -119.6990878, 'Anatola', '651 Paseo Nuevo Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4189833, -119.7002205, 'Solstice Sunglass Boutique', '713 Paseo Nuevo Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4222401, -119.7005668, 'U.S. Bank', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4190228, -119.6987899, 'Hollister', '-', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4189117, -119.6981805, 'Antique Alley', '706 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4196439, -119.6971995, 'Rock Mill Tile & Stone', '35 East Ortega Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4406245, -119.826596, 'Sport Clips', '5801 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4407056, -119.8287782, 'Bowlero', '5925 Calle Real Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4148616, -119.8405894, 'Yoshinoya', '552 University Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4291857, -119.7231831, 'Oak Park Market + Eatery', '403 West Pueblo Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4346758, -119.8287206, 'CrossFit', '264 Orange Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4350889, -119.8285033, 'Javier\'s Old Town Garage', '5882 Gaviota Street Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4342934, -119.8287523, 'Cal Coast Locksmiths', '272 Orange Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.440789, -119.8257209, 'Chase', '5787 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4407822, -119.8254529, 'Cutting Edge', '5779 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4407935, -119.8255827, 'Pet House', '5781 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4416435, -119.8267269, 'Lemos Feed & Pet Supply', '5880 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4415027, -119.8327236, 'Wingstop', '129 North Fairview Avenue Goleta', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.4417875, -119.8322821, 'T-Mobile', '167 North Fairview Avenue Goleta', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.4415534, -119.8233628, 'Golden 1 Credit Union', '5676 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4408973, -119.8240103, 'Nikka Japanese Market', '5721 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4416039, -119.8243555, 'Nikka Fish Market and Grill', '5722 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4409181, -119.8242195, 'FedEx Office', '5737 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.440922, -119.8242825, 'Little Rainbow Foot Spa', '5739 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4301096, -119.6897881, 'La Tapatia Bakery', '832 North Milpas Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4360825, -119.827914, 'Partners of Goleta', '5858 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4361078, -119.8285532, 'Pacific Pools Inc', '5880 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4132486, -119.8577182, 'Oakberry Açaí bowls', '6580 Pardall Road Island Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4164016, -119.8471664, 'Pepsi', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4417744, -119.8329173, 'Spherion Staffing & Recruiting', '141 North Fairview Avenue Goleta', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.4417798, -119.8325896, 'Berkshire Hathaway HomeServices', '161 North Fairview Avenue Goleta', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.4416295, -119.8329728, 'Fairview Barbers', '137 North Fairview Avenue Goleta', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.4417641, -119.8324481, 'H&R Block', '157 North Fairview Avenue Goleta', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.4438053, -119.8311847, 'U.S. Bank', '299 North Fairview Avenue Goleta', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.4417824, -119.832656, 'Jersey Mike\'s Subs', '163 North Fairview Avenue Goleta', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.4417906, -119.8328255, 'St. Paul Cleaners Laundry Tailoring', '145 North Fairview Avenue Goleta', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.4417587, -119.8325277, 'JustFoodForDogs', '159 North Fairview Avenue Goleta', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.4438728, -119.8319225, 'Shear Artistry', '271 North Fairview Avenue Goleta', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.4243394, -119.7055323, 'Chicken Little', '1236 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4240458, -119.7051622, 'Celadon House', '1224 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4224339, -119.7028051, 'FedEx Office', '1030 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4222754, -119.7026829, 'Santa Barbara Travel Bureau', '1028 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4219941, -119.7028881, 'Crossroads Trading', '1025 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4211564, -119.7012189, 'Namaste', '922 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4234523, -119.7049223, 'Art Essentials', '1207 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4300187, -119.8607068, 'Mutt Mitt', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4368487, -119.789908, 'Kin Bakeshop', '199 South Turnpike Road Santa Barbara', '#e74c3c', 10, 'Turnpike Shopping Center', false);
+addStore(34.436913, -119.7898561, 'Jersey Mike\'s Subs', '199 South Turnpike Road Santa Barbara', '#e74c3c', 10, 'Turnpike Shopping Center', false);
+addStore(34.4367156, -119.7903724, 'GV Optical', '4850 Hollister Avenue Goleta', '#e74c3c', 10, 'Turnpike Shopping Center', false);
+addStore(34.4368495, -119.7904371, 'Four Seasons Cleaners', '177 South Turnpike Road Santa Barbara', '#e74c3c', 10, 'Turnpike Shopping Center', false);
+addStore(34.4359497, -119.7907925, 'The Salvation Army', '4849 Hollister Avenue Santa Barbara', '#e74c3c', 10, 'Turnpike Shopping Center', false);
+addStore(34.4395256, -119.8097216, 'Terra Sol Garden Center', '5320 Overpass Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4109893, -119.8570195, 'Sweet Cheeks', '6551 Trigo Road Isla Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.439628, -119.8119521, 'Caliber Collision', '5387 Overpass Road Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4396161, -119.8127597, 'DogiPot', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4397288, -119.8125429, 'DogiPot', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4215107, -119.8715827, 'Mutt Mitt', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4424285, -119.8301897, 'VCA Noah\'s Ark Animal Hospital', '160 North Fairview Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4426633, -119.8300425, 'Printing Impressions', '160 North Fairview Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4354809, -119.8117169, 'Shear Envy', '5370 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4433339, -119.7889247, 'Starbucks', '4749 Calle Real Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4191278, -119.698935, 'Bungalow West', '723 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4190882, -119.6983932, 'The Closet Trading Co.', '714 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4192946, -119.6991627, 'Sephora', '733 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4191888, -119.6990094, 'Seaside Makers', '727 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4192301, -119.6990751, 'Urban Flea Market', '729 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4190431, -119.6983419, 'Thrifty Beaches', '710 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4194875, -119.6989289, 'Longoria Wines', '732 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4202919, -119.7005524, 'Kariella', '833 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4206573, -119.7010348, 'Lighthouse Skate Shop', '907 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4209559, -119.699917, 'Float Luxury Spa', '18 East Canon Perdido Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4403434, -119.8110967, 'Graybar', '5360 Overpass Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4360572, -119.8272471, 'Santa Barbara Aquatics', '5822 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4189191, -119.8621693, 'Pepsi', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4150735, -119.8620995, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4409174, -119.8241424, 'Mācher', '5731 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4416934, -119.825415, 'Ocean Nails & Spa', '5768 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4409229, -119.824363, 'The Joint Chiropractic', '5741 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4415323, -119.8229801, 'The UPS Store', '5662 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4408974, -119.8238655, 'Allstate', '5715 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.440892, -119.8236957, 'Kumon', '5707 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4415457, -119.8232616, 'Victra Goleta', '5670 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4416933, -119.8255144, 'Darin Jon Studio', '5776 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4312539, -119.8533212, 'Santa Barbara Motorsports', '6466 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4364197, -119.841877, 'Aqua-Flo Supply', '30 South La Patera Lane Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4406688, -119.753489, 'Firestone', '3948 State Street Santa Barbara', '#e74c3c', 12, 'Five Points Shopping Center', false);
+addStore(34.4197269, -119.6997301, 'Skechers', '807 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4197511, -119.7000355, 'claire\'s', '811 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4178444, -119.7054516, 'Puff Club', '309 West Carrillo Street Santa Barbara', '#e74c3c', 8, 'Victoria Court', false);
+addStore(34.420031, -119.6994095, 'Lovebird', '7 East De la Guerra Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4202095, -119.6998518, '33 Jewels', '-', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4200238, -119.6996928, 'Coach', '808 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4186987, -119.6978599, 'Vuori', '636 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4199137, -119.7001375, 'Tilly Timm\'s', '819 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4196596, -119.6996382, 'Zumiez', '803 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4202858, -119.6997686, 'd\'Offay', '-', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4195936, -119.7001841, 'La Bomba', '811 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4205045, -119.6993482, 'Loubud Wines', '20 El Paseo Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4195713, -119.7006034, 'Peppermint Parlor', '-', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4182886, -119.705045, 'Dunn-Edwards Paints', '233 West Carrillo Street Santa Barbara', '#e74c3c', 8, 'Victoria Court', false);
+addStore(34.4204687, -119.6977261, 'The Polar Bear', '726 Anacapa Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4401793, -119.8115038, 'Goleta Valley Self Storage', '5380 Overpass Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4405052, -119.809348, 'The Annex', '5342 Overpass Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4358647, -119.8226408, 'Santa Barbara Auto Connection', '5680 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4358581, -119.8232708, 'CopyRight Printing Systems', '5708 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4284469, -119.6879056, 'Alpha Thrift Store', '700 North Milpas Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4160441, -119.6914253, 'Santa Barbara Koi', '110 East Montecito Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4356276, -119.8087054, 'Ding\'s Tailoring', '5276 Hollister Avenue Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4394188, -119.7490795, 'Chipotle', '3851 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4389947, -119.7491467, 'Panda Express', '3849 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4392011, -119.7491301, 'St. Paul Cleaners', '3849 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4392938, -119.7491357, 'See\'s Candies', '3849 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.439101, -119.749139, 'Bayside Watch', '3849 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4127177, -119.6981048, 'St. Paul Cleaners', '407 Bath Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4172259, -119.8304133, 'Dero', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4169516, -119.8321593, 'Dero', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4192953, -119.7003426, '805 University', '651 Paseo Nuevo Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4192211, -119.7005345, 'Bonika\'s Boutique', '651 Paseo Nuevo Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4195621, -119.7008264, 'T-Mobile', '651 Paseo Nuevo Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4196218, -119.7008871, 'Layla Threading', '651 Paseo Nuevo Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4196634, -119.7001245, 'Poke House', '811 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4193016, -119.6999392, 'Foot Locker', '10 West de la Guerra Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4190522, -119.6998005, 'Zitzilin Imports', '301 Paseo Nuevo Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4381491, -119.7494813, 'LensCrafters', '3855 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4368799, -119.7485136, 'Massage Envy', '136 South Hope Avenue Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4372579, -119.7485757, 'Phenix Salon Suites', '130 South Hope Avenue Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4374959, -119.7484418, 'Williams-Sonoma', '3835 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4383532, -119.7483201, 'Starbucks', '3815 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4384025, -119.7480143, 'J.Jill', '3815 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4387633, -119.7476115, 'Pottery Barn', '110 South Hope Avenue Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.43868, -119.7477025, 'Barbie\'s Pet Salon', '121 South Hope Avenue Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4383417, -119.7478539, 'A Crimson Holiday', '121 South Hope Avenue Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4191692, -119.6759063, 'Habit Burger & Grill', '216 South Milpas Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4401384, -119.74297, 'Chick-fil-A', '3707 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4407147, -119.7450053, 'Chase', '3768 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4407337, -119.7463881, 'Bank of America', '3790 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4401108, -119.7412245, 'Modern Nails', '3623 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.440113, -119.7411102, 'Cigar Empire', '3621 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.44012, -119.740987, 'Tri-County Blinds, Drapes & Shutters', '3615 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4401657, -119.7404939, 'Jeannine\'s', '3607 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4401156, -119.7406987, 'SALT color x extensions', '3609 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4405593, -119.7393303, 'Papillon Nail Studio', '3528 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4406209, -119.7389841, 'Beyond Hello', '3516 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4403356, -119.7662305, 'Fast Lane Oil Change', '4299 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4403485, -119.7651013, 'American Tire Depot', '4267 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4391931, -119.7555467, 'State Street Storage', '4001 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4408546, -119.7523662, 'WDC Kitchen & Bath Center', '3920 State Street Santa Barbara', '#e74c3c', 12, 'Five Points Shopping Center', false);
+addStore(34.4389541, -119.7500301, 'CorePower Yoga', '3889 La Cumbre Plaza Lane Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4383245, -119.7498249, 'Habit Burger & Grill', '3890 La Cumbre Plaza Lane Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4349579, -119.7477813, 'Land Rover', '401 South Hope Avenue Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4351295, -119.7481693, 'Jaguar', '401 South Hope Avenue Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4358438, -119.7476386, 'Chevrolet', '301 South Hope Avenue Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4342348, -119.7465953, 'Santa Barbara Auto Group', '402 South Hope Avenue Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4330322, -119.7456072, 'Perry Ford', '440 Hitchcock Way Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4406157, -119.732699, 'Salon Patine', '3206 State Street Santa Barbara', '#e74c3c', 9, 'Loreto Plaza', false);
+addStore(34.4405534, -119.7325373, 'Paws & Claws', '3204 State Street Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4406611, -119.7320125, 'State Street Jewelry', '3122 State Street Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4405814, -119.7306969, 'Shell', '3060 State Street Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4406204, -119.7303516, 'BevMo!', '3052 State Street Santa Barbara', '#f39c12', 3, 'Petersen Plaza', true);
+addStore(34.4405541, -119.729824, 'Island View Outfitters', '3040 State Street Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4406887, -119.7298112, 'Team Hair & Makeup', '3040 State Street Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4405382, -119.7288794, 'San Roque Market & Liquors', '3014 State Street Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4405462, -119.7285245, 'Domino\'s', '3006 State Street Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4401279, -119.7293507, 'Starbucks', '3052 De La Vina Street Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4393731, -119.7286888, 'Creative Nails', '3022 De La Vina Street Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.436993, -119.7268815, '76', '2837 De La Vina Street Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4272189, -119.7353254, 'Underground Hair Artists', '2279 Las Positas Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4270619, -119.7342115, 'Point Market', '2299 Las Positas Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4269026, -119.734205, 'Fuel Depot', '2299 Las Positas Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.43582, -119.7252721, 'Cris Market & Restaurant', '2704 De La Vina Street Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.435523, -119.7247162, 'Launderland', '2636 De La Vina Street Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4356, -119.724613, 'GM Auto & Smog', '155 West Alamar Avenue Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4407375, -119.7538646, 'Jiffy Lube', '3956 State Street Santa Barbara', '#e74c3c', 12, 'Five Points Shopping Center', false);
+addStore(34.440067, -119.7634897, 'Vitalant', '4213 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4399613, -119.7632934, 'Schwartz Sports Massage', '4213 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.44027, -119.7707568, 'European Deli & Market', '4422 Hollister Avenue Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4401519, -119.7713311, 'Antique Center Mall', '4434 Hollister Avenue Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4398807, -119.7702653, 'U-Haul', '4417 Hollister Avenue Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4361066, -119.7899504, 'Mobil', '4801 Hollister Avenue Santa Barbara', '#e74c3c', 10, 'Turnpike Shopping Center', false);
+addStore(34.4345425, -119.8019586, 'Shell', '5097 Hollister Avenue Santa Barbara', '#e74c3c', 7, 'Magnolia Shopping Center', false);
+addStore(34.434408, -119.8018171, 'The Point Market', '5097 Hollister Avenue Santa Barbara', '#e74c3c', 7, 'Magnolia Shopping Center', false);
+addStore(34.4355013, -119.8248313, 'Bob\'s Vacuum', '5739 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4349027, -119.8262698, 'A&E Automotive', '300 Pine Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4344827, -119.8261127, 'Dimauro\'s Independent Honda Acura Repair', '5798 Dawson Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4356956, -119.8292015, 'Classic Collision', '5901 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4369064, -119.8312726, 'America\'s Tire', '151 South Fairview Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4358932, -119.8300052, 'Enterprise', '5959 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4017482, -119.7217724, 'Mesa Bookstore', '1838 Cliff Drive Santa Barbara', '#e74c3c', 6, 'Mesa Shopping Center', false);
+addStore(34.4017338, -119.7216326, 'American Cleaners & Tailoring', '1836 Cliff Drive Santa Barbara', '#e74c3c', 6, 'Mesa Shopping Center', false);
+addStore(34.401658, -119.7213306, 'Charming Nails', '1824 Cliff Drive Santa Barbara', '#e74c3c', 6, 'Mesa Shopping Center', false);
+addStore(34.4024002, -119.7235296, 'Zip Kleen', '1998 Cliff Drive Santa Barbara', '#e74c3c', 6, 'Mesa Shopping Center', false);
+addStore(34.4171009, -119.6957031, 'Tribal Rugs', '506 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4171545, -119.6957774, 'Nick The Greek', '508 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4263086, -119.685707, 'Jack in the Box', '501 North Milpas Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4265874, -119.6860785, 'KFC', '515 North Milpas Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4268373, -119.6864088, 'Big Brand Tire & Service', '523 North Milpas Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4249936, -119.6829218, 'House of Laundry', '310 North Milpas Street Santa Barbara', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(34.4244925, -119.6832226, 'AutoZone', '305 North Milpas Street Santa Barbara', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(34.4257261, -119.6839762, 'Starbucks', '402 North Milpas Street Santa Barbara', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(34.4408662, -119.8256422, 'Chase', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4406221, -119.8265279, 'Club Pilates', '5801 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4406432, -119.8268527, 'Sally Beauty', '5801 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4335528, -119.8846572, 'Dandy Dogs', '7398 Calle Real Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4361602, -119.8282924, 'The Control Lab', '5860 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.421429, -119.6885355, 'Santa Barbara Design Center', '410 Olive Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4245162, -119.6859015, 'Exquisite Auto Body', '407 North Nopal Street', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4246437, -119.6868896, 'Tri-Co Reprographics', '720 East Haley Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4202075, -119.692151, 'VCA Care Specialty and Emergency Animal Hospital', '301 East Haley Street Santa Barbara', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(34.4205545, -119.6922331, 'Avis', '305 East Haley Street Santa Barbara', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(34.4206766, -119.6917783, 'Exit Auto Collision', '315 East Haley Street Santa Barbara', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(34.4203643, -119.6915571, 'Los Tarascos Bakery and Deli', '314 East Haley Street Santa Barbara', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(34.4211442, -119.6978333, 'Kristina Sklar Art', '112 East De La Guerra Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4283123, -119.8764778, 'Hollister Optometric Center', '7127 Hollister Avenue Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.3967542, -119.7059192, 'DogiPot', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4017592, -119.7218584, 'Taco Bell', '-', '#e74c3c', 6, 'Mesa Shopping Center', false);
+addStore(34.4347822, -119.8257313, 'Chava Stitch N Print', '325 Rutherford Street Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4307102, -119.8304337, 'McLean\'s Auto Body and Paint', '650 South Fairview Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4320887, -119.8322719, 'FedEx Ship Center', '495 South Fairview Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4253582, -119.7061974, 'Blossom Salon', '1324 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4251516, -119.7064032, 'Diani', '1324 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4253946, -119.7061468, 'Diani Shoes', '1324 State Street', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4254048, -119.7059933, 'Diani Living', '1324 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4253563, -119.7059325, 'Renaud\'s Patisserie and Bistro', '1324 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4252848, -119.7062599, 'Folly', '1324 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4115364, -119.8551889, 'SOS Liquor', '956 Embarcadero del Norte Isla Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4129921, -119.8556084, 'Chase', '901 Embarcadero del Norte Isla Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4128489, -119.8556092, 'Escobar\'s Little Things', '907 Embarcadero del Norte Isla Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4129732, -119.855839, 'IV Beauty Lounge', '6547 Pardall Road Isla Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4129741, -119.855882, 'Wild Side Smoke Shop', '6547 Pardall Road Isla Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4129401, -119.8560125, 'Varsity Bike Shop', '6549 Pardall Road Isla Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4132955, -119.8559139, 'Hummus Republic', '6546 Pardall Road Isla Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4132715, -119.8555834, 'Freebirds', '879 Embarcadero del Norte Isla Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4133267, -119.8551155, 'Wingstop', '888 Embarcadero del Norte Isla Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4133944, -119.855174, 'Starbucks', '888 Embarcadero del Norte Isla Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4129259, -119.8563993, 'IV Deli Mart', '6553 Pardall Road Isla Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4133004, -119.8568734, 'Isla Vista Bicycle Boutique', '880 Embarcadero del Mar Isla Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4126692, -119.8572818, 'KNB Market', '915 Embarcadero del Mar Isla Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4126522, -119.8576582, 'Isla Vista Community Bike Center', '6584 Madrid Road Isla Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4122789, -119.857324, 'Isla Vista Market', '939 Embarcadero del Mar Isla Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.412101, -119.8575154, 'Isla Vista Laundromat', '955 Embarcadero del Mar Isla Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4120355, -119.8575155, 'Domino\'s', '955 Embarcadero del Mar Isla Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4109411, -119.8576694, 'Island View Outfitters', '6565 Trigo Road Isla Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4115713, -119.8576731, 'Isla Vista Food Cooperative', '6575 Seville Road Isla Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4145498, -119.8646713, 'Fido House', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4169328, -119.8626739, 'Fido House', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4132937, -119.8577286, 'Vape & Cigar', '6580 Pardall Road Isla Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4133088, -119.8576302, 'Six Pak', '6580 Pardall Road Isla Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4128096, -119.6892702, 'Surf N Wear\'s Beach House', '10 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4128885, -119.6894023, 'Mountain Air Sports', '14 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4140688, -119.6912922, 'Raoul Textiles Store', '136 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4155826, -119.6931156, 'Sit\'n Sleep', '-', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4159569, -119.6932994, 'REI', '321 Anacapa Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4158263, -119.6944879, 'Little Rainbow Foot Spa', '401 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4166889, -119.6946654, 'Dollar Tree', '424 State Street Santa Barbara', '#f39c12', 0, 'Paseo Nuevo Mall', true);
+addStore(34.4205109, -119.7001675, 'Bank of America', '834 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4209454, -119.7004658, 'Marshalls', '900 State Street Santa Barbara', '#f39c12', 0, 'Paseo Nuevo Mall', true);
+addStore(34.4226031, -119.704025, 'Impact Hub', '1117 State Street Santa Barbara', '#e74c3c', 8, 'Victoria Court', false);
+addStore(34.423203, -119.7048902, 'Metro Entertainment', '6 West Anapamu Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4247057, -119.7058132, 'Chase', '1302 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4248667, -119.7069872, 'Kaleidoscope Flowers', '1341 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.424996, -119.7070208, 'Electric Bikes of Santa Barbara', '1345 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4234157, -119.7052391, 'Matson & Co', '1213 State Street', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4277952, -119.6870596, 'SB Tobacco', '614 North Milpas Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4275908, -119.6873374, 'Domino\'s', '617 North Milpas Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4278797, -119.6877317, 'Santa Barbara Plumbing Supplies', '621 North Milpas Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4273945, -119.6870881, 'Subway', '609 North Milpas Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4275243, -119.6872602, 'Lenz Pest Control', '613 North Milpas Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4310742, -119.830266, 'Flooring 101', '5970 Daley Street Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4307506, -119.8299495, 'Horizon Auto Body & Paint', 'Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4307928, -119.8302178, 'Atlas Muffler & Brakes', '650 South Fairview Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4348888, -119.8296857, 'Hien\'s Auto Repair', '257 Orange Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4352068, -119.8304512, 'Appliance Warehouse', '274 South Fairview Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4362242, -119.8295978, 'Economy Muffler & Brake', 'Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4351014, -119.8304332, 'Progressive Surfboards', '286 South Fairview Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4355417, -119.8304357, 'Tintworks', '232 South Fairview Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4363114, -119.8301663, 'CZ Furniture Solutions', '5968 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4358523, -119.8300987, 'Beds4U', '5959 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.434196, -119.8292934, 'German Auto', '275 Orange Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4304609, -119.8296109, 'Angel\'s Auto Repair', '5940 Matthews Street Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4359901, -119.8260948, 'Goleta Bakery', '5784 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4359083, -119.8253711, 'The Little Dog House', '5758 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4304775, -119.8304185, 'Bob Woolever\'s Tire Shoppe', '660 South Fairview Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4300579, -119.8303963, 'Fairview Motors Brakes & Alignment', '664 South Fairview Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.429831, -119.830293, 'Mission Ready Mix', '710 South Fairview Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4299066, -119.8299824, 'Airport Motors', '5950 Olney Street Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4299243, -119.8298104, 'Fernando\'s Smog Check', '5940 Olney Street Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.430087, -119.8295623, 'ATG Auto Repair', '5929 Matthews Street Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.435644, -119.8287282, 'Velo Pro Cyclery', '5887 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4346394, -119.8257637, 'Goleta Valley Paint', '325 Rutherford Street Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4340289, -119.8379672, 'Penske Truck Rental', '6190 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4340802, -119.8377213, 'Arrow Truck Accessories', '6200 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4323023, -119.8479391, 'Cristino\'s Bakery', '170 Aero Camino Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4322342, -119.8490634, 'Budget Blinds', '163 Aero Camino Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.433328, -119.8489686, 'Ethnic Breads', '137 Aero Camino Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4336388, -119.8490923, 'Gold Coast Dairy', '123 Aero Camino Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4343917, -119.8481494, 'Specialty Tool and Bolt', '108 Aero Camino Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4355844, -119.8482244, 'Goleta Transmission', '74 Aero Camino Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4366874, -119.8488748, 'Channel City Lumber', '35 Aero Camino Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4316913, -119.8480493, 'Caseys Garage and Discount Smog Center', '6398 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4290165, -119.8701302, 'McDonald\'s', '6900 Marketplace Drive Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4297269, -119.8705889, 'Chili\'s', '6950 Marketplace Drive Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4295371, -119.8754006, 'Best Buy', '7090 Marketplace Drive Goleta', '#f39c12', 1, 'Camino Real Marketplace', true);
+addStore(34.4309437, -119.8762924, 'Kinecta', '145 Santa Felicia Drive Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4305987, -119.8749113, 'PetSmart', '7090 Hollister Avenue Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4309002, -119.8749447, 'Smart & Final Extra!', '7090 Hollister Avenue Goleta', '#f39c12', 1, 'Camino Real Marketplace', true);
+addStore(34.4311842, -119.8746985, 'T-Mobile', '7070 Hollister Avenue Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.429911, -119.8687786, 'Jack in the Box', '6875 Hollister Avenue Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.428574, -119.8676107, 'Target', '6865 Hollister Avenue Goleta', '#f39c12', 1, 'Camino Real Marketplace', true);
+addStore(34.4330788, -119.8620015, 'Aggressive Soccer', '93 Castilian Drive Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4339474, -119.8603241, 'Mutt Mitt', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4319769, -119.8680852, 'Mutt Mitt', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4330606, -119.8622602, 'Santa Barbara Tile and Stone', '93 Castilian Drive Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4337455, -119.8601439, 'Mutt Mitt', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.429526, -119.8601586, 'Mutt Mitt', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4298222, -119.8606249, 'Deckers Retail Store', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.413211, -119.8563802, 'Wells Fargo', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.436527, -119.7910701, 'Rusty\'s Pizza Parlor', '4880 Hollister Avenue Santa Barbara', '#e74c3c', 10, 'Turnpike Shopping Center', false);
+addStore(34.4327888, -119.8480031, 'Kamila\'s Garage', '152 Aero Camino Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4323186, -119.8488952, 'QuikResponse', '165 Aero Camino Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4381447, -119.8309655, 'Gerber Collision & Glass', '57 South Fairview Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4358493, -119.8237949, 'Nathan Nails & Spa', '5718 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4039557, -119.6930914, 'Mutt Mitt', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4032715, -119.6921633, 'Mutt Mitt', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4074354, -119.6928634, 'Marina Laundry', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4068115, -119.6931668, 'Mutt Mitt', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4071223, -119.6930179, 'Mutt Mitt', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4064764, -119.6932728, 'Mutt Mitt', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4038713, -119.6933396, 'Santa Barbara Marine Services', '117 Harbor Way Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.404742, -119.6942579, 'Mutt Mitt', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4331855, -119.8212093, 'Honda', '475 South Kellogg Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4303197, -119.7218894, 'BCycle', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4290927, -119.717674, 'Urban Statement Salon', '2027 De La Vina Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4287451, -119.7167487, 'Spiritual Awakening', '1936 De La Vina Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4288953, -119.716606, 'Mission Tuxedos', '135 West Mission Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4290329, -119.7171754, 'Jessica Fine Consigned Women\'s Apparel', '2008 De La Vina Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4291107, -119.7172807, 'Vino Divino', '2012 De La Vina Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4414719, -119.8309803, 'Fast Lane Oil Change', '55 North Fairview Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.435044, -119.7242089, 'Fern + Flair', '2600 De La Vina Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4350899, -119.7243884, 'Michael Renga Flooring', '2610 De La Vina Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4422877, -119.8303351, 'Taco Bell', '140 North Fairview Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4419032, -119.829611, 'Mechanics Bank', '5956 Calle Real Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4418359, -119.8280766, 'Walgreens', '5900 Calle Real Goleta', '#f39c12', 4, 'Unnamed Retail Center', true);
+addStore(34.4417911, -119.8274396, 'Bank of America', '5892 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4410183, -119.8302751, 'Shell', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4413038, -119.831086, 'Fuel Depot', '55 North Fairview Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4407896, -119.823381, 'KFC', '5697 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4408816, -119.8214865, 'Valero', '5661 Calle Real Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4408897, -119.8212844, 'Valero', '5661 Calle Real Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4223033, -119.6893254, 'Art Resources', '512 East Haley Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4138076, -119.8499694, 'Pepsi', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4396344, -119.7531108, 'Allpoint', '-', '#e74c3c', 12, 'Five Points Shopping Center', false);
+addStore(34.4262657, -119.7034504, 'Santa Barbara Loan & Jewelry', '136 East Victoria Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4260609, -119.7052416, 'Morgan Stanley', '1332 Anacapa Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4251216, -119.705055, 'Wise Guys', '27 East Victoria Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.429126, -119.7167331, 'Farmacy', '128 West Mission Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4238968, -119.7040749, 'The Book Den', '15 East Anapamu Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4239465, -119.7040356, 'Paradise Found', '17 East Anapamu Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4199728, -119.8630571, 'ChargePoint', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4147278, -119.8500449, 'Pepsi', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4150653, -119.8533834, 'DogiPot', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4143867, -119.8624288, 'Fido House', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4156395, -119.8585899, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.409701, -119.8620573, 'Mutt Mitt', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4147645, -119.8588442, 'Coca-Cola', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4289583, -119.873206, 'Electrify America', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4287519, -119.8734052, 'Tesla Supercharger', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4286823, -119.8734008, 'Tesla Supercharger', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4288253, -119.8732032, 'Electrify America', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4289767, -119.873409, 'Tesla Supercharger', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4360378, -119.8208922, 'Carpeteria', '5610 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4360101, -119.8212756, 'Alpha Thrift Store', '5624 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4359893, -119.8220547, 'Food Mart', '5648 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4358267, -119.8220155, '76', '5648 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4359505, -119.824232, 'Wendy\'s', '5724 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4358084, -119.8284113, 'Old Town Coffee', '5877 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4362943, -119.831145, 'Big Brand Tire & Service', '6010 Hollister Avenue Santa Barbara;Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4357532, -119.8308908, 'Jiffy Lube', '6015 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4368692, -119.8301974, 'McDonald\'s', '146 South Fairview Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4401877, -119.7441611, 'Jack in the Box', '3747 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4400417, -119.75065, 'Target', '3891 State Street Santa Barbara', '#f39c12', 2, 'La Cumbre Plaza', true);
+addStore(34.4408562, -119.7530556, 'McDonald\'s', '3940 State Street Santa Barbara', '#e74c3c', 12, 'Five Points Shopping Center', false);
+addStore(34.4346928, -119.7451903, 'Lexus', '350 Hitchcock Way Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4384658, -119.7494828, 'Bristol Farms', '3855 State Street Santa Barbara', '#f39c12', 2, 'La Cumbre Plaza', true);
+addStore(34.439351, -119.7477658, 'Macy\'s', '3805 State Street Santa Barbara', '#f39c12', 2, 'La Cumbre Plaza', true);
+addStore(34.401286, -119.7228095, '7-Eleven', '1909 Cliff Drive Santa Barbara', '#e74c3c', 6, 'Mesa Shopping Center', false);
+addStore(34.4013982, -119.7234398, 'The Point Market', '1929 Cliff Drive Santa Barbara', '#e74c3c', 6, 'Mesa Shopping Center', false);
+addStore(34.4166332, -119.6906867, 'Rad Power Bikes', '132 East Montecito Street Santa Barbara', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(34.4169083, -119.6934072, 'Reid\'s Appliances', '409 Anacapa Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4219319, -119.7009228, 'U.S. Bank', '20 East Carrillo Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4235013, -119.7015876, 'Wells Fargo', '1036 Anacapa Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.424329, -119.7003523, 'Matilija Pure Water', '1026 Santa Barbara Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4227056, -119.6510739, 'Pavilions', '1040 Coast Village Road Montecito', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4279256, -119.8662378, 'Ergomotion', '6790 Navigator Way Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4107632, -119.6969778, '7-Eleven', '331 West Montecito Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4103057, -119.6973288, 'Chevron', '401 West Montecito Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4102124, -119.6974656, 'Rocket', '401 West Montecito Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4354276, -119.8280123, 'Oat Bakery', '231 Magnolia Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4385908, -119.8310339, 'Island Seed & Feed', '29 South Fairview Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4361108, -119.8284491, 'Blue Blossoms', '5878 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4361034, -119.8283368, 'Goleta Barbers', '5870 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4360974, -119.8282028, 'Family Discount', '5860 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4362611, -119.8282098, 'Textures Salon', '5860 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4360676, -119.827845, 'Mary\'s Beauty Center', '5854 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4358039, -119.8281962, 'Oriental Market', '5863 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4365602, -119.829746, 'Life-Like Cosmetic Solutions', '5950 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4263543, -119.8296013, 'Thrifty', '5971 Placencia Street Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4254154, -119.7025717, 'Adornment', '131 East Anapamu Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4223798, -119.6894175, 'Carneceria La Nueva Bodeguita', '512 East Haley Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4316694, -119.7202405, 'Sinclair', '2234 De La Vina Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4316022, -119.7203255, 'Sinclair', '2234 De La Vina Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.431812, -119.7222358, 'U.S. Bank', '220 Nogales Avenue Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4318027, -119.7221355, 'U.S. Bank', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4208574, -119.7011561, 'BCycle', '-', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4199392, -119.6995698, 'Rejuvenation Spa & Nails', '802 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4211573, -119.7017211, 'Courtney Burke', '931 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4201037, -119.700261, 'Creations Boutique', '825 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4207383, -119.7011366, 'Namaste', '911 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4200306, -119.7001571, 'Alo', '821 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4330366, -119.8490113, 'TJ\'s Carpet and Flooring', '139 Aero Camino Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4318521, -119.8757029, 'Hahka Kitchens', '72 Santa Felicia Drive Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4316136, -119.875694, 'Fine Line Custom Cabinets', '90 Santa Felicia Drive Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4309418, -119.8824369, 'A&E Cabinets', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.430643, -119.882484, 'Raymond Music', '7320 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4306259, -119.88284, 'Dioji K-9 Resort and Athletic Club', '7340 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4240014, -119.7057951, 'Napoleon Blonde', '1233 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4223088, -119.6577756, 'Free People', '40 Los Patos Way Montecito', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4358803, -119.8249331, 'Old Town Spa', '5748 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4355781, -119.8247928, 'Designer Cuts', '5737 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4355567, -119.8244207, 'Fairview Mattress & Furniture', '5729 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.435972, -119.8252046, 'O\'Reilly Auto Parts', '5754 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.43556, -119.8244612, 'Botánica San Judas Tadeo', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4356333, -119.825636, 'Monica\'s Flowers', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4359941, -119.8245263, 'Bertha\'s Jewelry', '5730 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4359682, -119.825872, 'La Chapala Market', '5780 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4381241, -119.8308343, 'Precision Auto Body & Painting', '57 South Fairview Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4375687, -119.8311056, 'Little Caesars', '109 South Fairview Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4375603, -119.8310012, 'Surf Country', '109 South Fairview Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4375465, -119.8307937, 'Hi-Time Liquor', '109 South Fairview Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4107383, -119.8560589, '7-Eleven', '6545 Trigo Road Isla Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4389187, -119.8518627, 'Samsara Wine Co.', '6485 Calle Real Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4392264, -119.8523815, 'Green Star Coffee', '6489 Calle Real Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4427525, -119.8315504, 'EVgo', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.4395222, -119.8516394, 'Augie\'s Water Systems', '6483 Calle Real Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4390099, -119.750633, 'AT&T', '101 South La Cumbre Road Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4403117, -119.7519718, 'Quest Diagnostics', '3905 State Street Santa Barbara', '#e74c3c', 12, 'Five Points Shopping Center', false);
+addStore(34.4402998, -119.751834, 'The Good Feet Store', '3905 State Street Santa Barbara', '#e74c3c', 12, 'Five Points Shopping Center', false);
+addStore(34.4402052, -119.7518148, 'The UPS Store', '3905 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4400552, -119.7518305, 'Thairapy Salon', '3905 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4402592, -119.7516644, 'Ageless Men\'s Health', '3905 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4401682, -119.7512603, 'Nutrishop', '3905 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4402873, -119.7513776, 'Champagne Nail Bar', '3905 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4399011, -119.7512775, 'Hertz', '16 South La Cumbre Road Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4399027, -119.7515558, 'Thai Massage', '-', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4399673, -119.7515629, 'Fashion Hair Salon', '-', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4394709, -119.7516522, 'uBreakiFix', '3987 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4403008, -119.7512527, 'Town & Country Distinct Event Rentals & Services', '3905 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4317229, -119.8753949, 'Fido House', '-', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4237579, -119.6815428, 'Winchell\'s Donut House', '202 North Milpas Street Santa Barbara', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(34.4229704, -119.6815778, 'Classic Design German Car Specialist', '129 North Milpas Street Santa Barbara', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(34.4309856, -119.887633, 'InTouch Health', '7406 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4314326, -119.8524736, 'California Electrical Supply Santa Barbara', '6464 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4389197, -119.8194899, 'Fence Factory', '60 South Kellogg Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4395628, -119.8524229, 'Protea & Bloom', '6489 Calle Real Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4396417, -119.8518571, 'Esportiko', '6487 Calle Real Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4143832, -119.8534726, 'DogiPot', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4101936, -119.8443012, 'Dero', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4166543, -119.6950895, 'State Street Smoke Shop', '432 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4405841, -119.7397801, 'Ink Paper Crafts', '3554 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4405581, -119.7395072, 'Asian Care Center', '3532 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4406065, -119.7399953, 'Little Rainbow Foot Spa', '3560 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4217097, -119.690094, 'Twenty-Four Blackbirds', '428 East Haley Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.413851, -119.8418391, 'Pepsi', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4150279, -119.6942659, 'Folio Press & Paperie', '301 Motor Way Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4152569, -119.6945799, 'Chocolate Maya', '15 West Gutierrez Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4149863, -119.6942044, 'Coast Supply Co.', '14 Parker Way Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4152311, -119.6946648, 'Riviera Towel Company', '17 West Gutierrez Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4256649, -119.8714864, 'Little Free Library', '-', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4136548, -119.6987074, 'Linen', '436 Bath Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4218444, -119.6797425, 'Little Caesars', '21 North Milpas Street Santa Barbara', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(34.4402373, -119.7464276, 'Fidelity Investments', '3793 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4407443, -119.7458429, 'BMO', '3780 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4199885, -119.863003, 'Enphase', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4117078, -119.8577748, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4153017, -119.8599981, 'Fido House', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4133443, -119.8628582, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4394241, -119.7508821, 'O\'Reilly Auto Parts', '55 South La Cumbre Road Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4397168, -119.7512557, 'Orchid Thai Massage And Spa', '38 South La Cumbre Road Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4357717, -119.8093082, 'Top Shop Automotive', '177 South Patterson Avenue Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4407133, -119.7472131, 'Wells Fargo', '3804 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4407448, -119.7494745, 'Berkshire Hathaway HomeServices', '3868 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4406363, -119.7501848, 'Channel City Hardware and Gifts', '3888 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4392139, -119.7465023, 'FedEx Office', '23 South Hope Avenue Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4355341, -119.8241635, 'Little Free Library', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4224495, -119.7034916, 'Hempwise', '1103 State Street Santa Barbara', '#e74c3c', 8, 'Victoria Court', false);
+addStore(34.4247066, -119.6912558, 'Action Energy', '629 North Salsipuedes Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4219494, -119.6874811, 'e-Bikery', '590 East Gutierrez Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4218305, -119.6873616, 'RD Homes', '590 East Gutierrez Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4364353, -119.8462257, 'Beyond Heating & Air', '75 Robin Hill Road Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4356929, -119.8488989, 'Forno Classico', '53 Aero Camino Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4354073, -119.8489253, 'Merrick\'s Garage', '57 Aero Camino Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4352332, -119.8481697, '5 Star Auto Repair', '74 Aero Camino Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4336319, -119.8482638, 'ABC Supply', '122 Aero Camino Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4325267, -119.8480418, '101 Automotive Repair', '158 Aero Camino Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4400037, -119.7387032, 'Jules By The Sea', '3461 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4343583, -119.820263, 'Tri-Valley Trophies', '330 South Kellogg Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4343411, -119.8201189, 'Far West Technology', '330 South Kellogg Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4214219, -119.6456923, 'Berkshire Hathaway HomeServices', '1170 Coast Village Road Montecito', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4214048, -119.646245, 'K. Frank', '1150 Coast Village Road Montecito', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4293111, -119.7122506, '76', '1802 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4293843, -119.7121335, '76', '1802 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4198119, -119.6920854, 'Apex Smoke & Vape', '234 East Haley Street Santa Barbara', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(34.4200102, -119.6919116, 'Dago Hardwood & Flooring', '302 East Haley Street Santa Barbara', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(34.4205036, -119.6918705, 'Linde Welding Gas & Equipment Center', '305 East Haley Street Santa Barbara', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(34.4205163, -119.691801, 'Santa Barbara Fasteners', '305 East Haley Street Santa Barbara', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(34.4205112, -119.6912746, 'Higgins Muffler & Brake', '324 East Haley Street Santa Barbara', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(34.4208442, -119.6909492, 'Buena Tool', '433 Laguna Street Santa Barbara', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(34.4296959, -119.7162627, 'Mission Tattoo', '104 West Mission Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.438497, -119.728251, 'Happy Little Hippo', '2945 De La Vina Street Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4382567, -119.7280419, 'Vishions Smoke Shop', '2939 De La Vina Street Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4414054, -119.7560079, 'Chinese Dragon Massage', '4010 Calle Real Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4414124, -119.7556961, 'Hi Time Liquor', '4010 Calle Real Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4270932, -119.7093012, 'Bill\'s Copy Shop', '1536 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4256902, -119.7068092, 'Welch-Ryce-Haider', '15 East Sola Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4258708, -119.7074946, 'Merrill Lynch Wealth Management', '1424 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4224644, -119.7035239, 'Anna Janelle Jewelry', '1103 State Street Santa Barbara', '#e74c3c', 8, 'Victoria Court', false);
+addStore(34.4219956, -119.7023614, 'Pampel Design', '1014 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4182752, -119.7055294, 'Goodwill', '302 West Carrillo Street Santa Barbara', '#e74c3c', 8, 'Victoria Court', false);
+addStore(34.4264602, -119.7197082, 'Mobil Mart', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4400232, -119.7584853, 'Speedway', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4403254, -119.7673455, 'Milpas Rental', '4321 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4404921, -119.8184931, 'SmartStop', '10 South Kellogg Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4373051, -119.7262467, 'Plaza Liquor', '2840 De La Vina Street Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4369759, -119.7259327, 'De La Vina Barbers', '2830 De La Vina Street Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4370751, -119.7257779, 'Goodland Tattoo', '2830 De La Vina Street Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4371879, -119.7256068, 'Soapy Suds Laundromat', '2830 De La Vina Street Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.438851, -119.7280682, 'GV Optical', '2946 De La Vina Street Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4368291, -119.7269269, '76', '2837 De La Vina Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4387754, -119.7286215, 'Santa Barbara Audiology', '3009 De La Vina Street Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4407343, -119.7331452, 'Leslie\'s Pool Supplies', '3218 State Street Santa Barbara', '#e74c3c', 9, 'Loreto Plaza', false);
+addStore(34.4400438, -119.7283238, 'Rainbow Nails', '10 West Calle Laureles Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.439405, -119.7283369, 'Wellness Therapy Center', '32 West Calle Laureles Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4395853, -119.7283208, 'Creative Kitchen Spaces', '22 West Calle Laureles Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4401092, -119.728309, 'Santa Barbara Spa', '-', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4259585, -119.7083121, 'Achilles Prosthetics and Orthotics', '1435 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4397455, -119.7283345, 'Coastal Design Drapery and Shade', '16 West Calle Laureles Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4227663, -119.7091096, 'Miracle-Ear', '1333 De La Vina Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4308947, -119.7150386, 'Illusions Smoke Shop', '2003 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4287348, -119.7120667, 'American Cleaners and Tailoring', '1731 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.439763, -119.7283265, 'Shaddai Print & Design', '16 West Calle Laureles Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4217558, -119.8791512, 'Mutt Mitt', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4109554, -119.8577503, 'Snag Delivery', '6565 Trigo Road', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4414738, -119.7447179, 'Santa Barbara Herb Clinic', '3760 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4392294, -119.7283759, 'Jaz Hair Salon', '3008 De La Vina Street Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4208781, -119.6443776, 'City National Bank', '1205 Coast Village Road Montecito', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4177539, -119.7060749, 'Curtis Carpet', '320 West Carrillo Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4168857, -119.7063677, 'Jiffy Lube', '401 West Carrillo Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4175273, -119.7064026, 'Speedway', '340 West Carrillo Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4175541, -119.7065509, 'Speedway', '340 West Carrillo Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4154669, -119.7016711, 'The Little Corner Store', '701 Bath Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4217396, -119.6502178, 'Starbucks', '1046 Coast Village Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4219009, -119.6565647, 'The Post', '1801 East Cabrillo Boulevard Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4218254, -119.6502335, 'Quest Diagnostics', '1046 Coast Village Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.420838, -119.643896, 'Nurture Cottage', '1213 Coast Village Road Montecito', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4209202, -119.6454291, 'Chase', '1165 Coast Village Road Montecito', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4211336, -119.648103, 'The Point Market', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4210074, -119.6462144, 'Faherty', '1155 Coast Village Road Montecito', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4209615, -119.6459161, 'Johnny Was', '1159 Coast Village Road Montecito', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4208684, -119.6447305, 'The Tennis Shop', '1187 Coast Village Road Montecito', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4208207, -119.6437406, 'James Perse', '1221 Coast Village Road Montecito', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4208206, -119.6434842, 'Mischief', '1225 Coast Village Road Montecito', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4400151, -119.737228, 'Farmers Insurance', '3425 State Street Santa Barbara', '#e74c3c', 9, 'Loreto Plaza', false);
+addStore(34.4407431, -119.7456884, 'BMO', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4372363, -119.7492803, 'Miss Daisy\'s', '3845 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4371188, -119.7488327, 'La-Z-Boy', '-', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4384339, -119.7500802, 'ExtraMile', '115 South La Cumbre Road Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4221672, -119.6502777, 'Occhiali Fine Eyewear', '1046 Coast Village Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4160594, -119.6889857, 'Michael Kate Interiors', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4219841, -119.6502674, 'Santa Barbara Running', '1046 Coast Village Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4214205, -119.6464067, 'Haven Salon', '1150 Coast Village Road Montecito', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.421414, -119.6443844, 'Bottle Shop', '1200 Coast Village Road Montecito', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4207768, -119.6450004, 'Richie\'s Barber Shop', '1187 Coast Village Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.421045, -119.6464941, 'Civilianaire', '1145 Coast Village Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4210688, -119.6465413, 'Daniel Gibbings', '1143 Coast Village Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4210205, -119.6463946, 'Wunderkind', '1147 Coast Village Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4212052, -119.6471206, 'True Love Always', '1115 Coast Village Road Montecito', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4403392, -119.7642983, 'Farmacy', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4352228, -119.7483312, 'Bentley', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.440299, -119.764568, 'Harder RV Storage', '4241 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4401583, -119.7668953, 'Kids Cuts', '4317 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4402585, -119.7657557, 'Hotspring Spa & Patio', '4285 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4402554, -119.7656671, 'Santa Barbara Lampshades', '4287 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4229876, -119.7114873, 'La Bamba Market', '235 West Micheltorena Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4356983, -119.725585, 'Amigos Hair Cutting', '2709 De La Vina Street Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.439304, -119.7283322, 'Whitney Chic Boutique', '36 West Calle Laureles Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4397421, -119.7705583, 'Elaine\'s Nail Spa', '4419 Hollister Avenue Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4397191, -119.7706992, 'Noble Massage Spa', '4423 Hollister Avenue Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4397066, -119.7707759, 'Uptown Barber Shop', '4425 Hollister Avenue Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.439695, -119.7713391, 'Talevi\'s Wine and Spirits', '4437 Hollister Avenue Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4393653, -119.7713812, 'Green Coast', '135 Nogal Drive Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4117734, -119.7023088, 'Mutt Mitt', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4090614, -119.7014519, 'Mutt Mitt', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4149444, -119.7106638, 'Speedway Express', '636 West Carrillo Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4150622, -119.7106289, 'Speedway', '636 West Carrillo Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.413055, -119.7060488, 'Guadalajara Market', '601 West De La Guerra Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4190491, -119.6951477, 'F45 Training', '528 Anacapa Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.443494, -119.789798, 'The Point Market', '175 North Turnpike Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4433033, -119.7897464, 'Shell', '175 North Turnpike Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4435562, -119.7896783, 'Shell', '175 North Turnpike Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4360572, -119.7899331, 'Mobil Mart', '4801 Hollister Avenue Santa Barbara', '#e74c3c', 10, 'Turnpike Shopping Center', false);
+addStore(34.4288188, -119.8693311, 'Aura Beauty Spa', '270 Storke Road Santa Barbara', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4102791, -119.6982692, 'Hideaway', '420 West Montecito Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4102771, -119.6975721, 'Amazon Locker', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4124473, -119.6957412, 'Miratti\'s Liquor', '214 West Montecito Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.411356, -119.6965124, 'Mercado El Rey', '305 West Montecito Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4190713, -119.7023705, 'Fastrack Bicycles', '118 West Canon Perdido Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4161359, -119.6959327, 'Hotel Virginia', '17 West Haley Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4164299, -119.6968505, 'Santa Barbara Autowerks', '515 Fig Avenue Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4094804, -119.6960443, 'Mutt Mitt', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4114574, -119.6899008, 'BCycle', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4115637, -119.6897594, 'BCycle', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4113397, -119.6900434, 'BCycle', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.412781, -119.690312, 'Majorelle Spa', '36 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4142713, -119.6933479, 'Santa Barbara Hot Tubs', '17 West Montecito Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4037082, -119.693081, 'BCycle', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4086891, -119.6930695, 'BCycle', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.408814, -119.6929322, 'BCycle', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4093719, -119.6926386, 'BCycle', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4341592, -119.8020422, 'Lane Farms Produce Stand', '308 South Walnut Lane Santa Barbara', '#e74c3c', 7, 'Magnolia Shopping Center', false);
+addStore(34.4350171, -119.8270714, 'SB Care Center', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4154991, -119.6949861, 'Ablitt\'s Fine Cleaners & Launderers', '14 West Gutierrez Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4125006, -119.6952142, 'GALS Motor Storage', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.440893, -119.8221276, 'Goleta Valley Gun & Supply', '5669 Calle Real Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4035027, -119.7437061, 'Mutt Mitt', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4106677, -119.7021031, 'BCycle', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4149972, -119.7102448, 'Carrillo Market & Deli', '626 West Carrillo Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4146122, -119.7100339, 'Los Amigos 99 Plus Store', '631 West Carrillo Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4158334, -119.7120661, 'BCycle', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4158697, -119.7121153, 'BCycle', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4202948, -119.6818935, 'Goleta Radiator & Auto Repair', '705 Lawrence Avenue Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4212806, -119.6824545, 'Pacific Pickle Works', '718 Union Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4111428, -119.6972672, 'Ria', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4189334, -119.8622542, 'Santa Ynez Laundry Room', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4179465, -119.8563936, 'Castaic', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4127024, -119.8550843, 'Nespor\'s University Auto House', '924 Embarcadero Del Norte Isla Vista', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4428948, -119.7907331, 'In-N-Out Burger', '4865 Calle Real Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4433815, -119.7913517, 'Extended Stay America', '4870 Calle Real Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4417383, -119.8261764, 'Carl\'s Jr.', '5820 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4409863, -119.8279814, 'Motel 6', '5897 Calle Real Goleta', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4418951, -119.8310626, '76', '109 North Fairview Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4377574, -119.7905589, 'Vons', '163 South Turnpike Road Santa Barbara', '#f39c12', 10, 'Turnpike Shopping Center', true);
+addStore(34.4360296, -119.8034711, 'Magnolia Shopping Center', '-', '#e74c3c', 7, 'Magnolia Shopping Center', false);
+addStore(34.4225344, -119.8628763, 'Storke FSH Laundry Room', '786 Laurel Walk Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.43976, -119.83698, 'Ambiance Nail Care Services', '25 Carlo Drive', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4271184, -119.7103276, 'Courtyard by Marriott Santa Barbara Downtown', '1601 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4369166, -119.749128, 'Furniture Gallery by Mattress Mike', '3845 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.438119, -119.7509858, 'Conservmart', '-', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.420962, -119.7068569, 'Red Sand Market', '207 West Anapamu Street Santa Barbara', '#e74c3c', 8, 'Victoria Court', false);
+addStore(34.4209708, -119.7067062, 'Econo Auto Center', '1131 De La Vina Street Santa Barbara', '#e74c3c', 8, 'Victoria Court', false);
+addStore(34.4192797, -119.7045553, 'Starbucks', '208 West Carrillo Street Santa Barbara', '#e74c3c', 8, 'Victoria Court', false);
+addStore(34.4200131, -119.7042225, 'Ralphs', '100 West Carrillo Street Santa Barbara', '#f39c12', 8, 'Victoria Court', true);
+addStore(34.4204303, -119.7025512, 'Kimpton Canary Hotel', '31 West Carrillo Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4236019, -119.7055316, 'Victoria Court', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4277975, -119.8748165, 'Costco', '7095 Marketplace Drive Goleta', '#f39c12', 1, 'Camino Real Marketplace', true);
+addStore(34.4298559, -119.8692331, 'University Chevron', '6895 Hollister Avenue Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4176093, -119.6961208, 'Drift Hotel', '524 State Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4252926, -119.7062173, 'Arlington Plaza', '1324 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4235255, -119.7057851, 'United States Post Office', '1221 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4166596, -119.6981953, 'Enterprise', '601 Chapala Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4150047, -119.6923874, 'Moxy Santa Barbara', '12 East Montecito Street Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.418106, -119.6694033, 'Hyatt Santa Barbara', '1111;1039 East Cabrillo Boulevard;Orilla Del Mar Drive Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4180594, -119.6708424, 'Motel 6', '443 Corona del Mar Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4190563, -119.6998857, 'Paseo Nuevo Mall', '651 Paseo Nuevo Santa Barbara', '#e74c3c', 0, 'Paseo Nuevo Mall', false);
+addStore(34.4297509, -119.8606601, 'Deckers Brand Showcase', '6601 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4263264, -119.8692698, 'The Point Market', '370 Storke Road Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4264952, -119.7032057, 'Presidio Market', '1236 Santa Barbara Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4302583, -119.7209999, 'Best Western Plus Santa Barbara', '2220 Bath Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4054176, -119.6970936, 'SBCC Campus Store', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4112467, -119.6973208, 'Santa Cruz Market', '324 West Montecito Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4200824, -119.8710121, 'Miramar Food Pantry', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4309489, -119.8688946, 'Hilton Garden Inn', '6878 Hollister Avenue Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4184867, -119.8694616, 'Tenaya Market & Eatery', '7101', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4298319, -119.8692336, 'ExtraMile', '6895 Hollister Avenue Goleta', '#e74c3c', 1, 'Camino Real Marketplace', false);
+addStore(34.4349298, -119.8725896, 'One Stop Shop Market & Liquor', '7020 Calle Real Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4350838, -119.872139, 'Mobil Mart', '49 Glen Annie Road Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4331992, -119.8847424, '7-Eleven', '7390 Calle Real Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4427882, -119.8302435, 'Fuel Depot', '180 North Fairview Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4278402, -119.8764676, 'Albertsons', '7127 Hollister Avenue Goleta', '#f39c12', 1, 'Camino Real Marketplace', true);
+addStore(34.433137, -119.9001363, '76', '7798 Calle Real Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.435163, -119.822192, 'Hampton Inn & Suites', '5665 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4329955, -119.8186995, 'Welch-Ryce-Haider Funeral Chapel', '450 Ward Drive Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4401758, -119.7601426, 'Hyatt Place Santa Barbara', '4111 State Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.440751, -119.748716, 'FOUND Hotels, Santa Barbara, Series by Marriott', '3850 State Street Santa Barbara', '#e74c3c', 2, 'La Cumbre Plaza', false);
+addStore(34.4302099, -119.7412868, 'Showgrounds Self Storage', '3650 Calle Real Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4299983, -119.7411141, 'Showgrounds Self Storage', '3650 Calle Real Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4301471, -119.7414517, 'Showgrounds Self Storage', '3650 Calle Real Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4406165, -119.727614, 'Verizon', '2980 State Street Santa Barbara', '#e74c3c', 3, 'Petersen Plaza', false);
+addStore(34.4295465, -119.6900785, 'Taco Bell', '821 North Milpas Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4192458, -119.6786301, 'Cal Coast Adventures', '736 Carpinteria Street Santa Barbara', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(34.4225645, -119.6516619, 'Montecito Country Mart', '1014 Coast Village Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4264509, -119.7195381, 'Mobil', '402 West Mission Street Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4384451, -119.8127604, 'Public Storage', '5425 Overpass Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4418564, -119.8210295, 'The Leta Santa Barbara Goleta, Tapestry Collection by Hilton', '5650 Calle Real Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4418619, -119.819805, 'South Coast Inn', '5620 Calle Real Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4176598, -119.6418981, 'Four Seasons Resort: The Biltmore Santa Barbara', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4310388, -119.8980211, 'Dixon\'s Goleta Self Storage', '7760 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4276674, -119.8708247, 'The Home Depot', '6975 Marketplace Drive Goleta', '#f39c12', 1, 'Camino Real Marketplace', true);
+addStore(34.4034468, -119.7013484, 'SBCC Theater Tickets', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4331164, -119.8441229, 'Residence Inn', '6350 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4207193, -119.7039923, 'Coastal', '1019 Chapala Street Santa Barbara', '#e74c3c', 8, 'Victoria Court', false);
+addStore(34.4570576, -119.7094858, 'Entrance', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4463609, -119.6588202, 'South Entrance Kiosk', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4258226, -119.8616211, 'Extra Space Storage', '6640 Discovery Drive Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4425236, -119.7560388, 'Santa Barbara Mini Storage', '190 Wye Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4159848, -119.8478913, 'Associated Students Bike Shop', 'Ocean Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4043293, -119.7427089, 'Santa Barbara County Dog Wash', '-', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4086359, -119.6849999, 'Stearns Wharf Bait and Tackle', 'Stearns Wharf Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4176171, -119.6694437, 'Mar Monte Hotel', '1111 East Cabrillo Boulevard Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4311955, -119.8828721, 'O.K. Storage', '7330 Hollister Avenue Goleta', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+addStore(34.4441139, -119.7888601, 'Fuel Depot', '250 North Turnpike Road Santa Barbara', '#27ae60', -1, 'Standalone / Not in Plaza', false);
+
+  map.on('overlayadd overlayremove', updateVisibility);
+  updateVisibility();
+
+  var overlays = {
+    '🔴  Multi-anchor plazas (2+ anchors)': layerMultiAnchor,
+    '⭕  Single-anchor plazas': layerSingleAnchor,
+    '🟣  Plaza Center Points': layerPlazaCenters,
+    '🟡  Anchor Stores (in Plaza)': layerAnchors,
+    '🔵🔴  Tenants (In Plaza)': layerTenants,
+    '🟢  Standalone Stores': layerStandalone,
+    '━━━━━━━━━━━━━━': L.layerGroup(),
+    '🔥  High Density Plazas (10+ tenants)': layerHighDensity,
+    '🔹  Lower Density (< 10 tenants)': layerLowDensity
+  };
+
+  var countyDivider = false;
+  for (var county in countyLayers) {
+    if (!countyDivider) {
+        overlays['━━━━━━━━━━━━━━ '] = L.layerGroup();
+        countyDivider = true;
+    }
+    overlays['📍 ' + county] = countyLayers[county];
+  }
+
+  L.control.layers(null, overlays, {
+    position: 'topright',
+    collapsed: false,
+  }).addTo(map);
+
+  var legend = L.control({position: 'bottomright'});
+  legend.onAdd = function() {
+    var div = L.DomUtil.create('div', 'legend');
+    div.innerHTML = '<b>Retail Centers – Isla Vista, CA</b><br>'
+      + '<span class="legend-dot" style="background:#e74c3c"></span> Named plaza<br>'
+      + '<span class="legend-dot" style="background:#3498db"></span> Unnamed plaza<br>'
+      + '<span class="legend-dot" style="background:#8e44ad"></span> Plaza center point<br>'
+      + '<span class="legend-dot" style="background:#f39c12"></span> Anchor store (in plaza)<br>'
+      + '<span class="legend-dot" style="background:#27ae60"></span> Standalone store<br>'
+      + '⚓ = anchor &nbsp; 🔥 = 10+ tenants';
+    return div;
+  };
+  legend.addTo(map);
+</script>
+</body>
+</html>
