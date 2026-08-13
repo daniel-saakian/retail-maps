@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
+import { User } from "@supabase/supabase-js";
  
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
  
@@ -55,6 +56,16 @@ export interface HistoryDetail extends HistoryRun {
     plazas: PlazaRow[];
 }
  
+export interface UserProfile {
+    id: string;
+    email: string;
+    role: string;
+    created_at: string;
+    first_name?: string | null;
+    last_name?: string | null;
+    avatar_url?: string | null;
+}
+ 
 async function authHeaders(): Promise<HeadersInit> {
     const supabase = createClient();
     const {
@@ -71,7 +82,6 @@ async function apiFetch(path: string, init: RequestInit = {}): Promise<Response>
     const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
  
     if (res.status === 401) {
-        // Session expired/invalid server-side -- send back through the login gate.
         window.location.href = "/login";
         throw new Error("Session expired");
     }
@@ -87,9 +97,6 @@ async function apiJson<T>(path: string, init: RequestInit = {}): Promise<T> {
     return res.json() as Promise<T>;
 }
  
-// Downloads happen through an authenticated fetch + blob rather than a plain
-// <a href>, since a raw link can't carry an Authorization header and every
-// API route requires one.
 async function downloadFile(path: string, fallbackName: string): Promise<void> {
     const res = await apiFetch(path);
     const blob = await res.blob();
@@ -127,7 +134,6 @@ export const api = {
  
     deleteSearch: (id: string) => apiFetch(`/api/searches/${id}`, { method: "DELETE" }),
  
-    // Fetched as text and rendered via <iframe srcDoc=...> in the caller.
     getMapHtml: (id: string) => apiFetch(`/api/searches/${id}/map`).then((r) => r.text()),
  
     downloadExcel: (id: string, cityLabel: string) =>
@@ -139,4 +145,42 @@ export const api = {
  
     downloadHistoryExcel: (id: string, cityLabel: string) =>
         downloadFile(`/api/history/${id}/excel`, `${cityLabel}.xlsx`),
+ 
+    getMe: () => apiJson<UserProfile>("/api/me"),
+
+    updateMe: (fields: { first_name?: string; last_name?: string}) =>
+        apiJson<UserProfile>("/api/me", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(fields),
+        }),
+    
+    uploadAvatar: (file:File) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        return apiJson<UserProfile>("/api/me/avatar", {
+            method: "POST",
+            body: formData,
+        });
+    },
+ 
+    listUsers: () => apiJson<UserProfile[]>("/api/users"),
+ 
+    inviteUser: (email: string, role: string) =>
+        apiJson<UserProfile>("/api/users/invite", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, role }),
+        }),
+ 
+    updateUserRole: (userId: string, role: string) =>
+        apiJson<UserProfile>(`/api/users/${userId}/role`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ role }),
+        }),
+ 
+    deleteOwnAccount: () => apiFetch("/api/users/me", { method: "DELETE" }),
+ 
+    deleteUser: (userId: string) => apiFetch(`/api/users/${userId}`, { method: "DELETE" }),
 };

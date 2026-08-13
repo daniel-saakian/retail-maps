@@ -6,7 +6,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Optional
  
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -18,9 +18,6 @@ import majorretail as mr
 _bearer = HTTPBearer(auto_error=False)
  
 def require_auth(creds: HTTPAuthorizationCredentials | None = Depends(_bearer)):
-    """Every route in this API depends on this. A valid Supabase session is
-    required end-to-end -- the Next.js middleware gate is not sufficient on
-    its own, since the API is reachable directly."""
     if creds is None:
         raise HTTPException(401, "Missing bearer token")
     sb = cache.get_client()
@@ -33,6 +30,19 @@ def require_auth(creds: HTTPAuthorizationCredentials | None = Depends(_bearer)):
     if not resp or not resp.user:
         raise HTTPException(401, "Invalid or expired session")
     return resp.user
+
+def get_profile(user_id: str) -> dict | None:
+    sb = cache.get_client()
+    if not sb:
+        return None
+    rows = sb.table("profiles").select("*").eq("id", user_id).limit(1).execute().data
+    return rows[0] if rows else None
+
+def require_staff(user=Depends(require_auth)):
+    profile = get_profile(user.id)
+    if not profile or profile.get("role") != "staff":
+        raise HTTPException(403, "Staff permission required")
+    return user
  
 @dataclass
 class Job:
@@ -142,6 +152,26 @@ class HistoryRun(BaseModel):
  
 class HistoryDetail(HistoryRun):
     plazas: list[PlazaRow] = []
+
+class UserProfile(BaseModel):
+    id:str
+    email:str
+    role:str
+    created_at:str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    avatar_url: Optional[str] = None
+
+class InviteRequest(BaseModel):
+    email:str
+    role:str = "member"
+
+class RoleUpdateRequest(BaseModel):
+    role:str
+
+class ProfileUpdateRequest(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
  
 def _dict_plazas_to_rows(plazas: list[dict]) -> list[PlazaRow]:
     sorted_plazas = sorted(
@@ -215,8 +245,9 @@ def _job_to_detail(job:Job) -> JobDetail:
  
 app = FastAPI(title="Plaza Finder API", dependencies=[Depends(require_auth)])
 
-_allowed_origins = os.getenv("ALLOWED_ORIGINS", "https://localhost:3000").split(",")
+_allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 _allowed_origins = [o.strip() for o in _allowed_origins if o.strip()]
+print(f"[cors] allowed origins: {_allowed_origins}")
  
 app.add_middleware(
     CORSMiddleware,
@@ -331,3 +362,109 @@ def get_history_excel(run_id: str):
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+@app.get("/api/me", response_model=UserProfile)
+def get_me(user = Depends(require_auth)):
+    profile = get_profile(user.id)
+    if not profile:
+        raise HTTPException(404, "Profile Not Found")
+    return UserProfile(**profile)
+
+@app.patch("/api/me", response_model = UserProfile)
+def update_me(req: ProfileUpdateRequest, user = Depends(require_auth)):
+    sb = cache.get_client()
+    if not sb:
+        raise HTTPException(500, "Supabase not configured correctly")
+    payload = {k: v for k, v in req.model_dump().items() if v is not None}
+    if payload:
+        sb.table("profiles").update(payload).eq("id", user.id).execute()
+    profile = get_profile(user.id)
+    if not profile:
+        raise HTTPException(404,"Profile not found")
+    return UserProfile(**profile)
+
+@app.post("/api/me/avatar", response_model=UserProfile)
+async def upload_my_avatar(file:UploadFile=File(...), user=Depends(require_auth)):
+    ext = (file.filename or "").rsplit(".",1)[-1].lower() if "." in (file.filename or "") else "jpg"
+    if ext not in ("jpg", "jpeg", "png", "webp", "gif"):
+        raise HTTPException(400, "Unsupported image type")
+    data = await file.read()
+    if len(data) > 5 * 1024 * 1024:
+        raise HTTPException(400, "Image too large (max 5 MB)")
+    avatar_url = cache.upload_avatar(user.id,data,file.content_type or "image/file",ext)
+    if not avatar_url:
+        raise HTTPException(500, "Avatar upload failed")
+    sb = cache.get_client()
+    if sb:
+        sb.table("profiles").update({"avatar_url": avatar_url}).eq("id", user.id).execute()
+    profile = get_profile(user.id)
+    if not profile:
+        raise HTTPException(404, "profile not found")
+    return UserProfile(**profile)
+
+@app.get("/api/users", response_model=list[UserProfile])
+def list_users(user = Depends(require_staff)):
+    sb = cache.get_client()
+    if not sb:
+        raise HTTPException(500, "Supabase not configured")
+    rows = sb.table("profiles").select("*").order("created_at").execute().data or []
+    return [UserProfile(**r) for r in rows]
+
+@app.post("/api/users/invite", response_model=UserProfile)
+def invite_user(req: InviteRequest, user = Depends(require_staff)):
+    if req.role not in ("staff", "member"):
+        raise HTTPException(400, "Role must be 'staff' or 'member'")
+    sb = cache.get_client()
+    if not sb:
+        raise HTTPException(500, "Supabase not configured")
+    try:
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+        result = sb.auth.admin.invite_user_by_email(
+            req.email,
+            {"redirect_to": f"{frontend_url}/onboarding"}
+        )
+    except Exception as e:
+        raise HTTPException(400, f"Invite failed: {e}")
+    invited_id = result.user.id
+    sb.table("profiles").upsert({
+        "id": invited_id, "email": req.email, "role": req.role,
+    }).execute()
+    profile = get_profile(invited_id)
+    return UserProfile(**profile)
+
+@app.patch("/api/users/{user_id}/role", response_model=UserProfile)
+def update_user_role(user_id:str, req: RoleUpdateRequest, user = Depends(require_staff)):
+    if req.role not in ("staff", "member"):
+        raise HTTPException(400, "role must be in 'staff' or 'member'")
+    sb = cache.get_client()
+    if not sb:
+        raise HTTPException(500, "Supabase not configured")
+    sb.table("profiles").update({"role": req.role}).eq("id", user_id).execute()
+    profile = get_profile(user_id)
+    if not profile:
+        raise HTTPException(404, "User not Found")
+    return UserProfile(**profile)
+
+@app.delete("/api/users/me")
+def delete_own_account(user = Depends(require_auth)):
+    sb = cache.get_client()
+    if not sb:
+        raise HTTPException(500, "Supabase not configured")
+    try:
+        sb.auth.admin.delete_user(user.id)
+    except Exception as e:
+        raise HTTPException(400, f"Delete failed: {e}")
+    return {"ok": True}
+
+@app.delete("/api/users/{user_id}")
+def delete_user(user_id: str, user = Depends(require_staff)):
+    if user_id == user.id:
+        raise HTTPException(400, "Use DELETE /api/users/me to delete your own account")
+    sb = cache.get_client()
+    if not sb:
+        raise HTTPException(500, "Supabase not configured")
+    try:
+        sb.auth.admin.delete_user(user_id)
+    except Exception as e:
+        raise HTTPException(400, f"Delete failed: {e}")
+    return {"ok": True}

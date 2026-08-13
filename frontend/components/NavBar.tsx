@@ -9,13 +9,17 @@ import { useJobs } from "@/lib/JobsContext";
 const TABS = [
     { href: "/", label: "Search" },
     { href: "/history", label: "History" },
+    { href: "/settings", label: "Settings" },
 ];
 
 export default function NavBar() {
     const pathname = usePathname();
-    const { jobs } = useJobs();
 
-    if (pathname.startsWith("/login")) return null;
+
+
+    const { jobs, me } = useJobs();
+
+    if (pathname.startsWith("/login") || pathname.startsWith("/onboarding")) return null;
 
     const runningCount = jobs.filter((j) => j.status === "queued" || j.status === "running").length;
 
@@ -55,9 +59,25 @@ export default function NavBar() {
                             {runningCount} running
                         </Link>
                     )}
+                    {me?.first_name && (
+                        <span className="flex items-center gap-2 text-xs font-medium text-paper/80">
+                            Signed in as {me.first_name}
+                            {me.avatar_url ? (
+                                <img
+                                    src={me.avatar_url}
+                                    alt=""
+                                    className="h-6 w-6 rounded-full border border-white/20 object-cover"
+                                />
+                            ) : (
+                                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-sky text-[10px] font-bold text-white">
+                                    {me.first_name[0]?.toUpperCase()}
+                                </span>
+                            )}
+                        </span>
+                    )}
                     <button
                         onClick={() => logout()}
-                        className="text-xs font-medium text-slate-400 hover:text-slate-600"
+                        className="text-xs font-semibold uppercase tracking-[0.1em] text-paper/50 hover:text-paper"
                     >
                         Sign Out
                     </button>

@@ -2,15 +2,17 @@ import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function proxy(request: NextRequest) {
-
     const { pathname } = request.nextUrl;
     if (
         pathname.startsWith("/_next") ||
         pathname === "/favicon.ico" ||
+        pathname.startsWith("/auth/callback") ||
+        pathname.startsWith("/auth/confirm") ||
         /\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|map|woff2?|ttf)$/.test(pathname)
     ) {
         return NextResponse.next();
     }
+
     let response = NextResponse.next({ request: { headers: request.headers } });
 
     const supabase = createServerClient(

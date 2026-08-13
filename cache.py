@@ -118,6 +118,24 @@ def save_county(lat: float, lng: float, county: str):
         print(f"  [cache] county write error: {e}")
  
 EXCEL_BUCKET = "run-exports"
+
+AVATAR_BUCKET = "avatars"
+
+def upload_avatar(user_id: str, file_bytes: bytes, content_type: str, ext:str) -> str | None:
+    sb = get_client()
+    if not sb:
+        return None
+    try:
+        storage_path = f"{user_id}/avatar.{ext}"
+        sb.storage.from_(AVATAR_BUCKET).upload(
+            storage_path,
+            file_bytes,
+            {"content-type": content_type, "upsert": "true"},
+        )
+        return sb.storage.from_(AVATAR_BUCKET).get_public_url(storage_path)
+    except Exception as e:
+        print(f"  [cache] avatar upload error: {e}")
+        return None
  
  
 def list_history_runs() -> list[dict]:
@@ -129,7 +147,6 @@ def list_history_runs() -> list[dict]:
                   .select("*")
                   .order("ran_at", desc=True)
                   .execute()).data or []
-        # N+1 is fine at this scale (internal tool, low run count).
         for run in runs:
             count = (sb.table("run_plazas")
                         .select("plaza_id", count="exact")

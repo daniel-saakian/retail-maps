@@ -5,42 +5,57 @@ import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 const IDLE_LIMIT_MS = 30 * 60 * 1000;
+const CHECK_INTERVAL_MS = 15*1000;
 const ACTIVITY_EVENTS = ["mousemove", "mousedown", "keydown", "scroll", "touchstart", "click"];
 
 export default function AutoSignOut() {
     const pathname = usePathname();
     const router = useRouter();
     const [idle, setIdle] = useState(false);
-    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const lastActivityRef = useRef<number>(Date.now());
+    const signedOutRef = useRef(false);
 
     useEffect(() => {
         if (pathname.startsWith("/login")) return;
 
-        function resetTimer() {
-            if (timerRef.current) clearTimeout(timerRef.current);
-            timerRef.current = setTimeout(async () => {
+        lastActivityRef.current = Date.now();
+        signedOutRef.current = false;
+
+        function markActive() {
+            lastActivityRef.current = Date.now();
+        }
+
+        async function checkIdle() {
+            if (signedOutRef.current) return;
+            const elapsed = Date.now() - lastActivityRef.current;
+            if (elapsed >= IDLE_LIMIT_MS) {
+                signedOutRef.current = true;
                 const supabase = createClient();
                 await supabase.auth.signOut();
                 setIdle(true);
-            }, IDLE_LIMIT_MS);
+            }
         }
 
-        ACTIVITY_EVENTS.forEach((evt) => window.addEventListener(evt, resetTimer));
-        resetTimer();
+        ACTIVITY_EVENTS.forEach((evt) => window.addEventListener(evt, markActive));
+        document.addEventListener("visibilitychange",checkIdle)
+        const interval = setInterval(checkIdle, CHECK_INTERVAL_MS);
 
         return () => {
-            ACTIVITY_EVENTS.forEach((evt) => window.removeEventListener(evt, resetTimer));
-            if (timerRef.current) clearTimeout(timerRef.current);
+            ACTIVITY_EVENTS.forEach((evt) => window.removeEventListener(evt, markActive));
+            document.removeEventListener("visibilitychange", checkIdle);
+            clearInterval(interval);
         };
-    }, [pathname]);
-
+    }, [pathname])
     if (!idle) return null;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 backdrop-blur-sm">
             <div className="relative w-full max-w-sm rounded-xl border border-line bg-white p-6 text-center shadow-lg">
                 <button
-                    onClick={() => router.push("/login")}
+                    onClick={() => {
+                        setIdle(false);
+                        router.push("/login");
+                    }}
                     aria-label="Close"
                     className="absolute right-3 top-3 rounded p-1 text-charcoal hover:bg-paper-dim hover:text-ink"
                 >

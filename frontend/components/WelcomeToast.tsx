@@ -3,34 +3,45 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
+const transition_ms = 300;
+const welcome_hold_ms = 2000;
+const goodbye_hold_ms = 6500;
+
 export default function WelcomeToast() {
     const searchParams = useSearchParams();
     const pathname = usePathname();
     const router = useRouter();
     const [mounted, setMounted] = useState(false);
     const [visible, setVisible] = useState(false);
+    const [message, setMessage] = useState("Signed in");
 
     useEffect(() => {
-        if (searchParams.get("welcome") !== "1") return;
+        const isWelcome = searchParams.get("welcome") === "1";
+        const isGoodbye = searchParams.get("goodbye") === "1";
+        if (!isWelcome && !isGoodbye) return;
+        setMessage(isWelcome ? "Signed in" : "Signed out");
+
+        const holdMs = isWelcome ? welcome_hold_ms : goodbye_hold_ms;
 
         setMounted(true);
         const enter = requestAnimationFrame(() => setVisible(true));
 
-        const hideTimer = setTimeout(() => setVisible(false), 300+2000);
+        const hideTimer = setTimeout(() => setVisible(false), transition_ms+holdMs);
         const cleanupTimer = setTimeout(() => {
             setMounted(false);
             const params = new URLSearchParams(searchParams.toString());
             params.delete("welcome");
+            params.delete("goodbye");
             const query = params.toString();
             router.replace(pathname + (query ? `?${query}` : ""));
-        }, 300 + 2000 + 300);
+        }, transition_ms + holdMs + transition_ms);
 
         return () => {
             cancelAnimationFrame(enter);
             clearTimeout(hideTimer);
             clearTimeout(cleanupTimer);
         };
-    }, []);
+    }, [searchParams]);
 
     if (!mounted) return null;
 
@@ -42,7 +53,7 @@ export default function WelcomeToast() {
         >
             <div className="flex items-center gap-2 rounded-b-lg border border-t-0 border-line bg-ink px-5 py-2.5 text-sm font-medium text-white shadow-md">
                 <span className="h-2 w-2 rounded-full bg-sky" />
-                Signed in
+                {message}
             </div>
         </div>
     );

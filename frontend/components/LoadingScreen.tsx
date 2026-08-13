@@ -1,13 +1,13 @@
 "use client";
-
+ 
 import { useEffect, useMemo, useState } from "react";
-
+ 
 type Stage = {
     match: RegExp;
     label: string;
     messages: string[];
 };
-
+ 
 const STAGES: Stage[] = [
     {
         match: /\[1\/6\]/,
@@ -40,9 +40,9 @@ const STAGES: Stage[] = [
         messages: ["Crawling brokerage listings pages...", "Extracting broker names and contacts..."],
     }
 ];
-
+ 
 const STARTING_MESSAGES = ["Spinning up the search...", "Getting coordinates in order..."];
-
+ 
 function currentStageIndex(log: string[]): number {
     let idx = -1;
     for (const line of log) {
@@ -52,14 +52,14 @@ function currentStageIndex(log: string[]): number {
     }
     return idx;
 }
-
+ 
 function formatElapsed(seconds: number): string {
     const total = Math.max(0, Math.floor(seconds));
     const m = Math.floor(total / 60);
     const s = total % 60;
     return `${m}:${s.toString().padStart(2,"0")}`;
 }
-
+ 
 export default function LoadingScreen({
     log,
     createdAt,
@@ -70,11 +70,11 @@ export default function LoadingScreen({
     const stageIdx = useMemo(() => currentStageIndex(log), [log]);
     const stage = stageIdx >= 0 ? STAGES[stageIdx] : null;
     const messages = stage ? stage.messages : STARTING_MESSAGES;
-
+ 
     const [msgIdx, setMsgIdx] = useState(0);
     const [elapsed, setElapsed] = useState(() => Date.now() / 1000 - createdAt);
     const [detailsOpen, setDetailsOpen] = useState(false);
-
+ 
     useEffect(() => {
         setMsgIdx(0);
         const interval = setInterval(() => {
@@ -89,10 +89,10 @@ export default function LoadingScreen({
         }, 1000);
         return () => clearInterval(interval);
     }, [createdAt]);
-
+ 
     const stageNumber = Math.max(stageIdx + 1, 1);
     const progressPct = Math.max(8, Math.min(100, (stageNumber / STAGES.length) * 100));
-
+ 
     return (
         <div className="mt-4 rounded-xl border border-line bg-gradient-to-b from-paper-dim to-white p-6">
             <div className="flex items-center gap-4">
@@ -124,7 +124,7 @@ export default function LoadingScreen({
                     </p>
                 </div>
             </div>
-
+ 
             <div className="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-paper-dim">
                 <div
                     className="h-full rounded-full bg-sky transition-[width] duration-700 ease-out"
@@ -137,7 +137,7 @@ export default function LoadingScreen({
                 </span>
                 <span>Usually takes a few minutes</span>
             </div>
-
+ 
             <button
                 type="button"
                 onClick={() => setDetailsOpen((o) => !o)}
