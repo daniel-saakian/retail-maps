@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8' />
+  <title>Retail Centers – San Luis Obispo, CA</title>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' />
+  <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
+  <style>
+    body { margin: 0; font-family: sans-serif; }
+    #map { height: 100vh; width: 100%; }
+    .legend {
+      background: white; padding: 10px 14px; border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); line-height: 1.8;
+      font-size: 13px;
+    }
+    .legend-dot { display: inline-block; width: 12px; height: 12px;
+                   border-radius: 50%; margin-right: 6px; }
+    .tenant-filter { font-size: 13px; }
+    .tenant-toggle-btn {
+      background: white; border: 2px solid rgba(0,0,0,0.2); border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); padding: 8px 12px; font-size: 13px;
+      font-family: sans-serif; cursor: pointer; min-width: 180px; text-align: left;
+    }
+    .tenant-toggle-btn:hover { background: #f4f4f4; }
+    .tenant-panel {
+      background: white; border-radius: 6px; box-shadow: 0 1px 5px rgba(0,0,0,0.3);
+      margin-top: 4px; padding: 10px; width: 260px; max-height: 380px;
+      display: flex; flex-direction: column;
+    }
+    .tenant-search {
+      width: 100%; box-sizing: border-box; padding: 6px 8px; margin-bottom: 8px;
+      border: 1px solid #ccc; border-radius: 4px; font-size: 13px;
+    }
+    .tenant-actions { display: flex; gap: 6px; margin-bottom: 8px; }
+    .tenant-actions button {
+      flex: 1; padding: 5px 6px; font-size: 12px; border: 1px solid #ccc;
+      border-radius: 4px; background: #f7f7f7; cursor: pointer;
+    }
+    .tenant-actions button:hover { background: #eaeaea; }
+    .tenant-list { overflow-y: auto; max-height: 260px; border-top: 1px solid #eee; padding-top: 6px; }
+    .tenant-item {
+      display: block; font-size: 12.5px; padding: 3px 2px; cursor: pointer;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .tenant-item:hover { background: #f4f4f4; }
+    .tenant-item input { margin-right: 6px; }
+  </style>
+</head>
+<body>
+<div id='map'></div>
+<script>
+  var map = L.map('map').setView([35.22681330667274, -120.67288733358005], 12);
+ 
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(map);
+ 
+  var plazasData = [];
+  var storesData = [];
+ 
+  var layerMultiAnchor = L.layerGroup().addTo(map);
+  var layerSingleAnchor = L.layerGroup().addTo(map);
+  var layerPlazaCenters = L.layerGroup().addTo(map);
+  var layerAnchors = L.layerGroup().addTo(map);
+  var layerTenants = L.layerGroup().addTo(map);
+  var layerStandalone = L.layerGroup().addTo(map);
+  var layerHighDensity = L.layerGroup().addTo(map);
+  var layerLowDensity = L.layerGroup().addTo(map);
+  var countyLayers = {};
+ 
+  function getOrCreateCountyLayer(county) {
+    if (!county || county === '-') county = 'Unknown';
+    if (!countyLayers[county]) {
+        countyLayers[county] = L.layerGroup().addTo(map);
+    }
+    return countyLayers[county];
+  }
+ 
+  function addPlaza(lat, lng, radius_m, plazaId, name, address, county, city, numAnchors, anchors, numTenants, tenants, color, leasingHtml) {
+    var popup = '<b>' + name + '</b><br>'
+      + (address !== '-' ? address + '<br>' : '')
+      + city + (county !== '-' ? ', ' + county + ' County' : '') + '<br>'
+      + leasingHtml
+      + '<br><b>' + numAnchors + ' anchor(s): </b><br>'
+      + anchors.split(', ').join('<br>')
+      + '<br><br><b>' + numTenants + ' other tenant(s):</b><br>'
+      + tenants.split(', ').join('<br>');
+    
+    var circle = L.circle([lat, lng], {
+      radius: radius_m,
+      color: color,
+      fillColor: color,
+      fillOpacity: 0.08,
+      weight: 2
+    });
+    if (numAnchors > 1) {
+      layerMultiAnchor.addLayer(circle);
+    } else {
+      layerSingleAnchor.addLayer(circle);
+    }
+ 
+    var center = L.circleMarker([lat,lng], {
+        radius: 9,
+        color: '#fff',
+        fillColor: '#8e44ad',
+        fillOpacity: 1,
+        weight: 2
+    }).bindPopup(popup, {maxHeight: 320, autoPanPadding: [20, 20]}).bindTooltip(name, {permanent: false, direction: 'top'});
+ 
+    var cleanCounty = (!county || county === '-') ? 'Unknown' : county;
+    getOrCreateCountyLayer(cleanCounty);
+ 
+    plazasData.push({
+        circle: circle,
+        center: center,
+        id: plazaId,
+        name: name,
+        county: cleanCounty,
+        numAnchors: numAnchors,
+        numTenants: numTenants
+    });
+  }
+ 
+  function addStore(lat, lng, name, address, color, plazaId, plaza, isAnchor) {
+    var size = isAnchor ? 11 : 9;
+    var icon = L.divIcon({
+      className: '',
+      html: '<div style="position:absolute;width:' + size + 'px;height:' + size + 'px;'
+          + 'border-radius:50%;background:' + color + ';border:2px solid white;'
+          + 'box-shadow:0 1px 3px rgba(0,0,0,0.4);top:50%;left:50%;'
+          + 'transform:translate(-50%,-50%)'
+          + (isAnchor ? ';outline:2px solid rgba(0,0,0,0.25)' : '')
+          + '"></div>',
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2]
+    });
+    var marker = L.marker([lat, lng], {icon: icon})
+      .bindPopup('<b>' + name + '</b>' + (isAnchor ? '⚓' : '')+ '<br>' 
+        + '<i>' + plaza + '</i><br>'
+        + address)
+      .bindTooltip(name, {direction: 'top'})
+    
+    storesData.push({
+      marker: marker,
+      plazaId: plazaId,
+      plazaLabel: plaza,
+      isAnchor: isAnchor,
+      name: name
+    });
+  }
+ 
+  function tenantFilterMatchesPlaza(plazaId) {
+    // Fast path: nothing deselected, every plaza passes.
+    if (selectedNames.size >= allTenantNames.length) return true;
+    var names = plazaNameIndex[plazaId];
+    if (!names) return false;
+    for (var n of names) {
+      if (selectedNames.has(n)) return true;
+    }
+    return false;
+  }
+ 
+  function updateVisibility() {
+    plazasData.forEach(function(p) {
+      var anchorMatch = (p.numAnchors > 1) ? map.hasLayer(layerMultiAnchor): map.hasLayer(layerSingleAnchor);
+      var densityMatch = (p.numTenants >= 10) ? map.hasLayer(layerHighDensity) : map.hasLayer(layerLowDensity);
+      var countyLayer = countyLayers[p.county];
+      var countyMatch = countyLayer ? map.hasLayer(countyLayer) : true;
+      var tenantMatch = tenantFilterMatchesPlaza(p.id);
+ 
+      var plazaVisible = anchorMatch && densityMatch && countyMatch && tenantMatch;
+      p.isActive = plazaVisible;
+ 
+      if (plazaVisible) {
+        // FIX 2: Changed map.has() to map.hasLayer()
+        if (!map.hasLayer(p.circle)) p.circle.addTo(map);
+      } else {
+        if (map.hasLayer(p.circle)) map.removeLayer(p.circle);
+      }
+ 
+      if (plazaVisible && map.hasLayer(layerPlazaCenters)) {
+        if (!map.hasLayer(p.center)) p.center.addTo(map);
+      } else {
+        if (map.hasLayer(p.center)) map.removeLayer(p.center);
+      }
+    });
+      
+    storesData.forEach(function(s) {
+        var storeVisible = false;
+        var nameMatch = selectedNames.has(s.name);
+ 
+        if (s.plazaId === -1) {
+            // Standalone store
+            storeVisible = map.hasLayer(layerStandalone) && nameMatch;
+ 
+        } else {
+            var parentPlaza = plazasData.find(function(p) {
+                return p.id === s.plazaId;
+            });
+ 
+            if (parentPlaza && parentPlaza.isActive) {
+                storeVisible = (s.isAnchor
+                    ? map.hasLayer(layerAnchors)
+                    : map.hasLayer(layerTenants)) && nameMatch;
+            }
+        }
+ 
+        if (storeVisible) {
+            if (!map.hasLayer(s.marker))
+                s.marker.addTo(map);
+        } else {
+            if (map.hasLayer(s.marker))
+                map.removeLayer(s.marker);
+        }
+    });
+  }
+ 
+  addPlaza(35.27992115703123, -120.662862765625, 318.9, 0, 'The Network Shopping Center', '778 Higuera Street San Luis Obispo', 'San Luis Obispo County', 'San Luis Obispo', 2, 'H&M, Marshalls Jewelers', 126, '7-Eleven, A Heart\'s Desires Bridal, Abercrombie & Fitch, Ambiance Clothing Boutique, Anthropologie, Antique Boutique, Apropos, Athleta, B Bella LLC, B. Anthony & Co. Jewlers, Bambu Batu, Banana Republic, Bank of America, Barnes & Noble, Bath & Body Works, Baxter Moerman, Bike SLO County/SLO Bike Kitchen, Blackwater, Bluebird Salon, Boo Boo Records, Brandy Melville, Bricks & Minifigs, Cal Poly Mustang Shop, Cal eyebrow threading, Calico Trading Co., Celadon House, Central Coast Surfboards, Central Coast Vintage, Central Coast Wines, Change Of A Dress, Charles Schwab, Chase, Chico\'s, Design Collaborative, Dr. Cain\'s Comics and Games, Ecobambino, Farmers Insurance, Finders Keepers, Flip Flop Shop, Francesca\'s, French Quarter, Garden Street Goldsmiths, Gene Francis Gallery, Growing Grounds Downtown, Habitat Home & Garden, Hands Gallery, Heavenly Couture, HepKat Clothing & Beauty Parlor, Jamba, Joe\'s, Junkgirls, Karson Butler Events, Letter and Grain, Level Beauty Bar, Lulu Luxe, MAC Cosmetics, Mannikins Tailoring, Mareh Cuture, Michael\'s optical, Mission Mall, Moondoggie\'s Beach Club, Mr. Michaels, Mysteri Vintage, Ontology, Open Air Flowers, Passport, Phoenix Books, Posh Couture Nail & Hair Studio, Pottery Barn, Premier Barbers, Professional Nails, Proof & Gather Baking Company, Rocket Fizz, Rocky Mountain Chocolate Factory, Rogers Jewelry Co., Roxanne’s Birkenstock, SLO Blowout Bar, SLO Swim, Salon62, San Luis Traditions, San Luis Variety & Luggage, Sanctuary Tobacco Shop, Sandbox Kids, Scout Coffee, Secret Garden, Sephora, Serengeti West Fine Jewelers, Shadow Canyon Cellars, Shift Hair, Shoe Palace, Solstice Sunglass Boutique, Spoke SLO, Starbucks, Stephen Patrick Design, Structure Store, Sunglass Hut, T-Mobile, Tails, Takken\'s, The Bladerunner, The Center Boutique, The Gold Bar, The Gold Concept Jewelry & Design Studio, The Habit Burger Grill, The Mercantile feat. Cattaneo Brothers, The Network Shopping Center, The Ritual, The Sports Forum, Thrifty Beaches Headquarters, Tiger Lily, To Have & To Hold, Tom\'s Toys, Trio Boutique, Twig + Arrow, Union Bank, Urban Optics, Urban Outfitters, VSI Visual Services Inc, Vans, Verkada, Victoria\'s Secret, We Olive, West Coast SIlver Company, White House Black Market, Williams-Sonoma, Yarns At the Adobe', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.crexi.com/lease/properties/1108888/california-767-higuera-street" target="_blank" rel="noopener">Colliers - San Luis Obispo, California — John Hans, SIOR</a><br><a href="https://www.crexi.com/lease/properties/1108888/california-767-higuera-street" target="_blank" rel="noopener">Colliers - San Luis Obispo, California — Preston Thomas</a><br><a href="https://www.crexi.com/lease/properties/1108888/california-767-higuera-street" target="_blank" rel="noopener">Colliers - San Luis Obispo, California — Nicole Castro</a><br>');
+addPlaza(35.13580292, -120.627639242, 403.3, 1, 'Pismo Beach Premium Outlets', '333 Five Cities Drive Pismo Beach', 'San Luis Obispo County', 'Pismo Beach', 2, 'Nike, Rite Aid', 48, '76, Aeropostale, Bridge Street House, California Fresh Market, Calvin Klein, Carter\'s, Chevron, Coach, Coco\'s Bakery, Crumbl Cookies, DC Shoes, Electrify America DC Fast Chargers, Famous Footwear, Five Below, Guess Factory Store, Gymboree, Harry & David, Hot Topic, IZOD, Jack in the Box, Jockey, Jones New York Outlet, Journeys, Kitchen Collection, L\'eggs Hanes Bali Playtex, Lane Bryant, Levi\'s, McDonald\'s, Nine West Outlet, OshKosh B\'gosh, PacSun, Perfumania, Pismo Beach Premium Outlets, Pismo Beach Self Storage, Polo Ralph Lauren, Quality Inn, Rocky Mountain Chocolate Factory, Shell, Starbucks, Styles For Less, Sunglass Hut, Tesla Supercharger, Tommy Hilfiger, Torrid, Van Heusen, Vans, Zumiez, claire\'s', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://business.simon.com/search?location=Pismo+Beach%2C+CA" target="_blank" rel="noopener">Simon Property Group — Simon Property Group Leasing team</a><br>');
+addPlaza(35.26176157249999, -120.67638071750005, 481.8, 2, 'Madonna Plaza', '205 Madonna Road San Luis Obispo', 'San Luis Obispo County', 'San Luis Obispo', 6, 'Best Buy, Dollar Tree, Kohl\'s, Nordstrom Rack, Ralphs, Sprouts Farmers Market', 34, 'Avis, Buffalo Wild Wings, Chase, Chipotle, Christian\'s Mattress Xpress, Crushed Grape, Cycle Gear, DSW, Dave\'s Hot Chicken, Denny\'s, Elks Lodge, European Wax Center, Five Below, GameStop, Hallmark, Hobby Lobby, IHOP, McDonald\'s, Men\'s Wearhouse, Michaels, Mike\'s Shoes, Motherhood Maternity, REI, Sally Beauty, San Luis Obispo Supercharger, See\'s Candies, Shell, Sky Nails & Spa, Sport Clips, Starbucks, Supercuts, Tillys, Ulta Beauty, World Market', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(35.13210132, -120.60541731666666, 508.2, 3, 'Oak Park Plaza', '829 North Oak Park Boulevard Pismo Beach', 'San Luis Obispo County', 'Pismo Beach', 4, 'Big 5 Sporting Goods, Grocery Outlet, Planet Fitness, Ross', 26, 'A Fine Yarn, A La Mode, AAA Optometrist, Arroyo Grande Home and Garden, Beauty Secrets, Best Western Casa Grande Inn, Carl\'s Jr./ Green Burrito, Check Into Cash, Coco\'s Foot Spa, D-Lux Hair Salon, Diamond Designs, Golden Donut, Hampton Inn & Suites, Healthy Life Massage, Hydro Heaven, Miss Darling, Number One Nails, Outdoor Supply Hardware, Pro Nails, R&R, Rabobank, Starbucks, State Farm, Taco Bell, United States Post Office, Valley Cleaners', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(35.31151648888889, -120.83103372222222, 323.0, 4, 'Bay Osos Village Center', '1130 Los Osos Valley Road Los Osos', 'San Luis Obispo County', 'Los Osos', 3, 'Grocery Outlet Bargain Marke, Miner\'s Ace Hardware, Rite Aid', 24, 'AT&T, Bay Auto & Tire, Bear Valley Auto House, Carlock\'s, Casa Pinedas Party Decorations, Chase, Chevron, Farmers Insurance, First Defense Firearms, GoWesty Camper Products, Hair Lines Salon, Lemos, Los Osos Mexican Market, Los Osos Popup Gallery, Los Osos Smoke Shop, Pacific Auto Service, Rabobank, Starbucks, Subway, T-Mobile, Tesla Supercharger, The Gypsy Boutique, Valley Liquor, Wells Fargo', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.crexi.com/lease/properties/1030493/california-1110-los-osos-valley-road" target="_blank" rel="noopener">Colliers - San Luis Obispo, California — Tony Andreini</a><br><a href="https://www.crexi.com/lease/properties/1030493/california-1110-los-osos-valley-road" target="_blank" rel="noopener">Colliers - San Luis Obispo, California — Nicole Castro</a><br>');
+addPlaza(35.12737094074074, -120.59516648518517, 465.6, 5, 'Five Cities Center', '1168 West Branch Street Arroyo Grande', 'San Luis Obispo County', 'Arroyo Grande', 4, 'Marshalls, Petco, Trader Joe\'s, Walmart', 23, 'AT&T, Blaze Pizza, Brisco\'s Hardware, Club Pilates, Daiso, European Wax Center, Food 4 Less, GNC, GameStop, Golden Nails, In-N-Out Burger, Jamba, Mae Rose, Massage Envy, OfficeMax, Regal Cinemas, Sally Beauty, Supercuts, T-Mobile, Tesla Supercharger, Verizon, Wells Fargo Advisors, Wingstop', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.crexi.com/lease/properties/59219/california-five-cities-center" target="_blank" rel="noopener">Investec Real Estate Companies — Crosby Slaught</a><br><a href="https://www.crexi.com/lease/properties/59219/california-five-cities-center" target="_blank" rel="noopener">Crexi Listing — Isaiah Bolton</a><br>');
+addPlaza(35.36835060000001, -120.84434033913043, 373.1, 6, 'Unnamed Retail Center', '730 Quintana Road Morro Bay', 'San Luis Obispo County', 'Morro Bay', 3, 'Albertsons, Dollar Tree, Rite Aid', 20, 'Burger King, Catch a Wave Beauty Salon, Check Into Cash, Coin- Op Laundry, Dolly\'s Donuts, Edward Jones, H&R Block, Jim’s Automotive & Hybrid, McDonald\'s, Mobil, Mobil Mart, Morro Bay Cigarettes, Round Table Pizza, Self-Service Laundry, Starbucks, State Farm, Subway, The Human Bean, The Salvation Army, The UPS Store', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(35.271013714285715, -120.66999051904763, 296.0, 7, 'South Street Station', '277 Higuera Street San Luis Obispo', 'San Luis Obispo County', 'San Luis Obispo', 1, 'Harbor Freight Tools', 20, 'Aqua Tech Spas, AutoZone, Bread Bike, Farb\'s Bakery, Green Goods, Hayward Lumber, Lube N Go, Megan\'s Organic Market, SLO, Nixon Tire, Oconnor Pet Hospital, Paul\'s Dry Cleaners & Laundry, SLO Beverage \'n More, Scott\'s Shop, Subway, The Pond Place, The Tire Store, Traditional Tattoo, Villa Automotive, Wally\'s Bicycle Works, Wrona\'s Auto Repair Inc.', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(35.29413438235294, -120.66996593529409, 289.7, 8, 'University Square', '17 Chorro Street San Luis Obispo', 'San Luis Obispo County', 'San Luis Obispo', 1, 'Rite Aid', 16, '@ Nails, Beauty Box, Chevron, Domino\'s, Glossy Nail Bar, Golden 1 Credit Union, Insomnia Cookies, Jamba, Lassens Natural Foods & Vitamins, Lets Party, Popeyes, Shell, Starbucks, Supercuts, The Chop Shop, University Barber Shop', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(35.25014253124999, -120.64253725, 340.5, 9, 'Marigold Shopping Center', '3900 Broad Street San Luis Obispo', 'San Luis Obispo County', 'San Luis Obispo', 1, 'Vons', 15, 'Carl\'s Jr. / Green Burrito, Check \'n Go, Debonair Eyes, Fantastic Sams, Foot Massage, Freshh Donuts, Jersey Mike\'s Subs, MariGold Nails, Poly Performance Inc., Starbucks, Taco Bell, The Club Smoke Shop, The UPS Store, Wingstop, eVgo', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.crexi.com/lease/properties/1072712/california-marigold-shopping-center" target="_blank" rel="noopener">Lockehouse Retail Group Inc. — Natalie V. Wagner, CCIM</a><br><a href="https://www.crexi.com/lease/properties/1072712/california-marigold-shopping-center" target="_blank" rel="noopener">Lockehouse Retail Group — Mike Hieshima</a><br><a href="https://www.crexi.com/lease/properties/1072712/california-marigold-shopping-center" target="_blank" rel="noopener">Lockehouse Retail Group Inc. — Dennis Borowsky</a><br>');
+addPlaza(35.1202169, -120.60131992857144, 289.7, 10, 'Unnamed Retail Center', '1221 East Grand Avenue Arroyo Grande', 'San Luis Obispo County', 'Arroyo Grande', 2, 'ALDI, Rite Aid', 12, 'Carquest, Chase, Chipotle, Five Guys, Gina\'s Piece of Cake, Jack in the Box, Menchie\'s, Modelhom, Starbucks, Sweet Pea Bakery, U.S. Bank, Western Dental', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(35.25807503076923, -120.6908537923077, 289.7, 11, 'Laguna Village Shopping Center', '1308 Madonna Road San Luis Obispo', 'San Luis Obispo County', 'San Luis Obispo', 1, 'Grocery Outlet', 12, '5 Star Medical, 99 Cents Only Stores, Burger King, GNC, Laguna Cleaners, Laguna Smokes, Mattress Land SleepFIT, Ocean Nails & Spa, SLO Laundry, Shell, Stay Sharp Barbershop, Subway', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(35.252065518181816, -120.68467540909091, 289.7, 12, 'Perfumo Creek Commons', '11990 Los Osos Valley Road San Luis Obispo', 'San Luis Obispo County', 'San Luis Obispo', 2, 'Dick\'s Sporting Goods, Target', 9, 'AT&T, Auto Park Superstore, Coast Nissan & BMW, El Pollo Loco, Olive Garden, Rancho Grande Motors, Rancho Grande Subaru, San Luis Obispo Supercharger, Starbucks', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.crexi.com/lease/properties/663203/california-target-and-dicks-sporting-goods" target="_blank" rel="noopener">Colliers - San Luis Obispo, California — John Hans, SIOR</a><br><a href="https://www.crexi.com/lease/properties/663203/california-target-and-dicks-sporting-goods" target="_blank" rel="noopener">Colliers - San Luis Obispo, California — Ryan Evans</a><br>');
+addPlaza(35.24431128, -120.67191347999999, 385.4, 13, 'Higuera Plaza', '3977 South Higuera Street San Luis Obispo', 'San Luis Obispo County', 'San Luis Obispo', 2, 'Stephen Ross Wine Cellars, Trader Joe\'s', 8, 'Art\'s Cyclery, Food 4 Less, Happy Nails, Running Warehouse, SLO Self Storage, Starbucks, Tennis Warehouse, Whiz Kids', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(35.2827323, -120.65715837777778, 289.7, 14, 'Urban Optics', '1321 Johnson Avenue San Luis Obispo', 'San Luis Obispo County', 'San Luis Obispo', 1, 'Smart & Final Extra!', 8, 'Ceremony Skate Shop, Day Nails and Spa, Slo Asian Market, State Farm Insurance Agency, The Shop, The UPS Store, Wells Fargo Advisors, Wizards of Wax', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(35.269227122222226, -120.65607505555555, 289.7, 15, 'The Village at Broad Street', '2211 Broad Street San Luis Obispo', 'San Luis Obispo County', 'San Luis Obispo', 1, 'Dollar Tree', 8, 'Conserv Fuel, Conserv Mart, Little Free Pantry, Rabobank, Round Table Pizza, Starbucks, The Golden Paw, Tileco', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://gallellire.com/property/shops-at-the-brenden/" target="_blank" rel="noopener">Gallelli Real Estate — Kevin Soares</a><br><a href="https://gallellire.com/property/shops-at-the-brenden/" target="_blank" rel="noopener">Gallelli Real Estate — Jeff Hagan</a><br><a href="https://www.crexi.com/lease/properties/176629/california-4460-broad-st-building-d" target="_blank" rel="noopener">McCarty Davis Commercial Real Estate — Steve Davis</a><br><a href="https://www.crexi.com/lease/properties/176629/california-4460-broad-st-building-d" target="_blank" rel="noopener">McCarty Davis Commercial Real Estate — Steve McCarty</a><br>');
+addPlaza(35.120552133333334, -120.61064507777779, 289.7, 16, 'Unnamed Retail Center', '1758 Grand Avenue Grover Beach', 'San Luis Obispo County', 'Grover Beach', 1, 'Vons', 8, '7-Eleven, Burger King, Goodwill, McDonald\'s, Round Table Pizza, Starbucks, Tesla Supercharger, Wells Fargo', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(35.252531714285716, -120.68943331428571, 289.7, 17, 'Irish Hills Plaza', '1520 Frooms Ranch Way San Luis Obispo', 'San Luis Obispo County', 'San Luis Obispo', 4, 'BevMo!, Costco Food Court, HomeGoods, The Home Depot', 3, 'Old Navy, Panda Express, PetSmart', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.crexi.com/lease/properties/622907/california-irish-hills-plaza" target="_blank" rel="noopener">Colliers - San Luis Obispo, California — John Hans, SIOR</a><br><a href="https://www.crexi.com/lease/properties/579671/california-irish-hills-plaza" target="_blank" rel="noopener">Colliers - San Luis Obispo, California — Nicole Castro</a><br>');
+addPlaza(35.12138371428571, -120.60558155714286, 289.7, 18, 'Unnamed Retail Center', '1464 East Grand Avenue Arroyo Grande', 'San Luis Obispo County', 'Arroyo Grande', 2, 'Dollar Tree, Smart & Final', 5, 'Gill\'s Liquor, Panda Express, Sunbrite Cleaners, The UPS Store, Tropical Hawaiian BBQ', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(35.0986961, -120.61078841999999, 289.7, 19, 'Unnamed Retail Center', '1957 Front Street Oceano', 'San Luis Obispo County', 'Oceano', 1, 'Lucky Laundry', 4, 'Central Market, Colors & Curls, Dawna\'s Pet Parlor, La Miramar Western Wear', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(35.311172, -120.8268553, 289.7, 20, 'Los Osos Center', '1240 Los Osos Valley Road Los Osos', 'San Luis Obispo County', 'Los Osos', 1, 'Ralphs', 1, 'U.S. Bank', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.crexi.com/lease/properties/1135986/california-1240-los-osos-valley-rd" target="_blank" rel="noopener">McCarty Davis Commercial Real Estate — Steve Davis</a><br><a href="https://www.crexi.com/lease/properties/1135986/california-1240-los-osos-valley-rd" target="_blank" rel="noopener">McCarty Davis Commercial Real Estate — Alyx Lemos</a><br>');
+  addStore(35.2706727, -120.656047, 'Tileco', '-', '#e74c3c', 15, 'The Village at Broad Street', false);
+addStore(35.2493387, -120.6420324, 'Jersey Mike\'s Subs', '3940-1 Broad Street San Luis Obispo', '#e74c3c', 9, 'Marigold Shopping Center', false);
+addStore(35.2505, -120.642315, 'Starbucks', '3900 South Broad San Luis Obispo', '#e74c3c', 9, 'Marigold Shopping Center', false);
+addStore(35.2500877, -120.643591, 'Taco Bell', '3810 Broad Street San Luis Obispo', '#e74c3c', 9, 'Marigold Shopping Center', false);
+addStore(35.2727397, -120.6685843, 'Farb\'s Bakery', '241 Pismo Street San Luis Obispo', '#e74c3c', 7, 'South Street Station', false);
+addStore(35.2798482, -120.661411, 'Barnes & Noble', '894 Marsh Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2839549, -120.6571498, 'Slo Asian Market', '1255 Monterey Street', '#e74c3c', 14, 'Urban Optics', false);
+addStore(35.281044, -120.661134, 'Abercrombie & Fitch', '-', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.3112768, -120.826836, 'Ralphs', '1240 Los Osos Valley Road Los Osos', '#f39c12', 20, 'Los Osos Center', true);
+addStore(35.2937201, -120.670955, 'Starbucks', '17 Chorro Street San Luis Obispo', '#e74c3c', 8, 'University Square', false);
+addStore(35.2944046, -120.670497, 'Domino\'s', '866 East Foothill Boulevard San Luis Obispo', '#e74c3c', 8, 'University Square', false);
+addStore(35.294524, -120.6698701, 'University Barber Shop', '888 Foothill Boulevard', '#e74c3c', 8, 'University Square', false);
+addStore(35.2493465, -120.643114, 'Check \'n Go', '3970-4', '#e74c3c', 9, 'Marigold Shopping Center', false);
+addStore(35.2498874, -120.641991, 'Fantastic Sams', '-', '#e74c3c', 9, 'Marigold Shopping Center', false);
+addStore(35.2493637, -120.6421348, 'Foot Massage', '3940-2', '#e74c3c', 9, 'Marigold Shopping Center', false);
+addStore(35.2493207, -120.6422471, 'MariGold Nails', '3940-4', '#e74c3c', 9, 'Marigold Shopping Center', false);
+addStore(35.2492511, -120.642432, 'The UPS Store', '3940-7', '#e74c3c', 9, 'Marigold Shopping Center', false);
+addStore(35.2799478, -120.6618259, 'Sunglass Hut', '882 Higuera Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2693739, -120.670827, 'SLO Beverage \'n More', '158E Higuera Street San Luis Obispo', '#e74c3c', 7, 'South Street Station', false);
+addStore(35.269265, -120.670827, 'Subway', '158 Higuera Street San Luis Obispo', '#e74c3c', 7, 'South Street Station', false);
+addStore(35.2811326, -120.6609694, 'Banana Republic', '-', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2944074, -120.670734, 'Golden 1 Credit Union', '-', '#e74c3c', 8, 'University Square', false);
+addStore(35.31144, -120.831659, 'Carlock\'s', '1024 Los Osos', '#e74c3c', 4, 'Bay Osos Village Center', false);
+addStore(35.2801731, -120.66144, 'Bank of America', '-', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.282248, -120.656089, 'The UPS Store', '1241 Johnson Avenue San Luis Obispo', '#e74c3c', 14, 'Urban Optics', false);
+addStore(35.3114677, -120.832814, 'Chevron', '-', '#e74c3c', 4, 'Bay Osos Village Center', false);
+addStore(35.3118622, -120.832629, 'Los Osos Mexican Market', '-', '#e74c3c', 4, 'Bay Osos Village Center', false);
+addStore(35.313694, -120.832602, 'Lemos', '2085 Los Osos', '#e74c3c', 4, 'Bay Osos Village Center', false);
+addStore(35.252567, -120.685408, 'El Pollo Loco', '11982 Los Osos Valley Road San Luis Obispo', '#e74c3c', 12, 'Perfumo Creek Commons', false);
+addStore(35.282247, -120.656343, 'Day Nails and Spa', '1209 Marsh Street San Luis Obispo', '#e74c3c', 14, 'Urban Optics', false);
+addStore(35.2795892, -120.6627477, 'Sanctuary Tobacco Shop', '1111 Chorro Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.293433, -120.668114, 'Lets Party', '-', '#e74c3c', 8, 'University Square', false);
+addStore(35.252894, -120.688398, 'Panda Express', '1508 Froom Ranch Way San Luis Obispo', '#e74c3c', 17, 'Irish Hills Plaza', false);
+addStore(35.278003, -120.664281, '7-Eleven', '692 Marsh Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.279831, -120.662687, 'The Habit Burger Grill', '839 Higuera Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.279286, -120.6649884, 'Antique Boutique', '1019 Broad Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2793783, -120.6650695, 'Bambu Batu', '1023 Broad Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2785633, -120.6643032, 'Mysteri Vintage', '1115 Broad Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2787627, -120.6649423, 'Tom\'s Toys', '682 Higuera Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.278722, -120.6644654, 'Rocket Fizz', '699 Higuera Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2790492, -120.6644778, 'The Sports Forum', '710 Higuera Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2790836, -120.664455, 'Central Coast Wines', '712 Higuera Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2790876, -120.66439, 'West Coast SIlver Company', '714 Higuera', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2783676, -120.663626, 'Twig + Arrow', '720 Marsh', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.278727, -120.6629953, 'San Luis Traditions', '748 Marsh', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2807028, -120.6634394, 'Brandy Melville', '840 Monterey Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2813855, -120.6640773, 'SLO Blowout Bar', '940 Chorro Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2813192, -120.6638337, 'The Mercantile feat. Cattaneo Brothers', '950 Chorro Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2812679, -120.6639376, 'Trio Boutique', '952 Chorro Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2811746, -120.6638691, 'Growing Grounds Downtown', '956 Chorro Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2811165, -120.6638391, 'Yarns At the Adobe', '964 Chorro Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2810645, -120.6620115, 'Mannikins Tailoring', '1016 Morro Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2809014, -120.6621047, 'Letter and Grain', '1019 Morro Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2809578, -120.6619277, 'Apropos', '1022 Morro Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2807932, -120.6620113, 'B Bella LLC', '1023 Morro Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2811881, -120.6614369, 'Spoke SLO', '1040 Court', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2812671, -120.661292, 'Chico\'s', '1080 Court', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2794163, -120.6622283, 'Cal Poly Mustang Shop', '1144 Chorro', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2786574, -120.662681, 'Habitat Home & Garden', '777 Marsh', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2789382, -120.6626514, 'Dr. Cain\'s Comics and Games', '778 Marsh', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2796299, -120.6630156, 'The Ritual', '787 Higuera Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2795973, -120.6630703, 'HepKat Clothing & Beauty Parlor', '785 Higuera Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2790333, -120.6625275, 'Cal eyebrow threading', '790 Marsh', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2796997, -120.6629036, 'SLO Swim', '795 Higuera', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2805528, -120.6632184, 'Moondoggie\'s Beach Club', '837 Monterey Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2800414, -120.6628358, 'Bath & Body Works', '842 Higuera Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2800649, -120.6627841, 'Shadow Canyon Cellars', '846 Higuera Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2800927, -120.662745, 'Rocky Mountain Chocolate Factory', '848 Higuera Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2801937, -120.6625456, 'Flip Flop Shop', '858 Higuera Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2802802, -120.6624566, 'Lulu Luxe', '864 Higuera Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2811605, -120.6626854, 'H&M', '886 Monterey Street', '#f39c12', 0, 'The Network Shopping Center', true);
+addStore(35.280268, -120.661945, 'Anthropologie', '887 Higuera Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2812895, -120.6624462, 'The Bladerunner', '894 Monterey Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2803482, -120.6618121, 'Solstice Sunglass Boutique', '897 Higuera', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2803935, -120.6617379, 'Structure Store', '899 Higuera Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.281191, -120.6621192, 'Serengeti West Fine Jewelers', '951 Monterey Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2814095, -120.6622591, 'Ontology', '956 Monterey', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2807788, -120.6615593, 'We Olive', '958 Higuera Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2812938, -120.6619351, 'Professional Nails', '963 Monterey Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2615642, -120.6743902, 'Motherhood Maternity', '261 Madonna', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.2614108, -120.6744354, 'European Wax Center', '265 Madonna', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.2791934, -120.6631604, 'Salon62', '1112 Garden Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2791652, -120.6631339, 'Garden Street Goldsmiths', '1114 Garden Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2791106, -120.6630781, 'Gene Francis Gallery', '1120 Garden Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2795775, -120.6636687, 'Joe\'s', '760 Higuera Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2796257, -120.6635964, 'Celadon House', '766 Higuera Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2796548, -120.6635339, 'Heavenly Couture', '770 Higuera Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2936691, -120.670875, 'Jamba', '17 Chorro Street San Luis Obispo', '#e74c3c', 8, 'University Square', false);
+addStore(35.2630378, -120.6766721, 'Supercuts', '-', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.2631802, -120.6766176, 'Starbucks', '253 Madonna Road San Luis Obispo', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.261765, -120.676736, 'Ulta Beauty', '-', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.261458, -120.676375, 'See\'s Candies', '-', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.3110672, -120.8268746, 'U.S. Bank', 'Los Osos', '#e74c3c', 20, 'Los Osos Center', false);
+addStore(35.267731, -120.65451, 'The Golden Paw', '-', '#e74c3c', 15, 'The Village at Broad Street', false);
+addStore(35.261215, -120.67605, 'Sally Beauty', '-', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.2527062, -120.641655, 'Poly Performance Inc.', '870 Industrial Way San Luis Obispo', '#e74c3c', 9, 'Marigold Shopping Center', false);
+addStore(35.2796742, -120.661499, 'Jamba', '890 Marsh Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2778906, -120.6644103, 'Takken\'s', '-', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.281301, -120.661104, 'Open Air Flowers', '1055 Osos Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2443278, -120.6701894, 'Stephen Ross Wine Cellars', '178 Suburban Road San Luis Obispo', '#f39c12', 13, 'Higuera Plaza', true);
+addStore(35.1288256, -120.5957291, 'Food 4 Less', '-', '#e74c3c', 5, 'Five Cities Center', false);
+addStore(35.1287773, -120.5950157, 'OfficeMax', '-', '#e74c3c', 5, 'Five Cities Center', false);
+addStore(35.1209189, -120.6017819, 'Chase', '1242 East Grand Avenue', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(35.1208093, -120.6015472, 'U.S. Bank', '1230 East Grand Avenue', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(35.2502183, -120.643669, 'Freshh Donuts', '-', '#e74c3c', 9, 'Marigold Shopping Center', false);
+addStore(35.2613798, -120.679366, 'Chase', '-', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.2596419, -120.677262, 'Crushed Grape', '-', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.261324, -120.679227, 'Cycle Gear', '-', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.2594907, -120.6770646, 'Dollar Tree', '-', '#f39c12', 2, 'Madonna Plaza', true);
+addStore(35.2599505, -120.677641, 'GameStop', '-', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.2616553, -120.6766227, 'Hallmark', '-', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.2613097, -120.676212, 'Men\'s Wearhouse', '-', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.2599942, -120.6777018, 'Mike\'s Shoes', '-', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.2611281, -120.6790229, 'Sport Clips', '-', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.2633205, -120.6768096, 'Christian\'s Mattress Xpress', '-', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.294412, -120.670983, 'Popeyes', '840 East Foothill Boulevard San Luis Obispo', '#e74c3c', 8, 'University Square', false);
+addStore(35.2816327, -120.6618652, 'Boo Boo Records', '978 Monterey Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2794907, -120.663214, 'Hands Gallery', '777 Higuera Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2792783, -120.6624536, 'San Luis Variety & Luggage', '1135 Chorro Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.27907, -120.661928, 'Shoe Palace', '837 Marsh Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.280601, -120.6619126, 'Victoria\'s Secret', '898 Higuera Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.1304038, -120.6030238, 'AAA Optometrist', '1518 West Branch Street Arroyo Grande', '#e74c3c', 3, 'Oak Park Plaza', false);
+addStore(35.1303079, -120.6030765, 'D-Lux Hair Salon', '1514 West Branch Street Arroyo Grande', '#e74c3c', 3, 'Oak Park Plaza', false);
+addStore(35.1304533, -120.6029994, 'Healthy Life Massage', '1520 West Branch Street Arroyo Grande', '#e74c3c', 3, 'Oak Park Plaza', false);
+addStore(35.1305721, -120.6029344, 'Pro Nails', '1526 West Branch Street Arroyo Grande', '#e74c3c', 3, 'Oak Park Plaza', false);
+addStore(35.1303201, -120.6029548, 'State Farm', '1538 West Branch Street Arroyo Grande', '#e74c3c', 3, 'Oak Park Plaza', false);
+addStore(35.3677381, -120.8422225, 'State Farm', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(35.2790569, -120.6630276, 'Baxter Moerman', '1128 A Garden Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.1210224, -120.5994977, 'Sweet Pea Bakery', '1200 East Grand Avenue Arroyo Grande', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(35.1221903, -120.6057461, 'Smart & Final', '1464 East Grand Avenue Arroyo Grande', '#f39c12', 18, 'Unnamed Retail Center', true);
+addStore(35.1216046, -120.6047832, 'Dollar Tree', '-', '#f39c12', 18, 'Unnamed Retail Center', true);
+addStore(35.1221157, -120.6049844, 'Tropical Hawaiian BBQ', '1436 East Grand Avenue Arroyo Grande', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(35.1221306, -120.6061166, 'Sunbrite Cleaners', '1468 East Grand Avenue Arroyo Grande', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(35.3116379, -120.830254, 'Wells Fargo', '-', '#e74c3c', 4, 'Bay Osos Village Center', false);
+addStore(35.244205, -120.6721839, 'Art\'s Cyclery', '-', '#e74c3c', 13, 'Higuera Plaza', false);
+addStore(35.2420422, -120.669484, 'Running Warehouse', '-', '#e74c3c', 13, 'Higuera Plaza', false);
+addStore(35.2421408, -120.669464, 'Tennis Warehouse', '-', '#e74c3c', 13, 'Higuera Plaza', false);
+addStore(35.258463, -120.6902406, 'Grocery Outlet', 'Los Osos Valley Road San Luis Obispo', '#f39c12', 11, 'Laguna Village Shopping Center', true);
+addStore(35.3694955, -120.8457802, 'Coin- Op Laundry', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(35.2689722, -120.655508, 'Round Table Pizza', 'Suite 110 Broad Street', '#e74c3c', 15, 'The Village at Broad Street', false);
+addStore(35.2936871, -120.6690551, 'The Chop Shop', '-', '#e74c3c', 8, 'University Square', false);
+addStore(35.2948635, -120.6699953, 'Lassens Natural Foods & Vitamins', '-', '#e74c3c', 8, 'University Square', false);
+addStore(35.2789689, -120.6641147, 'Michael\'s optical', '719 Higuera Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.3677652, -120.844323, 'Starbucks', '730 Quintana Morro Bay', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(35.2827115, -120.656653, 'State Farm Insurance Agency', '1240 Marsh Street', '#e74c3c', 14, 'Urban Optics', false);
+addStore(35.2829042, -120.6585476, 'Wizards of Wax', '-', '#e74c3c', 14, 'Urban Optics', false);
+addStore(35.2787138, -120.6650248, 'B. Anthony & Co. Jewlers', '674 Higuera', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2783126, -120.6651968, 'Tiger Lily', '-', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2783139, -120.663103, 'Charles Schwab', '733 Marsh', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2788573, -120.664264, 'Blackwater', '705 Higuera', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.278439, -120.6635087, 'T-Mobile', '728 Marsh', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2786152, -120.663189, 'Bluebird Salon', '742 Marsh Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2789474, -120.66293, 'Scout Coffee', '1130 Garden Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2792886, -120.6635245, 'Marshalls Jewelers', '751 Higuera Street', '#f39c12', 0, 'The Network Shopping Center', true);
+addStore(35.2792353, -120.6636677, 'Tails', '745 Higuera Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2791616, -120.663788, 'Ambiance Clothing Boutique', '737 Higuera Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2792594, -120.6646761, 'Shift Hair', '1050 Broad Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2793827, -120.6639108, 'The Gold Concept Jewelry & Design Studio', '740 Higuera Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2814676, -120.662175, 'Urban Outfitters', '962 Monterey Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2807298, -120.6628306, 'Ecobambino', '863 Monterey Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2817052, -120.6617422, 'Phoenix Books', '986 Monterey Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.282068, -120.657713, 'Wells Fargo Advisors', '1160 Marsh', '#e74c3c', 14, 'Urban Optics', false);
+addStore(35.2815597, -120.6620036, 'Passport', '968 Monterey San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2816914, -120.6617871, 'Central Coast Vintage', '982 Monterey San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2815675, -120.6641703, 'Karson Butler Events', '-', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.280789, -120.6633086, 'Francesca\'s', '846 Monterey', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2813873, -120.6639514, 'VSI Visual Services Inc', '811 Palm Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2812121, -120.6625862, 'Stephen Patrick Design', '888 Monterey', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2810834, -120.662808, 'MAC Cosmetics', '886 Monterey Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2813583, -120.6618484, 'French Quarter', '969 Monterey', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2810486, -120.6603616, 'Urban Optics', '1001 Higuera', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2808612, -120.66078, 'Union Bank', '995 Higuera', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2813528, -120.6612966, 'White House Black Market', '1074 Court', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2811967, -120.6613161, 'Sephora', '1090 Court', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.281293, -120.661434, 'Pottery Barn', '1060 Court', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2798771, -120.6626079, 'Premier Barbers', '845 Higuera', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2796482, -120.6640684, 'Roxanne’s Birkenstock', '746 Higuera', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2794845, -120.6637697, 'Mr. Michaels', '746 Higuera', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2796073, -120.6639681, 'Mission Mall', '746 Higuera', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2793105, -120.6632124, 'Finders Keepers', '1124 Garden Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2792551, -120.663594, 'A Heart\'s Desires Bridal', '749 Higuera', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2787467, -120.6625358, 'Change Of A Dress', '785 Marsh', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2788713, -120.6627552, 'Posh Couture Nail & Hair Studio', '774 Marsh', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2788357, -120.662817, 'To Have & To Hold', '774 Marsh', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2789614, -120.662607, 'Level Beauty Bar', '778 Marsh', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.278514, -120.6609422, 'Design Collaborative', '863 Pacific', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2791028, -120.66062, 'Bike SLO County/SLO Bike Kitchen', '860 Pacific', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2777687, -120.6633182, 'Farmers Insurance', '1228 Broad Street', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.1197857, -120.610072, 'Vons', '1758 Grand Avenue Grover Beach', '#f39c12', 16, 'Unnamed Retail Center', true);
+addStore(35.1208329, -120.6113799, 'Round Table Pizza', '-', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(35.1201134, -120.611025, 'Goodwill', '1628 West Grand Avenue Grover Beach', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(35.26518, -120.67629, 'San Luis Obispo Supercharger', 'San Luis Obispo', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.3666707, -120.845594, 'Jim’s Automotive & Hybrid', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(35.2794711, -120.6639953, 'Secret Garden', '-', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.3112676, -120.831068, 'Starbucks', '1076 Los Osos Valley Road Los Osos', '#e74c3c', 4, 'Bay Osos Village Center', false);
+addStore(35.3113912, -120.8310591, 'AT&T', '-', '#e74c3c', 4, 'Bay Osos Village Center', false);
+addStore(35.3114583, -120.8310591, 'T-Mobile', '-', '#e74c3c', 4, 'Bay Osos Village Center', false);
+addStore(35.2607615, -120.677244, 'REI', '313 Madonna Road San Luis Obispo', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.2611504, -120.6777042, 'Sprouts Farmers Market', '313 Madonna Road San Luis Obispo', '#f39c12', 2, 'Madonna Plaza', true);
+addStore(35.3117086, -120.8329958, 'The Gypsy Boutique', '-', '#e74c3c', 4, 'Bay Osos Village Center', false);
+addStore(35.2500177, -120.641554, 'eVgo', '-', '#e74c3c', 9, 'Marigold Shopping Center', false);
+addStore(35.25375, -120.68432, 'San Luis Obispo Supercharger', '11990 Los Osos Valley Road San Luis Obispo', '#e74c3c', 12, 'Perfumo Creek Commons', false);
+addStore(35.1194119, -120.601681, 'ALDI', '1221 East Grand Avenue Arroyo Grande', '#f39c12', 10, 'Unnamed Retail Center', true);
+addStore(35.2811472, -120.6628775, 'Junkgirls', '-', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2523485, -120.690909, 'Costco Food Court', '-', '#f39c12', 17, 'Irish Hills Plaza', true);
+addStore(35.1367639, -120.629326, 'Electrify America DC Fast Chargers', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.2690111, -120.657835, 'Little Free Pantry', '-', '#e74c3c', 15, 'The Village at Broad Street', false);
+addStore(35.2623179, -120.6746152, 'DSW', '243 Madonna Road San Luis Obispo', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.2944243, -120.6709163, 'Supercuts', '844 Foothill Boulevard San Luis Obispo', '#e74c3c', 8, 'University Square', false);
+addStore(35.2945703, -120.6689995, '@ Nails', '964 Foothill Boulevard San Luis Obispo', '#e74c3c', 8, 'University Square', false);
+addStore(35.2939121, -120.6702798, 'Insomnia Cookies', '22 Chorro Street San Luis Obispo', '#e74c3c', 8, 'University Square', false);
+addStore(35.293653, -120.6708046, 'Beauty Box', '17 Chorro Street San Luis Obispo', '#e74c3c', 8, 'University Square', false);
+addStore(35.2580954, -120.6898288, '99 Cents Only Stores', '1308 Madonna Road San Luis Obispo', '#e74c3c', 11, 'Laguna Village Shopping Center', false);
+addStore(35.2523345, -120.685053, 'Starbucks', '11990 Los Osos Valley Road San Luis Obispo', '#e74c3c', 12, 'Perfumo Creek Commons', false);
+addStore(35.2530439, -120.689768, 'PetSmart', '1530 Froom Ranch way San Luis Obispo', '#e74c3c', 17, 'Irish Hills Plaza', false);
+addStore(35.2531769, -120.689524, 'HomeGoods', '1520 Frooms Ranch Way San Luis Obispo', '#f39c12', 17, 'Irish Hills Plaza', true);
+addStore(35.2533301, -120.689306, 'Old Navy', '-', '#e74c3c', 17, 'Irish Hills Plaza', false);
+addStore(35.2787041, -120.6651059, 'The Center Boutique', '-', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.258247, -120.6912206, 'Subway', '1350 Madonna Road San Luis Obispo', '#e74c3c', 11, 'Laguna Village Shopping Center', false);
+addStore(35.258485, -120.6907859, 'GNC', '1334 Madonna Road San Luis Obispo', '#e74c3c', 11, 'Laguna Village Shopping Center', false);
+addStore(35.2584119, -120.6909132, 'SLO Laundry', '1338 Madonna Road San Luis Obispo', '#e74c3c', 11, 'Laguna Village Shopping Center', false);
+addStore(35.258328, -120.6910713, 'Ocean Nails & Spa', '1346 Madonna Road San Luis Obispo', '#e74c3c', 11, 'Laguna Village Shopping Center', false);
+addStore(35.2585196, -120.6907329, 'Stay Sharp Barbershop', '1332 Madonna Road San Luis Obispo', '#e74c3c', 11, 'Laguna Village Shopping Center', false);
+addStore(35.2583732, -120.690987, 'Laguna Cleaners', '1342 Madonna Road San Luis Obispo', '#e74c3c', 11, 'Laguna Village Shopping Center', false);
+addStore(35.2572386, -120.6902626, 'Mattress Land SleepFIT', '-', '#e74c3c', 11, 'Laguna Village Shopping Center', false);
+addStore(35.2570853, -120.6906659, 'Shell', '-', '#e74c3c', 11, 'Laguna Village Shopping Center', false);
+addStore(35.2576526, -120.690701, 'Laguna Smokes', '-', '#e74c3c', 11, 'Laguna Village Shopping Center', false);
+addStore(35.2801827, -120.6620961, 'Athleta', '-', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2495894, -120.6418522, 'The Club Smoke Shop', '-', '#e74c3c', 9, 'Marigold Shopping Center', false);
+addStore(35.2608136, -120.6749208, 'Michaels', '273 Madonna Road San Luis Obispo', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.2715691, -120.6688255, 'Bread Bike', '2060 Parker Street San Luis Obispo', '#e74c3c', 7, 'South Street Station', false);
+addStore(35.3692536, -120.8457965, 'The Salvation Army', '540 Quintana', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(35.3693316, -120.845748, 'Self-Service Laundry', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(35.26035, -120.6751973, 'Tillys', '-', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.2593979, -120.6750554, 'Avis', '-', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.2578895, -120.6922241, '5 Star Medical', '11545 Los Osos Valley Road San Luis Obispo', '#e74c3c', 11, 'Laguna Village Shopping Center', false);
+addStore(35.1367285, -120.6265241, 'McDonald\'s', '350 Five Cities Drive', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.2704023, -120.6566482, 'Starbucks', '-', '#e74c3c', 15, 'The Village at Broad Street', false);
+addStore(35.2808792, -120.6614347, 'Starbucks', '-', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.1200346, -120.6100628, 'Starbucks', '-', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(35.120566, -120.6057358, 'Panda Express', '-', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(35.1193974, -120.6014668, 'Carquest', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(35.1193928, -120.6011289, 'Rite Aid', '-', '#f39c12', 10, 'Unnamed Retail Center', true);
+addStore(35.1202207, -120.6019313, 'Five Guys', '1229 East Grand Avenue', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(35.1202247, -120.6017006, 'Chipotle', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(35.1202289, -120.6018187, 'Menchie\'s', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(35.3114, -120.82973, 'Tesla Supercharger', '1130 Los Osos Valley Road Baywood-Los Osos', '#e74c3c', 4, 'Bay Osos Village Center', false);
+addStore(35.13641, -120.62866, 'Tesla Supercharger', '333 Five Cities Drive Pismo Beach', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.120566, -120.6109461, 'Tesla Supercharger', '1600 West Grand Avenue Grover Beach', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(35.1206738, -120.6083108, '7-Eleven', '-', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(35.119849, -120.6053909, 'The UPS Store', '-', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(35.1265156, -120.5953424, 'Jamba', '-', '#e74c3c', 5, 'Five Cities Center', false);
+addStore(35.1267476, -120.5954464, 'T-Mobile', '-', '#e74c3c', 5, 'Five Cities Center', false);
+addStore(35.1295502, -120.6024413, 'R&R', '-', '#e74c3c', 3, 'Oak Park Plaza', false);
+addStore(35.1271742, -120.5948554, 'Golden Nails', '-', '#e74c3c', 5, 'Five Cities Center', false);
+addStore(35.1286788, -120.596416, 'AT&T', '-', '#e74c3c', 5, 'Five Cities Center', false);
+addStore(35.2830699, -120.6584228, 'The Shop', '-', '#e74c3c', 14, 'Urban Optics', false);
+addStore(35.1202645, -120.6022331, 'Western Dental', '1237 East Grand Avenue', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(35.2800104, -120.6623801, 'Vans', '853 Higuera Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2784445, -120.6641977, 'The Gold Bar', '1137 Broad Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.3118411, -120.83001, 'Grocery Outlet Bargain Marke', '1130 Los Osos Valley Road Los Osos', '#f39c12', 4, 'Bay Osos Village Center', true);
+addStore(35.2936292, -120.6714069, 'Glossy Nail Bar', '795 Ste B Foothill Blvd', '#e74c3c', 8, 'University Square', false);
+addStore(35.1312182, -120.6043311, 'Arroyo Grande Home and Garden', '-', '#e74c3c', 3, 'Oak Park Plaza', false);
+addStore(35.1309775, -120.6037388, 'Grocery Outlet', '-', '#f39c12', 3, 'Oak Park Plaza', true);
+addStore(35.1311002, -120.6040061, 'Planet Fitness', '-', '#f39c12', 3, 'Oak Park Plaza', true);
+addStore(35.1304836, -120.6045312, 'Starbucks', '-', '#e74c3c', 3, 'Oak Park Plaza', false);
+addStore(35.1287143, -120.5966359, 'Wingstop', '-', '#e74c3c', 5, 'Five Cities Center', false);
+addStore(35.1351718, -120.6247481, 'Bridge Street House', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.2797663, -120.6628903, 'Verkada', '-', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.3124847, -120.8283768, 'Bear Valley Auto House', '2125 Fairchild Way', '#e74c3c', 4, 'Bay Osos Village Center', false);
+addStore(35.2701232, -120.6697082, 'Nixon Tire', '219 Higuera Street', '#e74c3c', 7, 'South Street Station', false);
+addStore(35.26992, -120.6699027, 'The Pond Place', '207 Higuera Street', '#e74c3c', 7, 'South Street Station', false);
+addStore(35.2696888, -120.6705532, 'Aqua Tech Spas', '200 South Higuera Street', '#e74c3c', 7, 'South Street Station', false);
+addStore(35.2706923, -120.6696974, 'AutoZone', '239 Higuera Street', '#e74c3c', 7, 'South Street Station', false);
+addStore(35.2708383, -120.6705938, 'Hayward Lumber', '236 Higuera Street', '#e74c3c', 7, 'South Street Station', false);
+addStore(35.2723229, -120.6699266, 'Megan\'s Organic Market, SLO', '280 Higuera', '#e74c3c', 7, 'South Street Station', false);
+addStore(35.2725809, -120.6701886, 'Lube N Go', '286 Higuera Street', '#e74c3c', 7, 'South Street Station', false);
+addStore(35.278376, -120.6618871, 'Chase', '1235 Chorro Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2817004, -120.655725, 'Smart & Final Extra!', '1321 Johnson Avenue San Luis Obispo', '#f39c12', 14, 'Urban Optics', true);
+addStore(35.2836868, -120.6577822, 'Ceremony Skate Shop', '1235 Monterey Street', '#e74c3c', 14, 'Urban Optics', false);
+addStore(35.293741, -120.6683317, 'Shell', '-', '#e74c3c', 8, 'University Square', false);
+addStore(35.2948284, -120.6690259, 'Rite Aid', '-', '#f39c12', 8, 'University Square', true);
+addStore(35.2944054, -120.6685777, 'Chevron', '-', '#e74c3c', 8, 'University Square', false);
+addStore(35.2606021, -120.676683, 'Hobby Lobby', '315 Madonna Road', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.2626367, -120.6777221, 'Chipotle', '299 Madonna Road San Luis Obispo', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.2642511, -120.6767288, 'Denny\'s', '208 Madonna Road', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.2643684, -120.6763704, 'Shell', '204 Madonna', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.2629492, -120.6720011, 'Elks Lodge', '-', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.2691653, -120.6696394, 'Wrona\'s Auto Repair Inc.', '109 South Street', '#e74c3c', 7, 'South Street Station', false);
+addStore(35.2685291, -120.6550886, 'Rabobank', '2276 Broad Street', '#e74c3c', 15, 'The Village at Broad Street', false);
+addStore(35.2691165, -120.6567367, 'Conserv Mart', '2211 Broad Street San Luis Obispo', '#e74c3c', 15, 'The Village at Broad Street', false);
+addStore(35.2793834, -120.661291, 'Calico Trading Co.', '883 Marsh Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2692718, -120.6565764, 'Conserv Fuel', '2211 Broadway', '#e74c3c', 15, 'The Village at Broad Street', false);
+addStore(35.2495813, -120.6433578, 'Carl\'s Jr. / Green Burrito', '3980 Broad San Luis Obispo', '#e74c3c', 9, 'Marigold Shopping Center', false);
+addStore(35.2807119, -120.6623, 'Thrifty Beaches Headquarters', '-', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2619092, -120.6780999, 'Buffalo Wild Wings', '309 Madonna Road', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.2629894, -120.6750727, 'Kohl\'s', '205 Madonna Road San Luis Obispo', '#f39c12', 2, 'Madonna Plaza', true);
+addStore(35.2629249, -120.6774085, 'McDonald\'s', '275 Madonna Road San Luis Obispo', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.2635143, -120.6757365, 'Ralphs', '201 Madonna Road San Luis Obispo', '#f39c12', 2, 'Madonna Plaza', true);
+addStore(35.2503996, -120.6897417, 'The Home Depot', '1551 Froom Ranch San Luis Obispo', '#f39c12', 17, 'Irish Hills Plaza', true);
+addStore(35.2792209, -120.6643301, 'Rogers Jewelry Co.', '718 Higuera', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2798393, -120.6634862, 'The Network Shopping Center', '778 Higuera Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.252529, -120.6883865, 'BevMo!', '-', '#f39c12', 17, 'Irish Hills Plaza', true);
+addStore(35.2701861, -120.671684, 'Villa Automotive', '34 South Street San Luis Obispo', '#e74c3c', 7, 'South Street Station', false);
+addStore(35.2701163, -120.6704772, 'Paul\'s Dry Cleaners & Laundry', '214 Higuera Street', '#e74c3c', 7, 'South Street Station', false);
+addStore(35.271448, -120.6694624, 'Harbor Freight Tools', '277 Higuera Street San Luis Obispo', '#f39c12', 7, 'South Street Station', true);
+addStore(35.2711468, -120.6697288, 'Traditional Tattoo', '251 Higuera Street', '#e74c3c', 7, 'South Street Station', false);
+addStore(35.271478, -120.6702567, 'The Tire Store', '252 Higuera Street', '#e74c3c', 7, 'South Street Station', false);
+addStore(35.2731241, -120.6698276, 'Scott\'s Shop', '304 Higuera Street', '#e74c3c', 7, 'South Street Station', false);
+addStore(35.2733207, -120.6697537, 'Wally\'s Bicycle Works', '306 Higuera Street', '#e74c3c', 7, 'South Street Station', false);
+addStore(35.2730289, -120.6698828, 'Oconnor Pet Hospital', '300 Higuera Street', '#e74c3c', 7, 'South Street Station', false);
+addStore(35.2637098, -120.6774964, 'IHOP', '212 Madonna', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.3118668, -120.8304385, 'Rite Aid', '1110 Los Osos Valley Road', '#f39c12', 4, 'Bay Osos Village Center', true);
+addStore(35.2504054, -120.641954, 'Vons', '3900 Broad Street San Luis Obispo', '#f39c12', 9, 'Marigold Shopping Center', true);
+addStore(35.3107095, -120.8316156, 'Chase', '1043 Los Osos Valley Road Los Osos', '#e74c3c', 4, 'Bay Osos Village Center', false);
+addStore(35.3106639, -120.8306369, 'Casa Pinedas Party Decorations', '1085 Los Osos Valley Road Los Osos', '#e74c3c', 4, 'Bay Osos Village Center', false);
+addStore(35.3106913, -120.8309425, 'Pacific Auto Service', '1071 Los Osos Valley Road Los Osos', '#e74c3c', 4, 'Bay Osos Village Center', false);
+addStore(35.3106496, -120.8304064, 'First Defense Firearms', '1099 Los Osos Valley Road Los Osos', '#e74c3c', 4, 'Bay Osos Village Center', false);
+addStore(35.3109379, -120.8327568, 'Rabobank', '1001 Los Osos Valley Road', '#e74c3c', 4, 'Bay Osos Village Center', false);
+addStore(35.3114545, -120.8325874, 'Valley Liquor', '2199 10th Street Los Osos', '#e74c3c', 4, 'Bay Osos Village Center', false);
+addStore(35.0985619, -120.6115859, 'Lucky Laundry', '1957 Front Street Oceano', '#f39c12', 19, 'Unnamed Retail Center', true);
+addStore(35.0985388, -120.6101265, 'Dawna\'s Pet Parlor', '1941 Cienaga Street Oceano', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(35.0985386, -120.6095934, 'Central Market', '2061 Cienaga Street', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(35.2523912, -120.684587, 'Target', '11990 Los Osos Valley Road San Luis Obispo', '#f39c12', 12, 'Perfumo Creek Commons', true);
+addStore(35.1208138, -120.6118616, 'Wells Fargo', '1580 West Grand Avenue Grover Beach', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(35.1208293, -120.6125153, 'McDonald\'s', '1550 West Grand Avenue Grover Beach', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(35.1213197, -120.6096322, 'Burger King', '1775 Grand Avenue Grover Beach', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(35.1339412, -120.6063755, 'A Fine Yarn', '859 North Oak Park Boulevard', '#e74c3c', 3, 'Oak Park Plaza', false);
+addStore(35.133787, -120.6058175, 'Rabobank', '865 North Oak Park Boulevard', '#e74c3c', 3, 'Oak Park Plaza', false);
+addStore(35.1324597, -120.6079898, 'Outdoor Supply Hardware', '825 Oak Park Boulevard Pismo Beach', '#e74c3c', 3, 'Oak Park Plaza', false);
+addStore(35.1349805, -120.6068779, 'United States Post Office', '100 Crest Drive', '#e74c3c', 3, 'Oak Park Plaza', false);
+addStore(35.1336017, -120.6074929, 'Ross', '829 North Oak Park Boulevard Pismo Beach', '#f39c12', 3, 'Oak Park Plaza', true);
+addStore(35.1331013, -120.6061467, 'Taco Bell', '867 North Oak Park Boulevard Pismo Beach', '#e74c3c', 3, 'Oak Park Plaza', false);
+addStore(35.1201016, -120.5994659, 'Modelhom', '1185 East Grand Avenue', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(35.1212298, -120.6063139, 'Gill\'s Liquor', '1490 East Grand Avenue Arroyo Grande', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(35.1208349, -120.6008049, 'Jack in the Box', '1208 Grand Avenue Arroyo Grande', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(35.1238248, -120.5941576, 'Brisco\'s Hardware', '1005 El Camino Real Arroyo Grande', '#e74c3c', 5, 'Five Cities Center', false);
+addStore(35.1270812, -120.5966538, 'Regal Cinemas', '1160 West Branch Street', '#e74c3c', 5, 'Five Cities Center', false);
+addStore(35.1272716, -120.5979057, 'In-N-Out Burger', '1170 West Branch Street Arroyo Grande', '#e74c3c', 5, 'Five Cities Center', false);
+addStore(35.1290083, -120.5977038, 'Walmart', '1168 West Branch Street Arroyo Grande', '#f39c12', 5, 'Five Cities Center', true);
+addStore(35.1295448, -120.6016974, 'Hampton Inn & Suites', '1400 West Branch Street Arroyo Grande', '#e74c3c', 3, 'Oak Park Plaza', false);
+addStore(35.1307965, -120.6050095, 'Carl\'s Jr./ Green Burrito', '1590 West Branch Street Arroyo Grande', '#e74c3c', 3, 'Oak Park Plaza', false);
+addStore(35.1320291, -120.6056018, 'Best Western Casa Grande Inn', '850 Oak Park Boulevard Arroyo Grande', '#e74c3c', 3, 'Oak Park Plaza', false);
+addStore(35.1263748, -120.5930746, 'Massage Envy', '905 Rancho Parkway', '#e74c3c', 5, 'Five Cities Center', false);
+addStore(35.1257815, -120.5934727, 'Club Pilates', '925 Rancho Parkway', '#e74c3c', 5, 'Five Cities Center', false);
+addStore(35.1256931, -120.5940533, 'Trader Joe\'s', '955 Rancho Parkway Arroyo Grande', '#f39c12', 5, 'Five Cities Center', true);
+addStore(35.1265461, -120.5943312, 'Wells Fargo Advisors', '907 Rancho Parkway', '#e74c3c', 5, 'Five Cities Center', false);
+addStore(35.1368885, -120.6310189, 'Pismo Beach Self Storage', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1365119, -120.6293618, 'Nike', '-', '#f39c12', 1, 'Pismo Beach Premium Outlets', true);
+addStore(35.1359692, -120.6268353, 'Polo Ralph Lauren', '333 Five Cities Drive', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1361628, -120.6308573, 'Quality Inn', '230 Five Cities Drive', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1371041, -120.6301717, 'Shell', '200 Five Cities Drive Pismo Beach', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1369955, -120.6279483, 'Chevron', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1370902, -120.6284171, 'Jack in the Box', '334 Five Cities Drive Pismo Beach', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1364269, -120.6250599, 'Coco\'s Bakery', '411 Five Cities Drive', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1358661, -120.6252544, 'Crumbl Cookies', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1363474, -120.6239456, '76', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.3681829, -120.8430607, 'McDonald\'s', '780 Quintana Road', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(35.3672773, -120.8438369, 'Rite Aid', '740 Quintana Road', '#f39c12', 6, 'Unnamed Retail Center', true);
+addStore(35.3688569, -120.8450394, 'Round Table Pizza', '610 Quintana Road', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(35.3689154, -120.8442286, 'Dollar Tree', '710 Quintana Road', '#f39c12', 6, 'Unnamed Retail Center', true);
+addStore(35.3661648, -120.8426824, 'The Human Bean', '839 Morro Bay Boulevard', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(35.3666108, -120.8417257, 'Mobil Mart', '911 Morro Bay Boulevard', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(35.3664634, -120.8416115, 'Mobil', '911 Morro Bay Boulevard', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(35.3681879, -120.842575, 'Burger King', '781 Quintana Road Morro Bay', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(35.3694846, -120.845267, 'H&R Block', '1075 Quintana Road', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(35.2511612, -120.6858359, 'AT&T', '11998 Los Osos Valley', '#e74c3c', 12, 'Perfumo Creek Commons', false);
+addStore(35.2599843, -120.6757766, 'Nordstrom Rack', '323 Madonna Road San Luis Obispo', '#f39c12', 2, 'Madonna Plaza', true);
+addStore(35.2534356, -120.684858, 'Dick\'s Sporting Goods', '11970 Los Osos Valley San Luis Obispo', '#f39c12', 12, 'Perfumo Creek Commons', true);
+addStore(35.2525034, -120.6869302, 'Olive Garden', '11966 Los Osos Valley', '#e74c3c', 12, 'Perfumo Creek Commons', false);
+addStore(35.3119211, -120.8307981, 'Miner\'s Ace Hardware', '1080 Los Osos Valley Road Los Osos', '#f39c12', 4, 'Bay Osos Village Center', true);
+addStore(35.2581863, -120.6914654, 'Burger King', '1358 Madonna Road San Luis Obispo', '#e74c3c', 11, 'Laguna Village Shopping Center', false);
+addStore(35.3106076, -120.8303258, 'Bay Auto & Tire', '1099 Los Osos Valley Road Los Osos', '#e74c3c', 4, 'Bay Osos Village Center', false);
+addStore(35.1352296, -120.6270849, 'Aeropostale', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1354857, -120.626067, 'Calvin Klein', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.135871, -120.6259714, 'Carter\'s', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1356892, -120.6291151, 'claire\'s', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.135366, -120.6261016, 'Coach', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1355038, -120.6283765, 'DC Shoes', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1358234, -120.6294453, 'Famous Footwear', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1353219, -120.6275212, 'Five Below', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1351662, -120.6262829, 'Guess Factory Store', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1361403, -120.629502, 'Gymboree', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1355355, -120.6284501, 'Harry & David', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1355675, -120.6285197, 'Hot Topic', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1354518, -120.628085, 'IZOD', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1352133, -120.626996, 'Jockey', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1356053, -120.626029, 'Jones New York Outlet', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1355843, -120.6286051, 'Journeys', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1362595, -120.6294416, 'Kitchen Collection', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1351691, -120.6268616, 'L\'eggs Hanes Bali Playtex', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1356495, -120.628928, 'Lane Bryant', '333 Five Cities Drive Pismo Beach', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1354184, -120.6279862, 'Levi\'s', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1361965, -120.6294848, 'Nine West Outlet', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1356006, -120.6286879, 'OshKosh B\'gosh', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1354942, -120.6282162, 'PacSun', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1352452, -120.6271516, 'Perfumania', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1358376, -120.6276859, 'Pismo Beach Premium Outlets', '333 Five Cities Drive Pismo Beach', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1351179, -120.626534, 'Rocky Mountain Chocolate Factory', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1357268, -120.6260091, 'Styles For Less', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1357151, -120.6292393, 'Sunglass Hut', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1359173, -120.6295124, 'Tommy Hilfiger', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1356164, -120.6287669, 'Torrid', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1353703, -120.6277579, 'Van Heusen', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1352689, -120.6272651, 'Vans', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1353924, -120.627863, 'Zumiez', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1350744, -120.6251868, 'Rite Aid', '-', '#f39c12', 1, 'Pismo Beach Premium Outlets', true);
+addStore(35.1351217, -120.6238739, 'California Fresh Market', '555 Five Cities Drive Pismo Beach', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.1359626, -120.6252286, 'Starbucks', '-', '#e74c3c', 1, 'Pismo Beach Premium Outlets', false);
+addStore(35.3694163, -120.845718, 'Catch a Wave Beauty Salon', '520 Quintana Road', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(35.369428, -120.8453048, 'Check Into Cash', '1065 Quintana Road', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(35.3695404, -120.8452298, 'Edward Jones', '1085 Quintana Road', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(35.3695969, -120.8451921, 'Dolly\'s Donuts', '1095 Quintana Road', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(35.368768, -120.8448872, 'The UPS Store', '630 Quintana Road', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(35.3687386, -120.8448359, 'Morro Bay Cigarettes', '640 Quintana Road', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(35.368678, -120.8447302, 'Subway', '660 Quintana Road Morro Bay', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(35.3674989, -120.8444384, 'Albertsons', '730 Quintana Road Morro Bay', '#f39c12', 6, 'Unnamed Retail Center', true);
+addStore(35.2624811, -120.6779219, 'Dave\'s Hot Chicken', '299 Madonna Road', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.251009, -120.6826828, 'Auto Park Superstore', '-', '#e74c3c', 12, 'Perfumo Creek Commons', false);
+addStore(35.2507227, -120.684938, 'Coast Nissan & BMW', '-', '#e74c3c', 12, 'Perfumo Creek Commons', false);
+addStore(35.2513655, -120.6836599, 'Rancho Grande Motors', '-', '#e74c3c', 12, 'Perfumo Creek Commons', false);
+addStore(35.3130088, -120.8305804, 'GoWesty Camper Products', '1119 Los Olivos Avenue Los Osos', '#e74c3c', 4, 'Bay Osos Village Center', false);
+addStore(35.3120657, -120.8318413, 'Los Osos Popup Gallery', '1056 Los Osos Valley Road', '#e74c3c', 4, 'Bay Osos Village Center', false);
+addStore(35.3120634, -120.8317053, 'Hair Lines Salon', '1060 Los Osos Valley Road', '#e74c3c', 4, 'Bay Osos Village Center', false);
+addStore(35.3120595, -120.8314809, 'Farmers Insurance', '1068 Los Osos Valley Road', '#e74c3c', 4, 'Bay Osos Village Center', false);
+addStore(35.2514806, -120.6831567, 'Rancho Grande Subaru', '1404 Auto Park Way San Luis Obispo', '#e74c3c', 12, 'Perfumo Creek Commons', false);
+addStore(35.2618793, -120.6743607, 'Best Buy', '255 Madonna Road San Luis Obispo', '#f39c12', 2, 'Madonna Plaza', true);
+addStore(35.2611563, -120.6743106, 'Five Below', '271 Madonna Road', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.2626364, -120.6747856, 'Sky Nails & Spa', '207 Madonna Road', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.1320341, -120.6071346, 'A La Mode', '895 North Oak Park Boulevard', '#e74c3c', 3, 'Oak Park Plaza', false);
+addStore(35.1340127, -120.6066845, 'Beauty Secrets', '847 North Oak Park Boulevard', '#e74c3c', 3, 'Oak Park Plaza', false);
+addStore(35.1332707, -120.6075564, 'Big 5 Sporting Goods', '829 Oak Park Boulevard Pismo Beach', '#f39c12', 3, 'Oak Park Plaza', true);
+addStore(35.1321845, -120.6064696, 'Check Into Cash', '875 North Oak Park Boulevard', '#e74c3c', 3, 'Oak Park Plaza', false);
+addStore(35.1320065, -120.6070209, 'Coco\'s Foot Spa', '891 North Oak Park Boulevard', '#e74c3c', 3, 'Oak Park Plaza', false);
+addStore(35.1339532, -120.6064285, 'Diamond Designs', '857 North Oak Park Boulevard', '#e74c3c', 3, 'Oak Park Plaza', false);
+addStore(35.1339141, -120.6062632, 'Golden Donut', '863 North Oak Park Boulevard', '#e74c3c', 3, 'Oak Park Plaza', false);
+addStore(35.1320865, -120.6078729, 'Hydro Heaven', '821 Oak Park Boulevard', '#e74c3c', 3, 'Oak Park Plaza', false);
+addStore(35.1339961, -120.6066148, 'Miss Darling', '851 North Oak Park Boulevard', '#e74c3c', 3, 'Oak Park Plaza', false);
+addStore(35.1319736, -120.6068864, 'Number One Nails', '885 North Oak Park Boulevard', '#e74c3c', 3, 'Oak Park Plaza', false);
+addStore(35.1339789, -120.6065413, 'Valley Cleaners', '853 North Oak Park Boulevard', '#e74c3c', 3, 'Oak Park Plaza', false);
+addStore(35.1266888, -120.5930233, 'Petco', '905 Rancho Parkway Arroyo Grande', '#f39c12', 5, 'Five Cities Center', true);
+addStore(35.1271933, -120.5932701, 'Daiso', '901 Rancho Parkway', '#e74c3c', 5, 'Five Cities Center', false);
+addStore(35.125954, -120.5933218, 'Mae Rose', '917 Rancho Parkway', '#e74c3c', 5, 'Five Cities Center', false);
+addStore(35.126045, -120.593242, 'Verizon', '913 Rancho Parkway', '#e74c3c', 5, 'Five Cities Center', false);
+addStore(35.1264841, -120.5930437, 'European Wax Center', '905 Rancho Parkway', '#e74c3c', 5, 'Five Cities Center', false);
+addStore(35.2693374, -120.6557256, 'Dollar Tree', '2238 Broad Street', '#f39c12', 15, 'The Village at Broad Street', true);
+addStore(35.0990202, -120.6116601, 'La Miramar Western Wear', '1750 Beach Street Oceano', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(35.1202531, -120.6011301, 'Starbucks', '1209-1221 East Grand Avenue Arroyo Grande', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(35.2691597, -120.669454, 'Green Goods', '111 South Street', '#e74c3c', 7, 'South Street Station', false);
+addStore(35.1287391, -120.5945473, 'Marshalls', '-', '#f39c12', 5, 'Five Cities Center', true);
+addStore(35.1287557, -120.5962617, 'Sally Beauty', '-', '#e74c3c', 5, 'Five Cities Center', false);
+addStore(35.12876, -120.5963743, 'Supercuts', '-', '#e74c3c', 5, 'Five Cities Center', false);
+addStore(35.1287661, -120.5965302, 'GNC', '-', '#e74c3c', 5, 'Five Cities Center', false);
+addStore(35.1287681, -120.5965825, 'GameStop', '-', '#e74c3c', 5, 'Five Cities Center', false);
+addStore(35.1287736, -120.5967256, 'Blaze Pizza', '-', '#e74c3c', 5, 'Five Cities Center', false);
+addStore(35.279218, -120.6614431, 'Bricks & Minifigs', '863 Marsh Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2791194, -120.6616045, 'Central Coast Surfboards', '855 Marsh Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.3102992, -120.8287981, 'Subway', '1195 Los Osos Valley Road Los Osos', '#e74c3c', 4, 'Bay Osos Village Center', false);
+addStore(35.3102931, -120.8287397, 'Los Osos Smoke Shop', '-', '#e74c3c', 4, 'Bay Osos Village Center', false);
+addStore(35.2448188, -120.6715819, 'SLO Self Storage', '-', '#e74c3c', 13, 'Higuera Plaza', false);
+addStore(35.2810468, -120.663134, 'Williams-Sonoma', '864 Monterey Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.098821, -120.6109762, 'Colors & Curls', '1910 19th Street Oceano', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(35.2445236, -120.6731801, 'Food 4 Less', '3985 South Higuera Street San Luis Obispo', '#e74c3c', 13, 'Higuera Plaza', false);
+addStore(35.2450515, -120.6732686, 'Trader Joe\'s', '3977 South Higuera Street San Luis Obispo', '#f39c12', 13, 'Higuera Plaza', true);
+addStore(35.2449123, -120.6733865, 'Whiz Kids', '3979 South Higuera Street San Luis Obispo', '#e74c3c', 13, 'Higuera Plaza', false);
+addStore(35.2456039, -120.67318, 'Starbucks', '3971 South Higuera Street San Luis Obispo', '#e74c3c', 13, 'Higuera Plaza', false);
+addStore(35.2454869, -120.6732164, 'Happy Nails', '3971 South Higuera Street San Luis Obispo', '#e74c3c', 13, 'Higuera Plaza', false);
+addStore(35.2796849, -120.6634165, 'Proof & Gather Baking Company', '778 Higuera Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2797407, -120.663324, 'Mareh Cuture', '778 Higuera Street San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2513875, -120.643205, 'Debonair Eyes', '3840 Broad Street San Luis Obispo', '#e74c3c', 9, 'Marigold Shopping Center', false);
+addStore(35.2512789, -120.6434917, 'Wingstop', '3840 Broad Street San Luis Obispo', '#e74c3c', 9, 'Marigold Shopping Center', false);
+addStore(35.2807907, -120.6633888, 'Sandbox Kids', '844 Monterey San Luis Obispo', '#e74c3c', 0, 'The Network Shopping Center', false);
+addStore(35.2596734, -120.6755211, 'World Market', '325 Madonna Road San Luis Obispo', '#e74c3c', 2, 'Madonna Plaza', false);
+addStore(35.1270728, -120.595779, 'Tesla Supercharger', '1158 West Branch Street Arroyo Grande', '#e74c3c', 5, 'Five Cities Center', false);
+addStore(35.1199555, -120.6022909, 'Gina\'s Piece of Cake', '1231 East Grand Avenue Arroyo Grande', '#3498db', 10, 'Unnamed Retail Center', false);
+ 
+  // ---- Tenant name filter ----
+  var allTenantNames = ['5 Star Medical', '7-Eleven', '76', '99 Cents Only Stores', '@ Nails', 'A Fine Yarn', 'A Heart\'s Desires Bridal', 'A La Mode', 'AAA Optometrist', 'Abercrombie & Fitch', 'Aeropostale', 'Albertsons', 'ALDI', 'Ambiance Clothing Boutique', 'Anthropologie', 'Antique Boutique', 'Apropos', 'Aqua Tech Spas', 'Arroyo Grande Home and Garden', 'Art\'s Cyclery', 'AT&T', 'Athleta', 'Auto Park Superstore', 'AutoZone', 'Avis', 'B Bella LLC', 'B. Anthony & Co. Jewlers', 'Bambu Batu', 'Banana Republic', 'Bank of America', 'Barnes & Noble', 'Bath & Body Works', 'Baxter Moerman', 'Bay Auto & Tire', 'Bear Valley Auto House', 'Beauty Box', 'Beauty Secrets', 'Best Buy', 'Best Western Casa Grande Inn', 'BevMo!', 'Big 5 Sporting Goods', 'Bike SLO County/SLO Bike Kitchen', 'Blackwater', 'Blaze Pizza', 'Bluebird Salon', 'Boo Boo Records', 'Brandy Melville', 'Bread Bike', 'Bricks & Minifigs', 'Bridge Street House', 'Brisco\'s Hardware', 'Buffalo Wild Wings', 'Burger King', 'Cal eyebrow threading', 'Cal Poly Mustang Shop', 'Calico Trading Co.', 'California Fresh Market', 'Calvin Klein', 'Carl\'s Jr. / Green Burrito', 'Carl\'s Jr./ Green Burrito', 'Carlock\'s', 'Carquest', 'Carter\'s', 'Casa Pinedas Party Decorations', 'Catch a Wave Beauty Salon', 'Celadon House', 'Central Coast Surfboards', 'Central Coast Vintage', 'Central Coast Wines', 'Central Market', 'Ceremony Skate Shop', 'Change Of A Dress', 'Charles Schwab', 'Chase', 'Check \'n Go', 'Check Into Cash', 'Chevron', 'Chico\'s', 'Chipotle', 'Christian\'s Mattress Xpress', 'claire\'s', 'Club Pilates', 'Coach', 'Coast Nissan & BMW', 'Coco\'s Bakery', 'Coco\'s Foot Spa', 'Coin- Op Laundry', 'Colors & Curls', 'Conserv Fuel', 'Conserv Mart', 'Costco Food Court', 'Crumbl Cookies', 'Crushed Grape', 'Cycle Gear', 'D-Lux Hair Salon', 'Daiso', 'Dave\'s Hot Chicken', 'Dawna\'s Pet Parlor', 'Day Nails and Spa', 'DC Shoes', 'Debonair Eyes', 'Denny\'s', 'Design Collaborative', 'Diamond Designs', 'Dick\'s Sporting Goods', 'Dollar Tree', 'Dolly\'s Donuts', 'Domino\'s', 'Dr. Cain\'s Comics and Games', 'DSW', 'Ecobambino', 'Edward Jones', 'El Pollo Loco', 'Electrify America DC Fast Chargers', 'Elks Lodge', 'European Wax Center', 'eVgo', 'Famous Footwear', 'Fantastic Sams', 'Farb\'s Bakery', 'Farmers Insurance', 'Finders Keepers', 'First Defense Firearms', 'Five Below', 'Five Guys', 'Flip Flop Shop', 'Food 4 Less', 'Foot Massage', 'Francesca\'s', 'French Quarter', 'Freshh Donuts', 'GameStop', 'Garden Street Goldsmiths', 'Gene Francis Gallery', 'Gill\'s Liquor', 'Gina\'s Piece of Cake', 'Glossy Nail Bar', 'GNC', 'Golden 1 Credit Union', 'Golden Donut', 'Golden Nails', 'Goodwill', 'GoWesty Camper Products', 'Green Goods', 'Grocery Outlet', 'Grocery Outlet Bargain Marke', 'Growing Grounds Downtown', 'Guess Factory Store', 'Gymboree', 'H&M', 'H&R Block', 'Habitat Home & Garden', 'Hair Lines Salon', 'Hallmark', 'Hampton Inn & Suites', 'Hands Gallery', 'Happy Nails', 'Harbor Freight Tools', 'Harry & David', 'Hayward Lumber', 'Healthy Life Massage', 'Heavenly Couture', 'HepKat Clothing & Beauty Parlor', 'Hobby Lobby', 'HomeGoods', 'Hot Topic', 'Hydro Heaven', 'IHOP', 'In-N-Out Burger', 'Insomnia Cookies', 'IZOD', 'Jack in the Box', 'Jamba', 'Jersey Mike\'s Subs', 'Jim’s Automotive & Hybrid', 'Jockey', 'Joe\'s', 'Jones New York Outlet', 'Journeys', 'Junkgirls', 'Karson Butler Events', 'Kitchen Collection', 'Kohl\'s', 'L\'eggs Hanes Bali Playtex', 'La Miramar Western Wear', 'Laguna Cleaners', 'Laguna Smokes', 'Lane Bryant', 'Lassens Natural Foods & Vitamins', 'Lemos', 'Lets Party', 'Letter and Grain', 'Level Beauty Bar', 'Levi\'s', 'Little Free Pantry', 'Los Osos Mexican Market', 'Los Osos Popup Gallery', 'Los Osos Smoke Shop', 'Lube N Go', 'Lucky Laundry', 'Lulu Luxe', 'MAC Cosmetics', 'Mae Rose', 'Mannikins Tailoring', 'Mareh Cuture', 'MariGold Nails', 'Marshalls', 'Marshalls Jewelers', 'Massage Envy', 'Mattress Land SleepFIT', 'McDonald\'s', 'Megan\'s Organic Market, SLO', 'Men\'s Wearhouse', 'Menchie\'s', 'Michael\'s optical', 'Michaels', 'Mike\'s Shoes', 'Miner\'s Ace Hardware', 'Miss Darling', 'Mission Mall', 'Mobil', 'Mobil Mart', 'Modelhom', 'Moondoggie\'s Beach Club', 'Morro Bay Cigarettes', 'Motherhood Maternity', 'Mr. Michaels', 'Mysteri Vintage', 'Nike', 'Nine West Outlet', 'Nixon Tire', 'Nordstrom Rack', 'Number One Nails', 'Ocean Nails & Spa', 'Oconnor Pet Hospital', 'OfficeMax', 'Old Navy', 'Olive Garden', 'Ontology', 'Open Air Flowers', 'OshKosh B\'gosh', 'Outdoor Supply Hardware', 'Pacific Auto Service', 'PacSun', 'Panda Express', 'Passport', 'Paul\'s Dry Cleaners & Laundry', 'Perfumania', 'Petco', 'PetSmart', 'Phoenix Books', 'Pismo Beach Premium Outlets', 'Pismo Beach Self Storage', 'Planet Fitness', 'Polo Ralph Lauren', 'Poly Performance Inc.', 'Popeyes', 'Posh Couture Nail & Hair Studio', 'Pottery Barn', 'Premier Barbers', 'Pro Nails', 'Professional Nails', 'Proof & Gather Baking Company', 'Quality Inn', 'R&R', 'Rabobank', 'Ralphs', 'Rancho Grande Motors', 'Rancho Grande Subaru', 'Regal Cinemas', 'REI', 'Rite Aid', 'Rocket Fizz', 'Rocky Mountain Chocolate Factory', 'Rogers Jewelry Co.', 'Ross', 'Round Table Pizza', 'Roxanne’s Birkenstock', 'Running Warehouse', 'Sally Beauty', 'Salon62', 'San Luis Obispo Supercharger', 'San Luis Traditions', 'San Luis Variety & Luggage', 'Sanctuary Tobacco Shop', 'Sandbox Kids', 'Scott\'s Shop', 'Scout Coffee', 'Secret Garden', 'See\'s Candies', 'Self-Service Laundry', 'Sephora', 'Serengeti West Fine Jewelers', 'Shadow Canyon Cellars', 'Shell', 'Shift Hair', 'Shoe Palace', 'Sky Nails & Spa', 'Slo Asian Market', 'SLO Beverage \'n More', 'SLO Blowout Bar', 'SLO Laundry', 'SLO Self Storage', 'SLO Swim', 'Smart & Final', 'Smart & Final Extra!', 'Solstice Sunglass Boutique', 'Spoke SLO', 'Sport Clips', 'Sprouts Farmers Market', 'Starbucks', 'State Farm', 'State Farm Insurance Agency', 'Stay Sharp Barbershop', 'Stephen Patrick Design', 'Stephen Ross Wine Cellars', 'Structure Store', 'Styles For Less', 'Subway', 'Sunbrite Cleaners', 'Sunglass Hut', 'Supercuts', 'Sweet Pea Bakery', 'T-Mobile', 'Taco Bell', 'Tails', 'Takken\'s', 'Target', 'Tennis Warehouse', 'Tesla Supercharger', 'The Bladerunner', 'The Center Boutique', 'The Chop Shop', 'The Club Smoke Shop', 'The Gold Bar', 'The Gold Concept Jewelry & Design Studio', 'The Golden Paw', 'The Gypsy Boutique', 'The Habit Burger Grill', 'The Home Depot', 'The Human Bean', 'The Mercantile feat. Cattaneo Brothers', 'The Network Shopping Center', 'The Pond Place', 'The Ritual', 'The Salvation Army', 'The Shop', 'The Sports Forum', 'The Tire Store', 'The UPS Store', 'Thrifty Beaches Headquarters', 'Tiger Lily', 'Tileco', 'Tillys', 'To Have & To Hold', 'Tom\'s Toys', 'Tommy Hilfiger', 'Torrid', 'Trader Joe\'s', 'Traditional Tattoo', 'Trio Boutique', 'Tropical Hawaiian BBQ', 'Twig + Arrow', 'U.S. Bank', 'Ulta Beauty', 'Union Bank', 'United States Post Office', 'University Barber Shop', 'Urban Optics', 'Urban Outfitters', 'Valley Cleaners', 'Valley Liquor', 'Van Heusen', 'Vans', 'Verizon', 'Verkada', 'Victoria\'s Secret', 'Villa Automotive', 'Vons', 'VSI Visual Services Inc', 'Wally\'s Bicycle Works', 'Walmart', 'We Olive', 'Wells Fargo', 'Wells Fargo Advisors', 'West Coast SIlver Company', 'Western Dental', 'White House Black Market', 'Whiz Kids', 'Williams-Sonoma', 'Wingstop', 'Wizards of Wax', 'World Market', 'Wrona\'s Auto Repair Inc.', 'Yarns At the Adobe', 'Zumiez'];
+  var selectedNames = new Set(allTenantNames);
+ 
+  var plazaNameIndex = {};
+  storesData.forEach(function(s) {
+    if (s.plazaId === -1) return;
+    if (!plazaNameIndex[s.plazaId]) plazaNameIndex[s.plazaId] = new Set();
+    plazaNameIndex[s.plazaId].add(s.name);
+  });
+ 
+  var tenantControl = L.control({position: 'topleft'});
+  tenantControl.onAdd = function() {
+    var container = L.DomUtil.create('div', 'tenant-filter');
+    container.innerHTML =
+      '<button id="tenantToggleBtn" class="tenant-toggle-btn" type="button">'
+      + 'Tenants: All (' + allTenantNames.length + ')</button>'
+      + '<div id="tenantPanel" class="tenant-panel" style="display:none;">'
+      +   '<input id="tenantSearch" class="tenant-search" type="text" placeholder="Search tenants...">'
+      +   '<div class="tenant-actions">'
+      +     '<button id="tenantSelectAll" type="button">Select all</button>'
+      +     '<button id="tenantDeselectAll" type="button">Deselect all</button>'
+      +   '</div>'
+      +   '<div id="tenantList" class="tenant-list"></div>'
+      + '</div>';
+    L.DomEvent.disableClickPropagation(container);
+    L.DomEvent.disableScrollPropagation(container);
+    return container;
+  };
+  tenantControl.addTo(map);
+ 
+  function updateTenantToggleLabel() {
+    var btn = document.getElementById('tenantToggleBtn');
+    var n = selectedNames.size;
+    var total = allTenantNames.length;
+    var label;
+    if (n === total) {
+      label = 'Tenants: All (' + total + ')';
+    } else if (n === 0) {
+      label = 'Tenants: none selected';
+    } else {
+      label = 'Tenants: ' + n + ' of ' + total + ' selected';
+    }
+    btn.innerHTML = label;
+  }
+ 
+  var tenantRows = [];
+  var tenantListEl = document.getElementById('tenantList');
+  allTenantNames.forEach(function(name) {
+    var row = document.createElement('label');
+    row.className = 'tenant-item';
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = true;
+    cb.addEventListener('change', function() {
+      if (cb.checked) { selectedNames.add(name); } else { selectedNames.delete(name); }
+      updateTenantToggleLabel();
+      updateVisibility();
+    });
+    row.appendChild(cb);
+    row.appendChild(document.createTextNode(' ' + name));
+    tenantListEl.appendChild(row);
+    tenantRows.push({el: row, checkbox: cb, lower: name.toLowerCase()});
+  });
+ 
+  document.getElementById('tenantToggleBtn').addEventListener('click', function() {
+    var panel = document.getElementById('tenantPanel');
+    panel.style.display = (panel.style.display === 'none') ? 'block' : 'none';
+  });
+ 
+  document.getElementById('tenantSearch').addEventListener('input', function(e) {
+    var q = e.target.value.toLowerCase();
+    tenantRows.forEach(function(r) {
+      r.el.style.display = (r.lower.indexOf(q) !== -1) ? '' : 'none';
+    });
+  });
+ 
+  document.getElementById('tenantSelectAll').addEventListener('click', function() {
+    tenantRows.forEach(function(r) { r.checkbox.checked = true; });
+    selectedNames = new Set(allTenantNames);
+    updateTenantToggleLabel();
+    updateVisibility();
+  });
+ 
+  document.getElementById('tenantDeselectAll').addEventListener('click', function() {
+    tenantRows.forEach(function(r) { r.checkbox.checked = false; });
+    selectedNames = new Set();
+    updateTenantToggleLabel();
+    updateVisibility();
+  });
+  // ---- end tenant name filter ----
+ 
+  map.on('overlayadd overlayremove', updateVisibility);
+  updateVisibility();
+ 
+  var overlays = {
+    '🔴  Multi-anchor plazas (2+ anchors)': layerMultiAnchor,
+    '⭕  Single-anchor plazas': layerSingleAnchor,
+    '🟣  Plaza Center Points': layerPlazaCenters,
+    '🟡  Anchor Stores (in Plaza)': layerAnchors,
+    '🔵🔴  Tenants (In Plaza)': layerTenants,
+    '━━━━━━━━━━━━━━': L.layerGroup(),
+    '🔥  High Density Plazas (10+ tenants)': layerHighDensity,
+    '🔹  Lower Density (< 10 tenants)': layerLowDensity
+  };
+ 
+  var countyDivider = false;
+  for (var county in countyLayers) {
+    if (!countyDivider) {
+        overlays['━━━━━━━━━━━━━━ '] = L.layerGroup();
+        countyDivider = true;
+    }
+    overlays['📍 ' + county] = countyLayers[county];
+  }
+ 
+  L.control.layers(null, overlays, {
+    position: 'topright',
+    collapsed: false,
+  }).addTo(map);
+ 
+  var legend = L.control({position: 'bottomright'});
+  legend.onAdd = function() {
+    var div = L.DomUtil.create('div', 'legend');
+    div.innerHTML = '<b>Retail Centers – San Luis Obispo, CA</b><br>'
+      + '<span class="legend-dot" style="background:#e74c3c"></span> Named plaza<br>'
+      + '<span class="legend-dot" style="background:#3498db"></span> Unnamed plaza<br>'
+      + '<span class="legend-dot" style="background:#8e44ad"></span> Plaza center point<br>'
+      + '<span class="legend-dot" style="background:#f39c12"></span> Anchor store (in plaza)<br>'
+      + '<span class="legend-dot" style="background:#27ae60"></span> Standalone store<br>'
+      + '⚓ = anchor &nbsp; 🔥 = 10+ tenants<br>'
+      + '<span style="font-size:11px;color:#666;">Use the Tenants filter (top-left) to isolate specific names.</span>';
+    return div;
+  };
+  legend.addTo(map);
+
+  document.getElementById('legendHeader').addEventListener('click', function() {
+    var body = document.getElementById('legendBody');
+    var icon = document.getElementById('legendToggleIcon');
+    var collapsed = (body.style.display === 'none');
+    body.style.display = collapsed ? 'block' : 'none';
+    icon.textContent = collapsed ? '▾' : '▸';
+  });
+</script>
+</body>
+</html>
