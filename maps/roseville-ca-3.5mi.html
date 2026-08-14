@@ -7,7 +7,7 @@
   <link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' />
   <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
   <style>
-    body { margin: 0; font-family: sans-seriff; }
+    body { margin: 0; font-family: sans-serif; }
     #map { height: 100vh; width: 100%; }
     .legend {
       background: white; padding: 10px 14px; border-radius: 6px;
@@ -18,33 +18,33 @@
                    border-radius: 50%; margin-right: 6px; }
     .tenant-filter { font-size: 13px; }
     .tenant-toggle-btn {
-        background: white; border: 2px solid rgba(0,0,0,0.2); border-radius: 6px;
-        box-shadow: 0 1px 5px rgba(0,0,0,0.3); padding: 8px 12px; font-size: 13px;
-        font-family: sans-seriff; cursor: pointer; min-width: 180px; text-align: left;
+      background: white; border: 2px solid rgba(0,0,0,0.2); border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); padding: 8px 12px; font-size: 13px;
+      font-family: sans-serif; cursor: pointer; min-width: 180px; text-align: left;
     }
     .tenant-toggle-btn:hover { background: #f4f4f4; }
     .tenant-panel {
-        background: white; border-radius: 6px; box-shadow: 0 1px 5px rgba(0,0,0,0.3);
-        margin-top: 4px; padding: 10px; width: 260px; max-height: 380px;
-        display: flex; flex-direction: column;
+      background: white; border-radius: 6px; box-shadow: 0 1px 5px rgba(0,0,0,0.3);
+      margin-top: 4px; padding: 10px; width: 260px; max-height: 380px;
+      display: flex; flex-direction: column;
     }
     .tenant-search {
-        width: 100%; box-sizing: border-box; padding: 6px 8px; margin-bottom: 8px;
-        border: 1px solid #ccc; border-radius: 4px; font-size: 13px;
+      width: 100%; box-sizing: border-box; padding: 6px 8px; margin-bottom: 8px;
+      border: 1px solid #ccc; border-radius: 4px; font-size: 13px;
     }
     .tenant-actions { display: flex; gap: 6px; margin-bottom: 8px; }
     .tenant-actions button {
-        flex: 1; padding: 5px 6px; font-size: 12px; border: 1px solid #ccc;
-        border-radius: 4px; background: #f7f7f7; cursor: pointer;
+      flex: 1; padding: 5px 6px; font-size: 12px; border: 1px solid #ccc;
+      border-radius: 4px; background: #f7f7f7; cursor: pointer;
     }
     .tenant-actions button:hover { background: #eaeaea; }
-    .tenant-list { overflow-y: auto; max-height: 260; border-top: 1px solid #eee; padding-top: 6px; }
+    .tenant-list { overflow-y: auto; max-height: 260px; border-top: 1px solid #eee; padding-top: 6px; }
     .tenant-item {
-        display: block; font-size: 12.5px; padding: 3px 2px; cursor: pointer;
-        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      display: block; font-size: 12.5px; padding: 3px 2px; cursor: pointer;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
-    .tenant-item:hover { background: #f4f4f4 }
-    .tenant-item input { margin-right: 6px }
+    .tenant-item:hover { background: #f4f4f4; }
+    .tenant-item input { margin-right: 6px; }
   </style>
 </head>
 <body>
@@ -150,15 +150,16 @@
       name: name
     });
   }
-
+ 
   function tenantFilterMatchesPlaza(plazaId) {
+    // Fast path: nothing deselected, every plaza passes.
     if (selectedNames.size >= allTenantNames.length) return true;
     var names = plazaNameIndex[plazaId];
     if (!names) return false;
     for (var n of names) {
-    if (selectedNames.has(n)) return true;
+      if (selectedNames.has(n)) return true;
     }
-    return false
+    return false;
   }
  
   function updateVisibility() {
@@ -586,23 +587,24 @@ addStore(38.7814409, -121.2651923, '76', '-', '#e74c3c', 2, 'Stanford Ranch Cros
 addStore(38.7958975, -121.3250488, 'Dutch Bros. Coffee', '1478 Blue Oaks Boulevard Roseville', '#e74c3c', 10, 'Crocker Ranch', false);
 addStore(38.795861, -121.3268676, 'Chick-fil-A', '1490 Blue Oaks Boulevard Roseville', '#e74c3c', 10, 'Crocker Ranch', false);
 addStore(38.7700779, -121.2628094, 'REI', '1148 Galleria Boulevard Roseville', '#e74c3c', 0, 'Creekside Town Center', false);
-
-  var allTenantNames = ['24 Hour Fitness', '76', 'A Classic Touch Salon', 'A&W', 'AAA Insurance', 'Aaron Brothers', 'Advance America', 'Advance America Cash Advance', 'Airport Home Appliance', 'Alterations', 'America\'s Best', 'American Furniture Superstore', 'ampm', 'Anthropologie', 'Arco', 'Arhaus', 'AT&T', 'Auto Service of Roseville', 'Autonation Honda', 'AutoZone', 'B. B. Nail Spa', 'Bambu', 'Bank of America', 'Barnes & Noble', 'Bath & Body Works', 'Batteries Plus Bulbs', 'Beach Hut Deli', 'Beryozka', 'Best Buy', 'Best Western Plus Orchid Hotel & Suites', 'Best Western Roseville Inn', 'BevMo!', 'Bianca\'s Fine Jewelry', 'Big Lots', 'Big O Tires', 'BJ\'s', 'Black Bear Diner', 'BlueZone Sports', 'Bob\'s Discount Furniture', 'Brighton Collectibles', 'Buca di Beppo', 'Buckle', 'Buffalo Wild Wings', 'Builders Showcase', 'Burger King', 'Burger Lounge', 'Burlington', 'Button Up Boutique', 'California Closets', 'California Sun', 'Carl\'s Jr.', 'Carl\'s Jr. / The Green Burrito', 'Carter\'s', 'Cartridge World', 'ChargePoint', 'Charles Schwab', 'Chase', 'Chevron', 'Chevys', 'Chick-fil-A', 'Chico\'s', 'Chipotle', 'Chuck E. Cheese', 'Cinemark', 'Citibank', 'Club Champion', 'Coinstar', 'Cold Stone Creamery', 'Coldwell Banker', 'Comfort Western and Workwear', 'Costco', 'Courtyard', 'Crate & Barrel', 'Creamy\'s', 'Crunch Fitness', 'Crystal Nails', 'Curves', 'Dave & Buster\'s', 'David\'s Bridal', 'Del Taco', 'Denny\'s', 'Design Within Reach', 'Dick\'s Sporting Goods', 'Dollar Tree', 'Dry Clean Today', 'Dutch Bros. Coffee', 'Echo Park Automotive', 'Eileen Fisher', 'Engel & Völkers', 'Enterprise', 'Ethan Allen', 'European Wax Center', 'Evereve', 'ExtraMile', 'Extreme Soccer', 'Famous Footwear', 'Finish Line', 'Five Below', 'Five Star Auto Repair', 'Fogo de Chão', 'Foot Locker', 'FreeStyle Clothing Exchange', 'FreeWire', 'Fresh Cleaners', 'GameStop', 'Get Nailed Salon', 'Glittery Slime Parlour', 'GNC', 'Golden 1 Credit Union', 'Golf Galaxy', 'Goodwill', 'Goodwill Donation Express', 'Goodyear', 'Great Clips', 'Great Cuts', 'Grocery Outlet', 'Guitar Center', 'H&M', 'Hair Extensions', 'Hampton Inn & Suites Roseville', 'Handel\'s Homemade Ice Cream', 'Harbor Freight Tools', 'Harmony Spa', 'Hawaii Massage', 'Hobby Lobby', 'Home Consignment Center', 'Homewood Suites Hilton', 'Huntington Learning Center', 'IHOP', 'In-N-Out Burger', 'India Supermarket', 'Ionna (planned)', 'Island Nails', 'J. Crew Factory', 'Jack in the Box', 'Jack\'s Urban Eats', 'Jamba', 'Janie & Jack', 'JCPenney', 'Jimboy\'s Tacos', 'John L. Sullivan\'s Roseville KIA', 'Joli Nail Spa', 'KB Home Design Studio', 'Kenny G & Company', 'KFC', 'Kohl\'s', 'Krispy Kreme', 'L&L Hawaiian Barbecue', 'LaserAway', 'LensCrafters', 'Les Schwab Tire Center', 'Liberty Tax', 'Liquor & Wine', 'Little Caesars', 'Live-More', 'Lowe\'s', 'Mansour\'s Oriental Rug Gallery', 'Marshalls', 'Massage Envy', 'Massage Heights', 'Mattress Outlet', 'Maurices', 'McDonald\'s', 'Mei Mei Hair & Nails', 'Men\'s Wearhouse', 'Mendocino Farms', 'Michaels', 'MOD Pizza', 'Mountain Mike\'s', 'Nail Spa 999', 'Nick The Greek', 'Niello Acura', 'Nordstrom', 'Nordstrom Rack', 'Nugget Markets', 'O\'Reilly Auto Parts', 'Office Depot', 'Old Gold Exchange', 'Old Navy', 'Once Upon a Child', 'Oriental Market', 'Outback Steakhouse', 'Panda Express', 'Panera Bread', 'Papa Murphy\'s', 'Paper Source', 'Paris Baguette', 'Party City', 'Peet\'s Coffee', 'Pet Club', 'Pet Food Express', 'PetSmart', 'Planet Fitness', 'Popeyes', 'Pottery Barn', 'Prime Storage', 'Pushkin\'s Bakery', 'Quickly', 'Quiznos', 'Raising Cane\'s', 'Raley\'s', 'Raley\'s Bel Air', 'Raley\'s O-N-E Market', 'Red Robin', 'Red Wing', 'Redbox', 'REI', 'Rite Aid', 'Rock Hill Boutique', 'Rose Food & Liquor', 'Roseville Ace Hardware', 'Roseville Cleaners', 'Ross', 'Round Table Pizza', 'Round1', 'Ruth\'s Chris Steak House', 'Safeway', 'Salt & Straw', 'Sam\'s Club', 'Save Mart', 'Scandinavian Designs', 'Sephora', 'Shane Co.', 'Shell', 'Sherman Clay', 'Site for Sore Eyes', 'Sleep Train', 'Smart & Final Extra!', 'Smashburger', 'Sole Desire Shoes', 'Soma', 'Sportsman\'s Warehouse', 'Staples', 'Starbucks', 'Subway', 'Suits Dept', 'Sundance Self Storage', 'Sunglass Hut', 'Supercuts', 'Sur La Table', 'Sweetgreen', 'T-Mobile', 'Taco Bell', 'Target', 'Tesla Supercharger', 'The Cave Roseville', 'The Cheesecake Factory', 'The Doggie Bag', 'The Habit Burger Grill', 'The Home Depot', 'The Joint Chiropractic', 'The Sandwich Spot', 'The Tools Vault', 'The UPS Store', 'Tiffany & Company', 'Togo\'s', 'Tommy Bahama', 'Top Ten Nails', 'Total Wine', 'Trader Joe\'s', 'Trendy Nails', 'Trojan Self Storage', 'U.S. Bank', 'UFC Gym', 'Ulta Beauty', 'Union Bank', 'Uniqlo', 'USPS', 'V Max Cleaners', 'Verizon', 'Visionworks', 'Volta', 'Walgreens', 'Walmart Supercenter', 'Wayback Burgers', 'Wells Fargo', 'Wendy\'s', 'west elm', 'Western Dental', 'Westfield', 'Westfield Galleria at Roseville', 'White House Black Market', 'Whole Foods Market', 'Wild Birds Unlimited', 'Willo', 'Woodcreek Nails & Spa']
+ 
+  // ---- Tenant name filter ----
+  var allTenantNames = ['24 Hour Fitness', '76', 'A Classic Touch Salon', 'A&W', 'AAA Insurance', 'Aaron Brothers', 'Advance America', 'Advance America Cash Advance', 'Airport Home Appliance', 'Alterations', 'America\'s Best', 'American Furniture Superstore', 'ampm', 'Anthropologie', 'Arco', 'Arhaus', 'AT&T', 'Auto Service of Roseville', 'Autonation Honda', 'AutoZone', 'B. B. Nail Spa', 'Bambu', 'Bank of America', 'Barnes & Noble', 'Bath & Body Works', 'Batteries Plus Bulbs', 'Beach Hut Deli', 'Beryozka', 'Best Buy', 'Best Western Plus Orchid Hotel & Suites', 'Best Western Roseville Inn', 'BevMo!', 'Bianca\'s Fine Jewelry', 'Big Lots', 'Big O Tires', 'BJ\'s', 'Black Bear Diner', 'BlueZone Sports', 'Bob\'s Discount Furniture', 'Brighton Collectibles', 'Buca di Beppo', 'Buckle', 'Buffalo Wild Wings', 'Builders Showcase', 'Burger King', 'Burger Lounge', 'Burlington', 'Button Up Boutique', 'California Closets', 'California Sun', 'Carl\'s Jr.', 'Carl\'s Jr. / The Green Burrito', 'Carter\'s', 'Cartridge World', 'ChargePoint', 'Charles Schwab', 'Chase', 'Chevron', 'Chevys', 'Chick-fil-A', 'Chico\'s', 'Chipotle', 'Chuck E. Cheese', 'Cinemark', 'Citibank', 'Club Champion', 'Coinstar', 'Cold Stone Creamery', 'Coldwell Banker', 'Comfort Western and Workwear', 'Costco', 'Courtyard', 'Crate & Barrel', 'Creamy\'s', 'Crunch Fitness', 'Crystal Nails', 'Curves', 'Dave & Buster\'s', 'David\'s Bridal', 'Del Taco', 'Denny\'s', 'Design Within Reach', 'Dick\'s Sporting Goods', 'Dollar Tree', 'Dry Clean Today', 'Dutch Bros. Coffee', 'Echo Park Automotive', 'Eileen Fisher', 'Engel & Völkers', 'Enterprise', 'Ethan Allen', 'European Wax Center', 'Evereve', 'ExtraMile', 'Extreme Soccer', 'Famous Footwear', 'Finish Line', 'Five Below', 'Five Star Auto Repair', 'Fogo de Chão', 'Foot Locker', 'FreeStyle Clothing Exchange', 'FreeWire', 'Fresh Cleaners', 'GameStop', 'Get Nailed Salon', 'Glittery Slime Parlour', 'GNC', 'Golden 1 Credit Union', 'Golf Galaxy', 'Goodwill', 'Goodwill Donation Express', 'Goodyear', 'Great Clips', 'Great Cuts', 'Grocery Outlet', 'Guitar Center', 'H&M', 'Hair Extensions', 'Hampton Inn & Suites Roseville', 'Handel\'s Homemade Ice Cream', 'Harbor Freight Tools', 'Harmony Spa', 'Hawaii Massage', 'Hobby Lobby', 'Home Consignment Center', 'Homewood Suites Hilton', 'Huntington Learning Center', 'IHOP', 'In-N-Out Burger', 'India Supermarket', 'Ionna (planned)', 'Island Nails', 'J. Crew Factory', 'Jack in the Box', 'Jack\'s Urban Eats', 'Jamba', 'Janie & Jack', 'JCPenney', 'Jimboy\'s Tacos', 'John L. Sullivan\'s Roseville KIA', 'Joli Nail Spa', 'KB Home Design Studio', 'Kenny G & Company', 'KFC', 'Kohl\'s', 'Krispy Kreme', 'L&L Hawaiian Barbecue', 'LaserAway', 'LensCrafters', 'Les Schwab Tire Center', 'Liberty Tax', 'Liquor & Wine', 'Little Caesars', 'Live-More', 'Lowe\'s', 'Mansour\'s Oriental Rug Gallery', 'Marshalls', 'Massage Envy', 'Massage Heights', 'Mattress Outlet', 'Maurices', 'McDonald\'s', 'Mei Mei Hair & Nails', 'Men\'s Wearhouse', 'Mendocino Farms', 'Michaels', 'MOD Pizza', 'Mountain Mike\'s', 'Nail Spa 999', 'Nick The Greek', 'Niello Acura', 'Nordstrom', 'Nordstrom Rack', 'Nugget Markets', 'O\'Reilly Auto Parts', 'Office Depot', 'Old Gold Exchange', 'Old Navy', 'Once Upon a Child', 'Oriental Market', 'Outback Steakhouse', 'Panda Express', 'Panera Bread', 'Papa Murphy\'s', 'Paper Source', 'Paris Baguette', 'Party City', 'Peet\'s Coffee', 'Pet Club', 'Pet Food Express', 'PetSmart', 'Planet Fitness', 'Popeyes', 'Pottery Barn', 'Prime Storage', 'Pushkin\'s Bakery', 'Quickly', 'Quiznos', 'Raising Cane\'s', 'Raley\'s', 'Raley\'s Bel Air', 'Raley\'s O-N-E Market', 'Red Robin', 'Red Wing', 'Redbox', 'REI', 'Rite Aid', 'Rock Hill Boutique', 'Rose Food & Liquor', 'Roseville Ace Hardware', 'Roseville Cleaners', 'Ross', 'Round Table Pizza', 'Round1', 'Ruth\'s Chris Steak House', 'Safeway', 'Salt & Straw', 'Sam\'s Club', 'Save Mart', 'Scandinavian Designs', 'Sephora', 'Shane Co.', 'Shell', 'Sherman Clay', 'Site for Sore Eyes', 'Sleep Train', 'Smart & Final Extra!', 'Smashburger', 'Sole Desire Shoes', 'Soma', 'Sportsman\'s Warehouse', 'Staples', 'Starbucks', 'Subway', 'Suits Dept', 'Sundance Self Storage', 'Sunglass Hut', 'Supercuts', 'Sur La Table', 'Sweetgreen', 'T-Mobile', 'Taco Bell', 'Target', 'Tesla Supercharger', 'The Cave Roseville', 'The Cheesecake Factory', 'The Doggie Bag', 'The Habit Burger Grill', 'The Home Depot', 'The Joint Chiropractic', 'The Sandwich Spot', 'The Tools Vault', 'The UPS Store', 'Tiffany & Company', 'Togo\'s', 'Tommy Bahama', 'Top Ten Nails', 'Total Wine', 'Trader Joe\'s', 'Trendy Nails', 'Trojan Self Storage', 'U.S. Bank', 'UFC Gym', 'Ulta Beauty', 'Union Bank', 'Uniqlo', 'USPS', 'V Max Cleaners', 'Verizon', 'Visionworks', 'Volta', 'Walgreens', 'Walmart Supercenter', 'Wayback Burgers', 'Wells Fargo', 'Wendy\'s', 'west elm', 'Western Dental', 'Westfield', 'Westfield Galleria at Roseville', 'White House Black Market', 'Whole Foods Market', 'Wild Birds Unlimited', 'Willo', 'Woodcreek Nails & Spa'];
   var selectedNames = new Set(allTenantNames);
-
+ 
   var plazaNameIndex = {};
   storesData.forEach(function(s) {
     if (s.plazaId === -1) return;
     if (!plazaNameIndex[s.plazaId]) plazaNameIndex[s.plazaId] = new Set();
     plazaNameIndex[s.plazaId].add(s.name);
   });
-
-  var tenantControl = L.control({position: 'top-left'});
+ 
+  var tenantControl = L.control({position: 'topleft'});
   tenantControl.onAdd = function() {
     var container = L.DomUtil.create('div', 'tenant-filter');
-    container.innerHTML = 
-        '<button id = "tenantToggleBtn" class="tenant-toggle-btn" type="button">'
-        + 'Tenants: All (' + allTenantNames.length + ')</button>'
+    container.innerHTML =
+      '<button id="tenantToggleBtn" class="tenant-toggle-btn" type="button">'
+      + '🏪 Tenants: All (' + allTenantNames.length + ')</button>'
       + '<div id="tenantPanel" class="tenant-panel" style="display:none;">'
       +   '<input id="tenantSearch" class="tenant-search" type="text" placeholder="Search tenants...">'
       +   '<div class="tenant-actions">'
@@ -629,7 +631,7 @@ addStore(38.7700779, -121.2628094, 'REI', '1148 Galleria Boulevard Roseville', '
     } else {
       label = 'Tenants: ' + n + ' of ' + total + ' selected';
     }
-    btn.innerHTML = label;
+    btn.innerHTML = '🏪 ' + label;
   }
  
   var tenantRows = [];
@@ -676,6 +678,7 @@ addStore(38.7700779, -121.2628094, 'REI', '1148 Galleria Boulevard Roseville', '
     updateTenantToggleLabel();
     updateVisibility();
   });
+  // ---- end tenant name filter ----
  
   map.on('overlayadd overlayremove', updateVisibility);
   updateVisibility();
@@ -714,7 +717,8 @@ addStore(38.7700779, -121.2628094, 'REI', '1148 Galleria Boulevard Roseville', '
       + '<span class="legend-dot" style="background:#8e44ad"></span> Plaza center point<br>'
       + '<span class="legend-dot" style="background:#f39c12"></span> Anchor store (in plaza)<br>'
       + '<span class="legend-dot" style="background:#27ae60"></span> Standalone store<br>'
-      + '⚓ = anchor &nbsp; 🔥 = 10+ tenants';
+      + '⚓ = anchor &nbsp; 🔥 = 10+ tenants<br>'
+      + '<span style="font-size:11px;color:#666;">Use the Tenants filter (top-left) to isolate specific names.</span>';
     return div;
   };
   legend.addTo(map);
