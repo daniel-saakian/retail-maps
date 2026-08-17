@@ -1,5 +1,5 @@
 import { login } from "./actions";
-import StoneMark from "@/components/StoneMark";
+import Image from "next/image";
 
 export default async function LoginPage({
     searchParams,
@@ -12,7 +12,7 @@ export default async function LoginPage({
         <main className="flex min-h-screen items-center justify-center bg-paper px-6">
             <div className="w-full max-w-sm">
                 <div className="mb-8 flex flex-col items-center gap-3 text-center">
-                    <StoneMark size={44} />
+                    <Image src="/logo.png" alt="Stone Commercial" height={1200} width={300} />
                     <div>
                         <h1 className="font-display text-2xl font-bold text-ink">Plaza Finder</h1>
                         <p className="mt-1 text-xs font-semibold uppercase tracking-[0.2em] text-charcoal">

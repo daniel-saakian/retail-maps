@@ -95,7 +95,7 @@ export default function OnboardingPage() {
                 <div className="mb-8 flex flex-col items-col gap-3 text-center">
                     <Image src="/logo.png" alt="Stone Commercial" height={1500} width={500} />
                     <div>
-                        <h1 className="font-display text-xl font-bold text-ink">Welcome to Stone Analytics</h1>
+                        <h1 className="font-display text-2xl font-bold text-ink">Welcome to Stone Analytics</h1>
                         <p className="mt-1 text-xs font-semibold uppercase tracking-[0.2em] text-charcoal">
                             {email}
                         </p>
