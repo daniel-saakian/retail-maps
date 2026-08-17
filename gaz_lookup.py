@@ -19,6 +19,7 @@ LSAD_SUFFIXES = {
     "UG": "unified government",
 }
 
+
 _DEFAULT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                              "2025_Gaz_place_national.txt")
 _cache: dict | None = None
