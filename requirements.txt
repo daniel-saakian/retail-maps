@@ -13,3 +13,4 @@ pandas
 fastapi
 uvicorn[standard]
 pydantic
+geopy
