@@ -158,6 +158,7 @@ function ResultsView({ result }: { result: DemographicsResponse }) {
                         <RadiusColumn key={key} label={`${key} mi`}>
                             <Stat label="Median Age" value={ring.median_age ? String(ring.median_age) : "\u2014"} />
                             <MiniPie
+                                totalCount={ring.population}
                                 segments={[
                                     { label: "White", value: ring.white_pct || 0, color: "#1B355E" },
                                     { label: "Hispanic", value: ring.hispanic_pct || 0, color: "#B8934A" },
@@ -176,6 +177,7 @@ function ResultsView({ result }: { result: DemographicsResponse }) {
                     <RadiusColumn key={key} label={`${key} mi`}>
                         <Stat label="Employees" value={fmtNum(ring.employee_count)} prominent />
                         <MiniPie
+                            totalCount={ring.employee_count}
                             segments={[
                                 { label: "White Collar", value: ring.white_collar_pct || 0, color: "#1B355E" },
                                 { label: "Blue Collar", value: ring.blue_collar_pct || 0, color: "#2AA7DE" },
@@ -217,43 +219,117 @@ function RadiusColumn({ label, children }: { label: string; children: React.Reac
         </div>
     );
 }
+
+function polarPoint(cx: number, cy: number, r:number, angleDeg: number) {
+    const rad=(angleDeg * Math.PI) /180
+    return {x:cx + r * Math.sin(rad), y: cy - r * Math.cos(rad) }
+}
+
+function arcPath(cx: number, cy: number, r: number, startAngle: number, endAngle: number) {
+    const p1 = polarPoint(cx,cy,r,startAngle)
+    const p2 = polarPoint(cx,cy,r,endAngle)
+    const largeArc = endAngle - startAngle > 180 ? 1 : 0;
+    return `M ${cx} ${cy} L ${p1.x} ${p1.y} A ${r} ${r} 0 ${largeArc} 1 ${p2.x} ${p2.y} Z`;
+}
+
+const POP_DISTANCE = 6;
  
 function MiniPie({
     segments,
-    size = 140,
+    size = 165,
+    totalCount,
 }: {
     segments: { label: string; value: number; color: string }[];
     size?: number;
+    totalCount?: number;
 }) {
+    const [hovered, setHovered] = useState<number | null>(null);
     const total = segments.reduce((s, x) => s + x.value, 0) || 1;
+    const visible = segments.filter((s) => s.value > 0);
+
+    const padding = 10;
+    const r = size / 2 - padding;
+    const cx = size / 2;
+    const cy = size / 2;
+
     let cumulative = 0;
-    const stops = segments
-        .map((s) => {
-            const start = (cumulative / total) * 360;
+    const arcs = visible.map((s) => {
+            const startAngle = (cumulative / total) * 360;
             cumulative += s.value;
-            const end = (cumulative / total) * 360;
-            return `${s.color} ${start}deg ${end}deg`;
-        })
-        .join(", ");
+            const endAngle = (cumulative / total) * 360;
+            return {
+                ...s,
+                startAngle,
+                endAngle,
+                midAngle: (startAngle + endAngle) / 2,
+                pct: (s.value / total) * 100,
+
+
+
+
+                estimatedCount: totalCount !== undefined ? Math.round((s.value / 100) * totalCount) : undefined,
+            };
+        });
  
     return (
         <div className="flex flex-col items-center gap-2">
-            <div
-                className="rounded-full"
-                style={{ width: size, height: size, background: `conic-gradient(${stops})` }}
-            />
-            <div className="flex w-full flex-col gap-0.5">
-                {segments
-                    .filter((s) => s.value > 0)
-                    .map((s) => (
-                        <div key={s.label} className="flex items-center justify-between gap-2 text-[11px] text-charcoal">
-                            <span className="flex items-center gap-1">
-                                <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: s.color }} />
-                                {s.label}
-                            </span>
-                            <span className="font-medium text-ink">{((s.value / total) * 100).toFixed(0)}%</span>
+            <div className="relative" style={{ width: size, height: size }}>
+                <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+                    {arcs.map((a, i) => {
+                        const isHovered = hovered === i;
+                        const offset = isHovered ? polarPoint(0, 0, POP_DISTANCE, a.midAngle) : { x: 0, y: 0};
+                    return (
+                        <path
+                            key={a.label}
+                            d={arcPath(cx,cy,r,a.startAngle, a.endAngle)}
+                            fill={a.color}
+                            stroke="white"
+                            strokeWidth={1.5}
+                            style={{
+                                transform: `translate(${offset.x}px, ${offset.y}px)`,
+                                transition: "transform 150ms ease-out, opacity 150ms ease-out",
+                                opacity: hovered === null || isHovered ? 1 : 0.55,
+                                cursor: "pointer",
+                            }}
+                            onMouseEnter={() => setHovered(i)}
+                            onMouseLeave={() => setHovered(null)}
+                        />
+                    );
+                    })}
+                </svg>
+                {hovered !== null && (
+                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                        <div className="rounded-md border border-line bg-white/95 px-2 py-1 text-center shadow-sm">
+                            <p className="whitespace-nowrap text-[9px] font-semibold uppercase tracking-wide text-charcoal">
+                                {arcs[hovered].label}
+                            </p>
+                            <p className="text-xs font-bold text-ink">{arcs[hovered].pct.toFixed(1)}%</p>
+                            {arcs[hovered].estimatedCount !== undefined && (
+                                <p className="whitespace-nowrap text-[9px] text-charcoal">
+                                    ~{arcs[hovered].estimatedCount!.toLocaleString()}
+                                </p>
+                            )}
                         </div>
-                    ))}
+                    </div>
+                )}
+            </div>
+            <div className="flex w-full flex-col gap-0.5">
+                {arcs.map((a, i) => (
+                    <div
+                        key={a.label}
+                        onMouseEnter={() => setHovered(i)}
+                        onMouseLeave={() => setHovered(null)}
+                        className={`flex cursor-pointer items-center justify-between gap-2 text-[10px] transition-colors ${
+                            hovered === i ? "font-semibold text-ink" : "text-charcoal"
+                        }`}
+                    >
+                        <span className="flex items-center gap-1">
+                            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: a.color }} />
+                            {a.label}
+                        </span>
+                        <span className="font-medium text-ink">{a.pct.toFixed()}%</span>
+                    </div>
+                ))}
             </div>
         </div>
     );

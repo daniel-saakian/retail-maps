@@ -73,7 +73,7 @@ export interface RingProfile {
     black_pct: number | null;
     hispanic_pct: number | null;
     asian_pct: number | null;
-    employee_count: number | null;
+    employee_count: number;
     white_collar_pct: number | null;
     blue_collar_pct: number | null;
     median_hh_income: number | null;
