@@ -438,7 +438,7 @@ def invite_user(req: InviteRequest, user = Depends(require_staff)):
     if not sb:
         raise HTTPException(500, "Supabase not configured")
     try:
-        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+        frontend_url = os.getenv("FRONTEND_URL", "retail-maps.vercel.app")
         result = sb.auth.admin.invite_user_by_email(
             req.email,
             {"redirect_to": f"{frontend_url}/onboarding"}
