@@ -25,6 +25,7 @@ export default function JobCard({
     const [mapHtml, setMapHtml] = useState<string | null>(null);
     const [mapError, setMapError] = useState<string | null>(null);
     const [downloading, setDownloading] = useState(false);
+    const [cancelling, setCancelling] = useState(false);
     const inFlight = job.status === "queued" || job.status === "running";
  
     useEffect(() => {
@@ -33,7 +34,7 @@ export default function JobCard({
                 .then(setMapHtml)
                 .catch((e) => setMapError((e as Error).message));
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        
     }, [tab, job.map_available, job.id]);
  
     async function handleDownloadExcel() {
@@ -44,6 +45,16 @@ export default function JobCard({
             alert((e as Error).message);
         } finally {
             setDownloading(false);
+        }
+    }
+
+    async function handleCancel() {
+        setCancelling(true);
+        try {
+            await api.cancelSearch(job.id)
+        } catch (e) {
+            alert((e as Error).message);
+            setCancelling(false)
         }
     }
  
@@ -59,12 +70,23 @@ export default function JobCard({
                         started {new Date(job.created_at * 1000).toLocaleTimeString()}
                     </p>
                 </div>
-                <button
-                    onClick={() => onDismiss(job.id)}
-                    className="rounded-md border border-line px-3 py-1 text-xs font-medium text-charcoal hover:bg-paper-dim"
-                >
-                    Dismiss
-                </button>
+                <div className="flex shrink-0 gap-2">
+                    {inFlight && (
+                        <button
+                            onClick={handleCancel}
+                            disabled={cancelling}
+                            className="rounded-md border border-danger px-3 py-1 text-xs font-medium text-danger hover:bg-danger/10 disabled:opacity-50"
+                        >
+                            {cancelling ? "Cancelling..." : "Cancel"}
+                        </button>
+                    )}
+                    <button
+                        onClick={() => onDismiss(job.id)}
+                        className="rounded-md border border-line px-3 py-1 text-xs font-medium text-charcoal hover:bg-paper-dim"
+                    >
+                        Dismiss
+                    </button>
+                </div>    
             </div>
  
             {inFlight && <LoadingScreen log={job.log} createdAt={job.created_at} />}
@@ -75,6 +97,11 @@ export default function JobCard({
             {job.status === "empty" && (
                 <div className="mt-4 rounded-lg bg-brass/10 p-3 text-sm text-caution">
                     {job.reason || "No qualifying retail clusters found."}
+                </div>
+            )}
+            {job.status === "cancelled" && (
+                <div className="mt-4 rounded-lg bg-charcoal/10 p-3 text-sm text-charcoal">
+                    Search cancelled before it finished.
                 </div>
             )}
             

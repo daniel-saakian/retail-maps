@@ -6,6 +6,7 @@ const STYLE: Record<JobStatus, { bg: string; label: string }> = {
     done: { bg: "bg-success", label: "Done" },
     empty: { bg: "bg-brass", label: "No results" },
     error: { bg: "bg-danger", label: "Error" },
+    cancelled: { bg: "bg-charcoal/70", label: "Cancelled"},
 };
  
 export default function StatusPill({ status }: { status: JobStatus }) {

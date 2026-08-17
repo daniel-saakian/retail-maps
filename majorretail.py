@@ -2,6 +2,7 @@ import argparse
 import math
 import sys
 import time
+from typing import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
 import requests
@@ -822,6 +823,7 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
                 "id": plaza_id
             }
     store_js = []
+    drawn_names = set()
     for s in all_stores:
         sname = js_escape(s.name)
         saddr = js_escape(s.address if s.address else "-")
@@ -832,6 +834,7 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
             # Standalone store, not part of any plaza -- skip drawing it.
             continue
  
+        drawn_names.add(s.name.strip())
         info = coord_to_color[key]
  
         color = info["color"]
@@ -856,6 +859,9 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
             f");"
         )
     stores_code = "\n".join(store_js)
+ 
+    tenant_names_sorted = sorted(drawn_names, key=lambda n: n.lower())
+    tenant_names_js = "[" + ", ".join(f"'{js_escape(n)}'" for n in tenant_names_sorted) + "]"
  
     plaza_js = []
     for plaza_id,p in enumerate(plazas):
@@ -910,6 +916,35 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
     }}
     .legend-dot {{ display: inline-block; width: 12px; height: 12px;
                    border-radius: 50%; margin-right: 6px; }}
+    .tenant-filter {{ font-size: 13px; }}
+    .tenant-toggle-btn {{
+      background: white; border: 2px solid rgba(0,0,0,0.2); border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); padding: 8px 12px; font-size: 13px;
+      font-family: sans-serif; cursor: pointer; min-width: 180px; text-align: left;
+    }}
+    .tenant-toggle-btn:hover {{ background: #f4f4f4; }}
+    .tenant-panel {{
+      background: white; border-radius: 6px; box-shadow: 0 1px 5px rgba(0,0,0,0.3);
+      margin-top: 4px; padding: 10px; width: 260px; max-height: 380px;
+      display: flex; flex-direction: column;
+    }}
+    .tenant-search {{
+      width: 100%; box-sizing: border-box; padding: 6px 8px; margin-bottom: 8px;
+      border: 1px solid #ccc; border-radius: 4px; font-size: 13px;
+    }}
+    .tenant-actions {{ display: flex; gap: 6px; margin-bottom: 8px; }}
+    .tenant-actions button {{
+      flex: 1; padding: 5px 6px; font-size: 12px; border: 1px solid #ccc;
+      border-radius: 4px; background: #f7f7f7; cursor: pointer;
+    }}
+    .tenant-actions button:hover {{ background: #eaeaea; }}
+    .tenant-list {{ overflow-y: auto; max-height: 260px; border-top: 1px solid #eee; padding-top: 6px; }}
+    .tenant-item {{
+      display: block; font-size: 12.5px; padding: 3px 2px; cursor: pointer;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }}
+    .tenant-item:hover {{ background: #f4f4f4; }}
+    .tenant-item input {{ margin-right: 6px; }}
   </style>
 </head>
 <body>
@@ -1011,8 +1046,20 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
       marker: marker,
       plazaId: plazaId,
       plazaLabel: plaza,
-      isAnchor: isAnchor
+      isAnchor: isAnchor,
+      name: name
     }});
+  }}
+ 
+  function tenantFilterMatchesPlaza(plazaId) {{
+    // Fast path: nothing deselected, every plaza passes.
+    if (selectedNames.size >= allTenantNames.length) return true;
+    var names = plazaNameIndex[plazaId];
+    if (!names) return false;
+    for (var n of names) {{
+      if (selectedNames.has(n)) return true;
+    }}
+    return false;
   }}
  
   function updateVisibility() {{
@@ -1021,8 +1068,9 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
       var densityMatch = (p.numTenants >= 10) ? map.hasLayer(layerHighDensity) : map.hasLayer(layerLowDensity);
       var countyLayer = countyLayers[p.county];
       var countyMatch = countyLayer ? map.hasLayer(countyLayer) : true;
+      var tenantMatch = tenantFilterMatchesPlaza(p.id);
  
-      var plazaVisible = anchorMatch && densityMatch && countyMatch;
+      var plazaVisible = anchorMatch && densityMatch && countyMatch && tenantMatch;
       p.isActive = plazaVisible;
  
       if (plazaVisible) {{
@@ -1041,10 +1089,11 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
       
     storesData.forEach(function(s) {{
         var storeVisible = false;
+        var nameMatch = selectedNames.has(s.name);
  
         if (s.plazaId === -1) {{
             // Standalone store
-            storeVisible = map.hasLayer(layerStandalone);
+            storeVisible = map.hasLayer(layerStandalone) && nameMatch;
  
         }} else {{
             var parentPlaza = plazasData.find(function(p) {{
@@ -1052,9 +1101,9 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
             }});
  
             if (parentPlaza && parentPlaza.isActive) {{
-                storeVisible = s.isAnchor
+                storeVisible = (s.isAnchor
                     ? map.hasLayer(layerAnchors)
-                    : map.hasLayer(layerTenants);
+                    : map.hasLayer(layerTenants)) && nameMatch;
             }}
         }}
  
@@ -1070,6 +1119,98 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
  
   {plazas_code}
   {stores_code}
+ 
+  // ---- Tenant name filter ----
+  var allTenantNames = {tenant_names_js};
+  var selectedNames = new Set(allTenantNames);
+ 
+  var plazaNameIndex = {{}};
+  storesData.forEach(function(s) {{
+    if (s.plazaId === -1) return;
+    if (!plazaNameIndex[s.plazaId]) plazaNameIndex[s.plazaId] = new Set();
+    plazaNameIndex[s.plazaId].add(s.name);
+  }});
+ 
+  var tenantControl = L.control({{position: 'topleft'}});
+  tenantControl.onAdd = function() {{
+    var container = L.DomUtil.create('div', 'tenant-filter');
+    container.innerHTML =
+      '<button id="tenantToggleBtn" class="tenant-toggle-btn" type="button">'
+      + 'Tenants: All (' + allTenantNames.length + ')</button>'
+      + '<div id="tenantPanel" class="tenant-panel" style="display:none;">'
+      +   '<input id="tenantSearch" class="tenant-search" type="text" placeholder="Search tenants...">'
+      +   '<div class="tenant-actions">'
+      +     '<button id="tenantSelectAll" type="button">Select all</button>'
+      +     '<button id="tenantDeselectAll" type="button">Deselect all</button>'
+      +   '</div>'
+      +   '<div id="tenantList" class="tenant-list"></div>'
+      + '</div>';
+    L.DomEvent.disableClickPropagation(container);
+    L.DomEvent.disableScrollPropagation(container);
+    return container;
+  }};
+  tenantControl.addTo(map);
+ 
+  function updateTenantToggleLabel() {{
+    var btn = document.getElementById('tenantToggleBtn');
+    var n = selectedNames.size;
+    var total = allTenantNames.length;
+    var label;
+    if (n === total) {{
+      label = 'Tenants: All (' + total + ')';
+    }} else if (n === 0) {{
+      label = 'Tenants: none selected';
+    }} else {{
+      label = 'Tenants: ' + n + ' of ' + total + ' selected';
+    }}
+    btn.innerHTML = label;
+  }}
+ 
+  var tenantRows = [];
+  var tenantListEl = document.getElementById('tenantList');
+  allTenantNames.forEach(function(name) {{
+    var row = document.createElement('label');
+    row.className = 'tenant-item';
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = true;
+    cb.addEventListener('change', function() {{
+      if (cb.checked) {{ selectedNames.add(name); }} else {{ selectedNames.delete(name); }}
+      updateTenantToggleLabel();
+      updateVisibility();
+    }});
+    row.appendChild(cb);
+    row.appendChild(document.createTextNode(' ' + name));
+    tenantListEl.appendChild(row);
+    tenantRows.push({{el: row, checkbox: cb, lower: name.toLowerCase()}});
+  }});
+ 
+  document.getElementById('tenantToggleBtn').addEventListener('click', function() {{
+    var panel = document.getElementById('tenantPanel');
+    panel.style.display = (panel.style.display === 'none') ? 'block' : 'none';
+  }});
+ 
+  document.getElementById('tenantSearch').addEventListener('input', function(e) {{
+    var q = e.target.value.toLowerCase();
+    tenantRows.forEach(function(r) {{
+      r.el.style.display = (r.lower.indexOf(q) !== -1) ? '' : 'none';
+    }});
+  }});
+ 
+  document.getElementById('tenantSelectAll').addEventListener('click', function() {{
+    tenantRows.forEach(function(r) {{ r.checkbox.checked = true; }});
+    selectedNames = new Set(allTenantNames);
+    updateTenantToggleLabel();
+    updateVisibility();
+  }});
+ 
+  document.getElementById('tenantDeselectAll').addEventListener('click', function() {{
+    tenantRows.forEach(function(r) {{ r.checkbox.checked = false; }});
+    selectedNames = new Set();
+    updateTenantToggleLabel();
+    updateVisibility();
+  }});
+  // ---- end tenant name filter ----
  
   map.on('overlayadd overlayremove', updateVisibility);
   updateVisibility();
@@ -1108,10 +1249,19 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
       + '<span class="legend-dot" style="background:#8e44ad"></span> Plaza center point<br>'
       + '<span class="legend-dot" style="background:#f39c12"></span> Anchor store (in plaza)<br>'
       + '<span class="legend-dot" style="background:#27ae60"></span> Standalone store<br>'
-      + '⚓ = anchor &nbsp; 🔥 = 10+ tenants';
+      + '⚓ = anchor &nbsp; 🔥 = 10+ tenants<br>'
+      + '<span style="font-size:11px;color:#666;">Use the Tenants filter (top-left) to isolate specific names.</span>';
     return div;
   }};
   legend.addTo(map);
+
+  document.getElementById('legendHeader').addEventListener('click', function() {{
+    var body = document.getElementById('legendBody');
+    var icon = document.getElementById('legendToggleIcon');
+    var collapsed = (body.style.display === 'none');
+    body.style.display = collapsed ? 'block' : 'none';
+    icon.textContent = collapsed ? '▾' : '▸';
+  }});
 </script>
 </body>
 </html>"""
@@ -1656,7 +1806,8 @@ def load_cached_plazas(lat: float, lng: float, radius_km:float) -> list[Plaza]:
  
 def run_city_search(city: str, search_km: float | None=None, radius_mi: float | None=None,
                      min_anchors: int | None=None, min_tenants: int | None=None,
-                     lat: float | None=None, lng: float | None=None, rescrape_after_days: float | None=None) -> dict:
+                     lat: float | None=None, lng: float | None=None, rescrape_after_days: float | None=None,
+                     cancel_check: Callable[[], bool] | None=None) -> dict:
     args = argparse.Namespace(
         city=city,
         radius = radius_mi if radius_mi is not None else plaza_radius_mi,
@@ -1672,6 +1823,9 @@ def run_city_search(city: str, search_km: float | None=None, radius_mi: float | 
         return {"ok": False, "reason": reason, "plazas": [], "map_path": None,
                 "map_url": None, "excel_path": None, "state": "-", "display": args.city,
                 "lat": None, "lng": None}
+
+    def _cancelled() -> bool:
+        return bool(cancel_check and cancel_check())
  
     print(f"\n  Searching for major retail centers in: {args.city}")
  
@@ -1688,6 +1842,9 @@ def run_city_search(city: str, search_km: float | None=None, radius_mi: float | 
  
     state = FIPS_TO_STATE.get(state_fips.zfill(2) if state_fips and state_fips != "-" else "", "") \
         or (args.city.split(",")[1].strip() if "," in args.city else "-")
+
+    if _cancelled():
+        return _empty("Cancelled by user")
  
     print("  [2/6] Querying OpenStreetMap for stores (may take 10-20s)...")
     store_elements = run_overpass(build_store_query(lat,lng,args.search_km))
@@ -1706,6 +1863,9 @@ def run_city_search(city: str, search_km: float | None=None, radius_mi: float | 
     print(f"\n  Total shops identified: {len(stores)}  ({n_anchors} are anchors)")
     if n_anchors == 0 or not stores:
         return _empty("No anchor stores found. OSM data may be sparse for this area.")
+
+    if _cancelled():
+        return _empty("Cancelled by User")
  
     print("  [4/6] Building plazas around each anchor and gathering tenants...")
     plazas = build_plazas(stores,args.radius, args.min_tenants)
@@ -1713,6 +1873,9 @@ def run_city_search(city: str, search_km: float | None=None, radius_mi: float | 
     plazas = deduplicate_plaza_stores(plazas)
     plazas = merge_same_name_plazas(plazas)
     attach_plaza_radius(plazas, args.radius * 1609.34)
+
+    if _cancelled():
+        return _empty("Cancelled by User")
  
     sb = get_supabase()
     print(f"  Checking Supabase for {len(plazas)} known plazas...")
@@ -1729,6 +1892,9 @@ def run_city_search(city: str, search_km: float | None=None, radius_mi: float | 
  
         print(f"  Scoring {len(new_plazas)} plazas...")
         score_plazas(new_plazas,state_fips,county_fips)
+
+        if _cancelled():
+            return _empty("Cancelled by User")
  
         print(f"\n  [6/6] Searching brokerage sites for leasing broker contacts...")
         try:
@@ -1739,11 +1905,12 @@ def run_city_search(city: str, search_km: float | None=None, radius_mi: float | 
             print(f"  [warn] continuing without broker contact columns.")
     else:
         print("  [5/6]-[6/6] Nothing new - all plazas matched existing Supabase data")
+
+    if _cancelled():
+        return _empty("Cancelled by User")
  
     print_results(plazas,display, args)
  
-    # Include the search radius in the filename -- otherwise re-running the
-    # same city at a different radius silently overwrites the previous map.
     search_mi = round(args.search_km / 1.60934, 1)
     map_slug = display.lower().replace(", ", "-").replace(" ", "-")
     os.makedirs("maps", exist_ok=True)

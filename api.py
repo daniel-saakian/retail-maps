@@ -55,6 +55,7 @@ class Job:
     result: Optional[dict] = None
     error: Optional[str] = None
     created_at: float = field(default_factory=time.time)
+    cancel_event: threading.Event = field(default_factory=threading.Event)
  
 JOBS: dict[str, Job] = {}
 JOBS_LOCK = threading.Lock()
@@ -86,17 +87,24 @@ def _run_job(job_id: str):
                 job.city,
                 search_km = job.search_km,
                 rescrape_after_days = job.rescrape_after_days,
+                cancel_check = job.cancel_event.is_set,
             )
         with JOBS_LOCK:
-            job.result = result
-            job.status = "done" if result.get("ok") else "empty"
-        if result.get("ok") and result.get("excel_path") and result.get("run_id"):
+            if job.cancel_event.is_set():
+                job.status = "cancelled"
+            else:
+                job.result = result
+                job.status = "done" if result.get("ok") else "empty"
+        if result.get("ok") and result.get("excel_path") and result.get("run_id") and not job.cancel_event.is_set():
             cache.save_excel_export(result["run_id"], result["excel_path"])
     except Exception as e:
         with JOBS_LOCK:
-            job.status = "error"
-            job.error = str(e)
-            job.log.append(f"[error] {e}")
+            if job.cancel_event.is_set():
+                job.status = "cancelled"
+            else:
+                job.status = "error"
+                job.error = str(e)
+                job.log.append(f"[error] {e}")
  
 class SearchRequest(BaseModel):
     city: str
@@ -298,7 +306,19 @@ def delete_search(job_id: str):
             raise HTTPException(404, "job not found")
         del JOBS[job_id]
     return {"ok": True}
- 
+
+@app.post("/api/searches/{job_id}/cancel")
+def cancel_search(job_id: str):
+    job = JOBS.get(job_id)
+    if not job:
+        raise HTTPException(404, "job not found")
+    if job.status not in ("queued", "running"):
+        raise HTTPException(400, f"cannot cancel a job that's already done {job.status}")
+    job.cancel_event.set()
+    with JOBS_LOCK:
+        job.lock.append("[cancelled] Stopping at the next checkpoint...")
+    return {"ok": True}
+
 @app.get("/api/searches/{job_id}/map", response_class=HTMLResponse)
 def get_map(job_id:str):
     job = JOBS.get(job_id)

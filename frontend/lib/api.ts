@@ -1,9 +1,8 @@
 import { createClient } from "@/lib/supabase/client";
-import { User } from "@supabase/supabase-js";
  
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
  
-export type JobStatus = "queued" | "running" | "done" | "empty" | "error";
+export type JobStatus = "queued" | "running" | "done" | "empty" | "error" | "cancelled";
  
 export interface PlazaRow {
     name: string;
@@ -97,6 +96,10 @@ async function apiJson<T>(path: string, init: RequestInit = {}): Promise<T> {
     return res.json() as Promise<T>;
 }
  
+
+
+
+
 async function downloadFile(path: string, fallbackName: string): Promise<void> {
     const res = await apiFetch(path);
     const blob = await res.blob();
@@ -133,7 +136,10 @@ export const api = {
         }),
  
     deleteSearch: (id: string) => apiFetch(`/api/searches/${id}`, { method: "DELETE" }),
+
+    cancelSearch: (id:string) => apiFetch(`/api/searches/${id}/cancel`, {method: "POST"}),
  
+
     getMapHtml: (id: string) => apiFetch(`/api/searches/${id}/map`).then((r) => r.text()),
  
     downloadExcel: (id: string, cityLabel: string) =>
