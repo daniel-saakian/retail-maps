@@ -263,6 +263,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+from sco.demographics_api import router as demographics_router
+app.include_router(demographics_router)
  
 @app.get("/api/defaults")
 def get_defaults():

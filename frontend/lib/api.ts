@@ -64,6 +64,32 @@ export interface UserProfile {
     last_name?: string | null;
     avatar_url?: string | null;
 }
+
+export interface RingProfile {
+    population: number;
+    daytime_population: number;
+    median_age: number | null;
+    white_pct: number | null;
+    black_pct: number | null;
+    hispanic_pct: number | null;
+    asian_pct: number | null;
+    employee_count: number | null;
+    white_collar_pct: number | null;
+    blue_collar_pct: number | null;
+    median_hh_income: number | null;
+    hh_discretionary_spend: number | null;
+    hh_dining_spend: number | null;
+    n_block_groups: number;
+}
+
+export interface DemographicsResponse {
+    address: string;
+    lat: number;
+    lon: number;
+    renter_pct: number | null;
+    wfh_pct: number | null;
+    rings: Record<string, RingProfile>;
+}
  
 async function authHeaders(): Promise<HeadersInit> {
     const supabase = createClient();
@@ -81,6 +107,7 @@ async function apiFetch(path: string, init: RequestInit = {}): Promise<Response>
     const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
  
     if (res.status === 401) {
+
         window.location.href = "/login";
         throw new Error("Session expired");
     }
@@ -96,7 +123,6 @@ async function apiJson<T>(path: string, init: RequestInit = {}): Promise<T> {
     return res.json() as Promise<T>;
 }
  
-
 
 
 
@@ -164,6 +190,8 @@ export const api = {
     uploadAvatar: (file:File) => {
         const formData = new FormData();
         formData.append("file", file);
+
+
         return apiJson<UserProfile>("/api/me/avatar", {
             method: "POST",
             body: formData,
@@ -189,4 +217,11 @@ export const api = {
     deleteOwnAccount: () => apiFetch("/api/users/me", { method: "DELETE" }),
  
     deleteUser: (userId: string) => apiFetch(`/api/users/${userId}`, { method: "DELETE" }),
+    
+    getDemographics: (address: string, radii: number[]) =>
+        apiJson<DemographicsResponse>("/api/demographics", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ address, radii }),
+        }),
 };
