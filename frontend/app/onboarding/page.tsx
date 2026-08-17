@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import StoneMark from "@/components/StoneMark";
+import Image from "next/image";
 import { api } from "@/lib/api";
 import { createClient } from "@/lib/supabase/client";
 
@@ -93,7 +93,7 @@ export default function OnboardingPage() {
         <main className="flex min-h-screen items-center justify-center bg-paper px-6 py-10">
             <div className="w-full max-w-md">
                 <div className="mb-8 flex flex-col items-col gap-3 text-center">
-                    <StoneMark size={44} />
+                    <Image src="/logo.png" alt="Stone Commercial" height={140} width={40} />
                     <div>
                         <h1 className="font-display text-2xl font-bold text-ink">Welcome to Plaza Finder ----CHANGE THIS----</h1>
                         <p className="mt-1 text-xs font-semibold uppercase tracking-[0.2em] text-charcoal">

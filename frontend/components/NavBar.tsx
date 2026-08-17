@@ -30,9 +30,6 @@ export default function NavBar() {
                 <div className="flex items-center gap-6">
                     <div className="flex items-center gap-2.5">
                         <StoneMark size={28} />
-                        <span className="font-display text-base font-semibold tracking-wide text-paper">
-                            Plaza Finder
-                        </span>
                     </div>
                     <div className="flex items-center gap-1">
                         {TABS.map((t) => (
@@ -84,8 +81,6 @@ function ProfileMenu() {
     const [open, setOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
     
-
-
     useEffect(() => {
         if (!open) return;
         function handleClick(e:MouseEvent) {
@@ -107,7 +102,6 @@ function ProfileMenu() {
                 aria-label="Account menu"
             >
                 {me.avatar_url ? (
-                    
                     <img src={me.avatar_url} alt="" className="h-full w-full object-cover" />
                 ) : (
                     initials(me.first_name, me.last_name)

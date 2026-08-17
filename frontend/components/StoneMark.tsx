@@ -5,7 +5,7 @@ export default function StoneMark({ size=32 }: { size?: number }) {
             style={{
                 width:size,
                 height:size,
-                fontSize:size * 0.58,
+                fontSize:size * 0.8,
                 background: "linear-gradient(135deg, #2AA7DE 0%, #1B355E 100%)"
             }}
         >
