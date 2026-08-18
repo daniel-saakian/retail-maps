@@ -32,9 +32,7 @@ const securityHeaders = [
 ];
 
 const nextConfig = {
-    turbopack: {
-        root: __dirname,
-    },
+    ...(process.env.VERCEL ? {} : { turbopack: { root: __dirname } }),
     async headers() {
         return [
             {
@@ -44,5 +42,5 @@ const nextConfig = {
         ];
     },
 };
-
-module.exports = nextConfig
+ 
+module.exports = nextConfig;
