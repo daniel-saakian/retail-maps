@@ -1,6 +1,6 @@
 "use client";
  
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { JobDetail, api } from "@/lib/api";
 import StatusPill from "./StatusPill";
 import LoadingScreen from "./LoadingScreen";
@@ -22,20 +22,9 @@ export default function JobCard({
     onDismiss: (id:string) => void;
 }) {
     const [tab, setTab] = useState<Tab>("map");
-    const [mapHtml, setMapHtml] = useState<string | null>(null);
-    const [mapError, setMapError] = useState<string | null>(null);
     const [downloading, setDownloading] = useState(false);
     const [cancelling, setCancelling] = useState(false);
     const inFlight = job.status === "queued" || job.status === "running";
- 
-    useEffect(() => {
-        if (tab === "map" && job.map_available && mapHtml === null) {
-            api.getMapHtml(job.id)
-                .then(setMapHtml)
-                .catch((e) => setMapError((e as Error).message));
-        }
-        
-    }, [tab, job.map_available, job.id]);
  
     async function handleDownloadExcel() {
         setDownloading(true);
@@ -47,14 +36,14 @@ export default function JobCard({
             setDownloading(false);
         }
     }
-
+ 
     async function handleCancel() {
         setCancelling(true);
         try {
-            await api.cancelSearch(job.id)
+            await api.cancelSearch(job.id);
         } catch (e) {
             alert((e as Error).message);
-            setCancelling(false)
+            setCancelling(false);
         }
     }
  
@@ -86,7 +75,7 @@ export default function JobCard({
                     >
                         Dismiss
                     </button>
-                </div>    
+                </div>
             </div>
  
             {inFlight && <LoadingScreen log={job.log} createdAt={job.created_at} />}
@@ -125,17 +114,11 @@ export default function JobCard({
                             </button>
                         ))}
                     </div>
-                {tab === "map" && job.map_available && (
-                    mapError ? (
-                        <div className="rounded-lg bg-danger/10 p-3 text-sm text-danger-dark">{mapError}</div>
-                    ) : mapHtml === null ? (
-                        <p className="text-sm text-charcoal">Loading map...</p>
-                    ) : (
-                        <iframe
-                            srcDoc={mapHtml}
-                            className="h-[600px] w-full rounded-lg border border-line"
-                        />
-                    )
+                {tab === "map" && job.map_url && (
+                    <iframe
+                        src={job.map_url}
+                        className="h-[600px] w-full rounded-lg border border-line"
+                    />
                 )}
  
                 {tab === "table" && (
