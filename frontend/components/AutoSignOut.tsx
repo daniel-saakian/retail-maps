@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-const IDLE_LIMIT_MS = 1 * 60 * 1000;
+const IDLE_LIMIT_MS = 30 * 60 * 1000;
 const CHECK_INTERVAL_MS = 15*1000;
 const ACTIVITY_EVENTS = ["mousemove", "mousedown", "keydown", "scroll", "touchstart", "click"];
 
