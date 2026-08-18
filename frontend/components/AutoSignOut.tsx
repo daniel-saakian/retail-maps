@@ -1,16 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-const IDLE_LIMIT_MS = 30 * 60 * 1000;
+const IDLE_LIMIT_MS = 1 * 60 * 1000;
 const CHECK_INTERVAL_MS = 15*1000;
 const ACTIVITY_EVENTS = ["mousemove", "mousedown", "keydown", "scroll", "touchstart", "click"];
 
 export default function AutoSignOut() {
     const pathname = usePathname();
-    const router = useRouter();
     const [idle, setIdle] = useState(false);
     const lastActivityRef = useRef<number>(Date.now());
     const signedOutRef = useRef(false);
@@ -36,6 +35,13 @@ export default function AutoSignOut() {
             }
         }
 
+
+
+
+
+
+
+
         ACTIVITY_EVENTS.forEach((evt) => window.addEventListener(evt, markActive));
         document.addEventListener("visibilitychange",checkIdle)
         const interval = setInterval(checkIdle, CHECK_INTERVAL_MS);
@@ -46,6 +52,7 @@ export default function AutoSignOut() {
             clearInterval(interval);
         };
     }, [pathname])
+
     if (!idle) return null;
 
     return (
@@ -54,7 +61,7 @@ export default function AutoSignOut() {
                 <button
                     onClick={() => {
                         setIdle(false);
-                        router.push("/login");
+                        window.location.href = "/login";
                     }}
                     aria-label="Close"
                     className="absolute right-3 top-3 rounded p-1 text-charcoal hover:bg-paper-dim hover:text-ink"
