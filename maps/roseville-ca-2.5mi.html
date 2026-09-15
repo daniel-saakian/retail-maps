@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8' />
+  <title>Retail Centers – Roseville, CA</title>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' />
+  <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
+  <style>
+    body { margin: 0; font-family: sans-serif; }
+    #map { height: 100vh; width: 100%; }
+    .legend {
+      background: white; padding: 10px 14px; border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); line-height: 1.8;
+      font-size: 13px;
+    }
+    .legend-dot { display: inline-block; width: 12px; height: 12px;
+                   border-radius: 50%; margin-right: 6px; }
+    .tenant-filter { font-size: 13px; }
+    .tenant-toggle-btn {
+      background: white; border: 2px solid rgba(0,0,0,0.2); border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); padding: 8px 12px; font-size: 13px;
+      font-family: sans-serif; cursor: pointer; min-width: 180px; text-align: left;
+    }
+    .tenant-toggle-btn:hover { background: #f4f4f4; }
+    .tenant-panel {
+      background: white; border-radius: 6px; box-shadow: 0 1px 5px rgba(0,0,0,0.3);
+      margin-top: 4px; padding: 10px; width: 260px; max-height: 380px;
+      display: flex; flex-direction: column;
+    }
+    .tenant-search {
+      width: 100%; box-sizing: border-box; padding: 6px 8px; margin-bottom: 8px;
+      border: 1px solid #ccc; border-radius: 4px; font-size: 13px;
+    }
+    .tenant-actions { display: flex; gap: 6px; margin-bottom: 8px; }
+    .tenant-actions button {
+      flex: 1; padding: 5px 6px; font-size: 12px; border: 1px solid #ccc;
+      border-radius: 4px; background: #f7f7f7; cursor: pointer;
+    }
+    .tenant-actions button:hover { background: #eaeaea; }
+    .tenant-list { overflow-y: auto; max-height: 260px; border-top: 1px solid #eee; padding-top: 6px; }
+    .tenant-item {
+      display: block; font-size: 12.5px; padding: 3px 2px; cursor: pointer;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .tenant-item:hover { background: #f4f4f4; }
+    .tenant-item input { margin-right: 6px; }
+  </style>
+</head>
+<body>
+<div id='map'></div>
+<script>
+  var map = L.map('map').setView([38.77373322120043, -121.30534347177003], 12);
+ 
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(map);
+ 
+  var plazasData = [];
+  var storesData = [];
+ 
+  var layerMultiAnchor = L.layerGroup().addTo(map);
+  var layerSingleAnchor = L.layerGroup().addTo(map);
+  var layerPlazaCenters = L.layerGroup().addTo(map);
+  var layerAnchors = L.layerGroup().addTo(map);
+  var layerTenants = L.layerGroup().addTo(map);
+  var layerStandalone = L.layerGroup().addTo(map);
+  var layerHighDensity = L.layerGroup().addTo(map);
+  var layerLowDensity = L.layerGroup().addTo(map);
+  var countyLayers = {};
+ 
+  function getOrCreateCountyLayer(county) {
+    if (!county || county === '-') county = 'Unknown';
+    if (!countyLayers[county]) {
+        countyLayers[county] = L.layerGroup().addTo(map);
+    }
+    return countyLayers[county];
+  }
+ 
+  function addPlaza(lat, lng, radius_m, plazaId, name, address, county, city, numAnchors, anchors, numTenants, tenants, color, leasingHtml) {
+    var popup = '<b>' + name + '</b><br>'
+      + (address !== '-' ? address + '<br>' : '')
+      + city + (county !== '-' ? ', ' + county + ' County' : '') + '<br>'
+      + leasingHtml
+      + '<br><b>' + numAnchors + ' anchor(s): </b><br>'
+      + anchors.split(', ').join('<br>')
+      + '<br><br><b>' + numTenants + ' other tenant(s):</b><br>'
+      + tenants.split(', ').join('<br>');
+    
+    var circle = L.circle([lat, lng], {
+      radius: radius_m,
+      color: color,
+      fillColor: color,
+      fillOpacity: 0.08,
+      weight: 2
+    });
+    if (numAnchors > 1) {
+      layerMultiAnchor.addLayer(circle);
+    } else {
+      layerSingleAnchor.addLayer(circle);
+    }
+ 
+    var center = L.circleMarker([lat,lng], {
+        radius: 9,
+        color: '#fff',
+        fillColor: '#8e44ad',
+        fillOpacity: 1,
+        weight: 2
+    }).bindPopup(popup, {maxHeight: 320, autoPanPadding: [20, 20]}).bindTooltip(name, {permanent: false, direction: 'top'});
+ 
+    var cleanCounty = (!county || county === '-') ? 'Unknown' : county;
+    getOrCreateCountyLayer(cleanCounty);
+ 
+    plazasData.push({
+        circle: circle,
+        center: center,
+        id: plazaId,
+        name: name,
+        county: cleanCounty,
+        numAnchors: numAnchors,
+        numTenants: numTenants
+    });
+  }
+ 
+  function addStore(lat, lng, name, address, color, plazaId, plaza, isAnchor) {
+    var size = isAnchor ? 11 : 9;
+    var icon = L.divIcon({
+      className: '',
+      html: '<div style="position:absolute;width:' + size + 'px;height:' + size + 'px;'
+          + 'border-radius:50%;background:' + color + ';border:2px solid white;'
+          + 'box-shadow:0 1px 3px rgba(0,0,0,0.4);top:50%;left:50%;'
+          + 'transform:translate(-50%,-50%)'
+          + (isAnchor ? ';outline:2px solid rgba(0,0,0,0.25)' : '')
+          + '"></div>',
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2]
+    });
+    var marker = L.marker([lat, lng], {icon: icon})
+      .bindPopup('<b>' + name + '</b>' + (isAnchor ? '⚓' : '')+ '<br>' 
+        + '<i>' + plaza + '</i><br>'
+        + address)
+      .bindTooltip(name, {direction: 'top'})
+    
+    storesData.push({
+      marker: marker,
+      plazaId: plazaId,
+      plazaLabel: plaza,
+      isAnchor: isAnchor,
+      name: name
+    });
+  }
+ 
+  function tenantFilterMatchesPlaza(plazaId) {
+    // Fast path: nothing deselected, every plaza passes.
+    if (selectedNames.size >= allTenantNames.length) return true;
+    var names = plazaNameIndex[plazaId];
+    if (!names) return false;
+    for (var n of names) {
+      if (selectedNames.has(n)) return true;
+    }
+    return false;
+  }
+ 
+  function updateVisibility() {
+    plazasData.forEach(function(p) {
+      var anchorMatch = (p.numAnchors > 1) ? map.hasLayer(layerMultiAnchor): map.hasLayer(layerSingleAnchor);
+      var densityMatch = (p.numTenants >= 10) ? map.hasLayer(layerHighDensity) : map.hasLayer(layerLowDensity);
+      var countyLayer = countyLayers[p.county];
+      var countyMatch = countyLayer ? map.hasLayer(countyLayer) : true;
+      var tenantMatch = tenantFilterMatchesPlaza(p.id);
+ 
+      var plazaVisible = anchorMatch && densityMatch && countyMatch && tenantMatch;
+      p.isActive = plazaVisible;
+ 
+      if (plazaVisible) {
+        // FIX 2: Changed map.has() to map.hasLayer()
+        if (!map.hasLayer(p.circle)) p.circle.addTo(map);
+      } else {
+        if (map.hasLayer(p.circle)) map.removeLayer(p.circle);
+      }
+ 
+      if (plazaVisible && map.hasLayer(layerPlazaCenters)) {
+        if (!map.hasLayer(p.center)) p.center.addTo(map);
+      } else {
+        if (map.hasLayer(p.center)) map.removeLayer(p.center);
+      }
+    });
+      
+    storesData.forEach(function(s) {
+        var storeVisible = false;
+        var nameMatch = selectedNames.has(s.name);
+ 
+        if (s.plazaId === -1) {
+            // Standalone store
+            storeVisible = map.hasLayer(layerStandalone) && nameMatch;
+ 
+        } else {
+            var parentPlaza = plazasData.find(function(p) {
+                return p.id === s.plazaId;
+            });
+ 
+            if (parentPlaza && parentPlaza.isActive) {
+                storeVisible = (s.isAnchor
+                    ? map.hasLayer(layerAnchors)
+                    : map.hasLayer(layerTenants)) && nameMatch;
+            }
+        }
+ 
+        if (storeVisible) {
+            if (!map.hasLayer(s.marker))
+                s.marker.addTo(map);
+        } else {
+            if (map.hasLayer(s.marker))
+                map.removeLayer(s.marker);
+        }
+    });
+  }
+ 
+  addPlaza(38.787648297435894, -121.2852798025641, 920.5, 0, 'Highland Reserve Marketplace', '10201 Fairway Drive Roseville', 'Placer County', 'Roseville', 8, 'BevMo!, Big Lots, Kohl\'s, Lowe\'s, Sam\'s Club, Target, Trader Joe\'s, Walmart Supercenter', 31, 'AAA Insurance, Aaron Brothers, Batteries Plus Bulbs, Chevron, Chick-fil-A, Chipotle, Citibank, Coinstar, Curves, Ethan Allen, ExtraMile, Extreme Soccer, GameStop, Hawaii Massage, In-N-Out Burger, Jamba, Krispy Kreme, Massage Envy, Panera Bread, PetSmart, Quiznos, Redbox, Sherman Clay, Sleep Train, Starbucks, Supercuts, T-Mobile, U.S. Bank, V Max Cleaners, Wells Fargo, Wendy\'s', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-128605" target="_blank" rel="noopener">CBRE — Chris Campbell</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-128605" target="_blank" rel="noopener">CBRE — Jason Read</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-128605" target="_blank" rel="noopener">CBRE — Scott Carruth</a><br>');
+addPlaza(38.75155862083333, -121.30995150833333, 289.7, 1, 'Unnamed Retail Center', '3999 Foothills Boulevard Roseville', 'Placer County', 'Roseville', 3, 'Raley\'s Bel Air, Rite Aid, Walgreens', 21, 'Bank of America, Carl\'s Jr. / The Green Burrito, Cartridge World, ChargePoint, Crystal Nails, Dry Clean Today, Dutch Bros. Coffee, Great Cuts, India Supermarket, Live-More, McDonald\'s, Mountain Mike\'s, O\'Reilly Auto Parts, Panda Express, Shell, Starbucks, Sundance Self Storage, Supercuts, Trendy Nails, Trojan Self Storage, USPS', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.761512270588234, -121.31150372352943, 289.7, 2, 'Foothill Village Oaks', '5130 Foothills Boulevard Roseville', 'Placer County', 'Roseville', 2, 'Dollar Tree, Save Mart', 15, 'A&W, AutoZone, Burger King, Chase, Denny\'s, Jack in the Box, KFC, Liquor & Wine, Papa Murphy\'s, Roseville Cleaners, Taco Bell, The UPS Store, Threaded Beauty, Top Ten Nails, Wells Fargo', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-148221" target="_blank" rel="noopener">CBRE — Chris Campbell</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-148221" target="_blank" rel="noopener">CBRE — Jason Read</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-148221" target="_blank" rel="noopener">CBRE — Scott Carruth</a><br>');
+addPlaza(38.79479920666667, -121.3274256, 310.6, 3, 'Crocker Ranch', '9065 Woodcreek Oaks Boulevard Roseville', 'Placer County', 'Roseville', 3, '24 Hour Fitness, Nugget Markets, Walgreens', 12, 'Bank of America, Carl\'s Jr., Chick-fil-A, Del Taco, Dutch Bros. Coffee, Great Clips, Jamba, MOD Pizza, Panda Express, Round Table Pizza, Smashburger, Starbucks', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://gallellire.com/property/crocker-ranch/" target="_blank" rel="noopener">Gallelli Real Estate — Kevin Soares</a><br><a href="https://gallellire.com/property/crocker-ranch/" target="_blank" rel="noopener">Gallelli Real Estate — Jeff Hagan</a><br><a href="https://www.crexi.com/lease/properties/447045/california-crocker-ranch" target="_blank" rel="noopener">Kimco Realty Corporation — Brian Alt</a><br><a href="https://www.crexi.com/lease/properties/447045/california-crocker-ranch" target="_blank" rel="noopener">Kimco Realty Corporation — Ben Minton</a><br>');
+addPlaza(38.77968133846154, -121.28822426923077, 327.0, 4, 'Veterans Plaza', '1040 Pleasant Grove Boulevard Roseville', 'Placer County', 'Roseville', 1, 'Rite Aid', 12, 'All Seasons, America\'s Best, Mountain Mike\'s, Perfecto Lounge, Pizza Hut, Round Table Pizza, Starbucks, State Farm, Subway, The Sandwich Spot, Union Bank, Xtreme Extensions', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.769257981818185, -121.33147082727272, 289.7, 5, 'Unnamed Retail Center', '4021 Woodcreek Oaks Boulevard Roseville', 'Placer County', 'Roseville', 1, 'Raley\'s', 10, 'Coldwell Banker, Fresh Cleaners, Golden 1 Credit Union, Goodwill Donation Express, Little Caesars, Old Gold Exchange, Starbucks, Subway, Wells Fargo, Woodcreek Nails & Spa', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-129635" target="_blank" rel="noopener">CBRE — Jon Schultz</a><br><a href="https://www.crexi.com/lease/properties/274781/california-4001-4021-woodcreek-oaks-blvd" target="_blank" rel="noopener">CBRE - Sacramento — Jenni Tabaka</a><br>');
+addPlaza(38.79933345, -121.29484624, 289.7, 6, 'Blue Oaks Marketplace', '6612 Lone Tree Boulevard Rocklin', 'Placer County', 'Rocklin', 3, 'Crunch Fitness, Dollar Tree, Grocery Outlet', 7, 'Carl\'s Jr., Chevys, GNC, Hobby Lobby, Sportsman\'s Warehouse, Starbucks, UFC Gym', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://gallellire.com/property/1322-blue-oaks-blvd/" target="_blank" rel="noopener">Gallelli Real Estate — Brandon Sessions</a><br><a href="https://gallellire.com/property/1322-blue-oaks-blvd/" target="_blank" rel="noopener">Gallelli Real Estate — Kannon Kuhn</a><br><a href="https://gallellire.com/property/plaza-at-blue-oaks/" target="_blank" rel="noopener">Gallelli Real Estate — Kevin Soares</a><br><a href="https://gallellire.com/property/plaza-at-blue-oaks/" target="_blank" rel="noopener">Gallelli Real Estate — Jeff Hagan</a><br><a href="https://gallellire.com/property/plaza-at-blue-oaks/" target="_blank" rel="noopener">Gallelli Real Estate — Matt Goldstein</a><br><a href="https://www.crexi.com/lease/properties/453325/california-blue-oaks-town-center" target="_blank" rel="noopener">CBRE - Sacramento — Chris Campbell</a><br><a href="https://www.crexi.com/lease/properties/453325/california-blue-oaks-town-center" target="_blank" rel="noopener">CBRE - Sacramento — Scott Carruth</a><br><a href="https://www.crexi.com/lease/properties/453325/california-blue-oaks-town-center" target="_blank" rel="noopener">CBRE - Sacramento — Jason Read</a><br><a href="https://www.crexi.com/lease/properties/228235/california-6661-6681-blue-oaks-blvd" target="_blank" rel="noopener">CBRE - Sacramento — Rick Martinez</a><br><a href="https://www.crexi.com/lease/properties/228235/california-6661-6681-blue-oaks-blvd" target="_blank" rel="noopener">CBRE - Sacramento — Jenni Tabaka</a><br>');
+addPlaza(38.77764535, -121.290914075, 289.7, 7, 'Highland Crossing', '1080 Pleasant Grove Boulevard Roseville', 'Placer County', 'Roseville', 1, 'Safeway', 3, 'California Sun, Paris Baguette, The Doggie Bag', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-149594" target="_blank" rel="noopener">CBRE — Heath Kastner</a><br>');
+addPlaza(38.742162475, -121.3084752, 300.7, 8, 'Unnamed Retail Center', '3999 Foothills Boulevard Roseville', 'Placer County', 'Roseville', 1, 'Walgreens', 3, 'Arco, Builders Showcase, ampm', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+  addStore(38.7888409, -121.281336, 'Chevron', '-', '#e74c3c', 0, 'Highland Reserve Marketplace', false);
+addStore(38.7692114, -121.3304445, 'Wells Fargo', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7927404, -121.291807, 'Ethan Allen', '10513 Fairway Drive', '#e74c3c', 0, 'Highland Reserve Marketplace', false);
+addStore(38.789529, -121.280838, 'Chipotle', '781 Pleasant Grove Boulevard Roseville', '#e74c3c', 0, 'Highland Reserve Marketplace', false);
+addStore(38.7894609, -121.280705, 'Wells Fargo', '-', '#e74c3c', 0, 'Highland Reserve Marketplace', false);
+addStore(38.7608739, -121.3107861, 'The UPS Store', '-', '#e74c3c', 2, 'Foothill Village Oaks', false);
+addStore(38.7594892, -121.3119295, 'Papa Murphy\'s', '-', '#e74c3c', 2, 'Foothill Village Oaks', false);
+addStore(38.7629556, -121.3120321, 'Chase', '-', '#e74c3c', 2, 'Foothill Village Oaks', false);
+addStore(38.7523037, -121.309923, 'Starbucks', '4000 Foothills Boulevard Roseville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7505391, -121.3087777, 'Panda Express', '3981 Foothills Boulevard Roseville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7626962, -121.3128329, 'AutoZone', '-', '#e74c3c', 2, 'Foothill Village Oaks', false);
+addStore(38.7624832, -121.3127424, 'Dollar Tree', '-', '#f39c12', 2, 'Foothill Village Oaks', true);
+addStore(38.7513842, -121.3108962, 'Supercuts', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7947212, -121.33054, 'Round Table Pizza', '-', '#e74c3c', 3, 'Crocker Ranch', false);
+addStore(38.7948484, -121.329879, 'Carl\'s Jr.', '9065 Woodcreek Oaks Boulevard Roseville', '#e74c3c', 3, 'Crocker Ranch', false);
+addStore(38.7944584, -121.33038, 'Great Clips', '-', '#e74c3c', 3, 'Crocker Ranch', false);
+addStore(38.794862, -121.329189, 'Bank of America', '-', '#e74c3c', 3, 'Crocker Ranch', false);
+addStore(38.7692013, -121.331789, 'Subway', '4021 Woodcreek Oaks Boulevard Roseville', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7690132, -121.3304301, 'Starbucks', '4001 Woodcreek Oaks Boulevard Woodcreek Village', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7691802, -121.3321015, 'Little Caesars', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7690115, -121.331011, 'Golden 1 Credit Union', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7784059, -121.28969, 'Union Bank', '-', '#e74c3c', 4, 'Veterans Plaza', false);
+addStore(38.777996, -121.290267, 'Subway', '1040 Pleasant Grove Boulevard Roseville', '#e74c3c', 4, 'Veterans Plaza', false);
+addStore(38.7773632, -121.289883, 'Paris Baguette', '-', '#e74c3c', 7, 'Highland Crossing', false);
+addStore(38.7786516, -121.28992, 'Round Table Pizza', '-', '#e74c3c', 4, 'Veterans Plaza', false);
+addStore(38.778185, -121.289054, 'America\'s Best', '-', '#e74c3c', 4, 'Veterans Plaza', false);
+addStore(38.781332, -121.286562, 'Starbucks', '943 Pleasant Grove Boulevard Roseville', '#e74c3c', 4, 'Veterans Plaza', false);
+addStore(38.7840175, -121.286933, 'Panera Bread', '916 Pleasant Grove Boulevard Roseville', '#e74c3c', 0, 'Highland Reserve Marketplace', false);
+addStore(38.7891756, -121.282614, 'Quiznos', '-', '#e74c3c', 0, 'Highland Reserve Marketplace', false);
+addStore(38.7887666, -121.28368, 'BevMo!', '-', '#f39c12', 0, 'Highland Reserve Marketplace', true);
+addStore(38.7892057, -121.2802984, 'Sherman Clay', '-', '#e74c3c', 0, 'Highland Reserve Marketplace', false);
+addStore(38.7897503, -121.280905, 'Citibank', '-', '#e74c3c', 0, 'Highland Reserve Marketplace', false);
+addStore(38.7891326, -121.282649, 'Jamba', '10305 Fairway Drive Roseville', '#e74c3c', 0, 'Highland Reserve Marketplace', false);
+addStore(38.7781113, -121.288956, 'The Sandwich Spot', '-', '#e74c3c', 4, 'Veterans Plaza', false);
+addStore(38.7793247, -121.2889304, 'Xtreme Extensions', '-', '#e74c3c', 4, 'Veterans Plaza', false);
+addStore(38.7690217, -121.3309015, 'Coldwell Banker', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7691763, -121.332022, 'Goodwill Donation Express', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7507739, -121.3077562, 'Mountain Mike\'s', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7510296, -121.3077687, 'Live-More', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7521718, -121.3099271, 'Dry Clean Today', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7609554, -121.3108213, 'Roseville Cleaners', '-', '#e74c3c', 2, 'Foothill Village Oaks', false);
+addStore(38.7621588, -121.3126618, 'Threaded Beauty', '-', '#e74c3c', 2, 'Foothill Village Oaks', false);
+addStore(38.762037, -121.312614, 'Liquor & Wine', '-', '#e74c3c', 2, 'Foothill Village Oaks', false);
+addStore(38.7606933, -121.3123256, 'Top Ten Nails', '-', '#e74c3c', 2, 'Foothill Village Oaks', false);
+addStore(38.752588, -121.3111553, 'Trendy Nails', '4006 Foothills Boulevard Roseville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7527662, -121.3111487, 'Great Cuts', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7513878, -121.311097, 'Cartridge World', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7893961, -121.287991, 'Starbucks', '10441 Fairway Drive Roseville', '#e74c3c', 0, 'Highland Reserve Marketplace', false);
+addStore(38.7887706, -121.284102, 'Aaron Brothers', '-', '#e74c3c', 0, 'Highland Reserve Marketplace', false);
+addStore(38.7887808, -121.285172, 'PetSmart', '10363 Fairway Drive Roseville', '#e74c3c', 0, 'Highland Reserve Marketplace', false);
+addStore(38.7898487, -121.283812, 'U.S. Bank', '-', '#e74c3c', 0, 'Highland Reserve Marketplace', false);
+addStore(38.7894736, -121.288162, 'Massage Envy', '-', '#e74c3c', 0, 'Highland Reserve Marketplace', false);
+addStore(38.7507539, -121.310677, 'India Supermarket', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7504095, -121.3106745, 'Crystal Nails', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.799067, -121.295027, 'Hobby Lobby', '-', '#e74c3c', 6, 'Blue Oaks Marketplace', false);
+addStore(38.7850722, -121.287523, 'Extreme Soccer', '-', '#e74c3c', 0, 'Highland Reserve Marketplace', false);
+addStore(38.7853085, -121.287185, 'Batteries Plus Bulbs', '-', '#e74c3c', 0, 'Highland Reserve Marketplace', false);
+addStore(38.7855986, -121.286475, 'AAA Insurance', '-', '#e74c3c', 0, 'Highland Reserve Marketplace', false);
+addStore(38.7844034, -121.286538, 'Sleep Train', '-', '#e74c3c', 0, 'Highland Reserve Marketplace', false);
+addStore(38.7839275, -121.287135, 'T-Mobile', '-', '#e74c3c', 0, 'Highland Reserve Marketplace', false);
+addStore(38.7855577, -121.2868904, 'Hawaii Massage', '-', '#e74c3c', 0, 'Highland Reserve Marketplace', false);
+addStore(38.7854954, -121.286964, 'Curves', '-', '#e74c3c', 0, 'Highland Reserve Marketplace', false);
+addStore(38.7842748, -121.28667, 'Supercuts', '-', '#e74c3c', 0, 'Highland Reserve Marketplace', false);
+addStore(38.7841557, -121.28746, 'GameStop', '-', '#e74c3c', 0, 'Highland Reserve Marketplace', false);
+addStore(38.751002, -121.307142, 'USPS', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7433492, -121.309673, 'ampm', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(38.7887516, -121.283094, 'Krispy Kreme', '-', '#e74c3c', 0, 'Highland Reserve Marketplace', false);
+addStore(38.7892616, -121.2825437, 'V Max Cleaners', '-', '#e74c3c', 0, 'Highland Reserve Marketplace', false);
+addStore(38.7618811, -121.3111371, 'KFC', '5130 Foothills Boulevard Roseville', '#e74c3c', 2, 'Foothill Village Oaks', false);
+addStore(38.7625066, -121.3116283, 'Jack in the Box', '5150 Foothills Boulevard Roseville', '#e74c3c', 2, 'Foothill Village Oaks', false);
+addStore(38.7511492, -121.308851, 'ChargePoint', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7810232, -121.28669, 'All Seasons', '-', '#e74c3c', 4, 'Veterans Plaza', false);
+addStore(38.7818617, -121.28651, 'Pizza Hut', '-', '#e74c3c', 4, 'Veterans Plaza', false);
+addStore(38.7810241, -121.286532, 'State Farm', '-', '#e74c3c', 4, 'Veterans Plaza', false);
+addStore(38.7959292, -121.328017, 'Walgreens', '-', '#f39c12', 3, 'Crocker Ranch', true);
+addStore(38.7694806, -121.3317877, 'Fresh Cleaners', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7693701, -121.3317891, 'Woodcreek Nails & Spa', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7692905, -121.3317831, 'Old Gold Exchange', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7796741, -121.2883485, 'Rite Aid', '-', '#f39c12', 4, 'Veterans Plaza', true);
+addStore(38.7938133, -121.3262573, 'Nugget Markets', '-', '#f39c12', 3, 'Crocker Ranch', true);
+addStore(38.7792434, -121.289066, 'Mountain Mike\'s', '-', '#e74c3c', 4, 'Veterans Plaza', false);
+addStore(38.7877968, -121.2904992, 'Coinstar', '-', '#e74c3c', 0, 'Highland Reserve Marketplace', false);
+addStore(38.7877342, -121.2903925, 'Redbox', '-', '#e74c3c', 0, 'Highland Reserve Marketplace', false);
+addStore(38.7618409, -121.3112631, 'A&W', '-', '#e74c3c', 2, 'Foothill Village Oaks', false);
+addStore(38.7779134, -121.2911713, 'The Doggie Bag', '1070 Pleasant Grove Boulevard', '#e74c3c', 7, 'Highland Crossing', false);
+addStore(38.7779642, -121.2910067, 'California Sun', '-', '#e74c3c', 7, 'Highland Crossing', false);
+addStore(38.7877683, -121.2814367, 'Trader Joe\'s', '-', '#f39c12', 0, 'Highland Reserve Marketplace', true);
+addStore(38.7876448, -121.2810318, 'Big Lots', '-', '#f39c12', 0, 'Highland Reserve Marketplace', true);
+addStore(38.8007046, -121.2964167, 'Sportsman\'s Warehouse', '-', '#e74c3c', 6, 'Blue Oaks Marketplace', false);
+addStore(38.7999897, -121.2957676, 'Grocery Outlet', '-', '#f39c12', 6, 'Blue Oaks Marketplace', true);
+addStore(38.799743, -121.2955477, 'Dollar Tree', '-', '#f39c12', 6, 'Blue Oaks Marketplace', true);
+addStore(38.7984279, -121.29487, 'Crunch Fitness', '-', '#f39c12', 6, 'Blue Oaks Marketplace', true);
+addStore(38.7980914, -121.2947963, 'UFC Gym', '-', '#e74c3c', 6, 'Blue Oaks Marketplace', false);
+addStore(38.7975553, -121.2945436, 'GNC', '-', '#e74c3c', 6, 'Blue Oaks Marketplace', false);
+addStore(38.7938832, -121.3276024, '24 Hour Fitness', '-', '#f39c12', 3, 'Crocker Ranch', true);
+addStore(38.7948347, -121.3271145, 'Del Taco', '-', '#e74c3c', 3, 'Crocker Ranch', false);
+addStore(38.7947945, -121.3281113, 'Smashburger', '-', '#e74c3c', 3, 'Crocker Ranch', false);
+addStore(38.7946362, -121.3265817, 'Panda Express', '-', '#e74c3c', 3, 'Crocker Ranch', false);
+addStore(38.7948004, -121.3252002, 'Starbucks', '-', '#e74c3c', 3, 'Crocker Ranch', false);
+addStore(38.7946207, -121.325262, 'Jamba', '-', '#e74c3c', 3, 'Crocker Ranch', false);
+addStore(38.7940493, -121.3251847, 'MOD Pizza', '-', '#e74c3c', 3, 'Crocker Ranch', false);
+addStore(38.7958474, -121.3269927, 'Chick-fil-A', '-', '#e74c3c', 3, 'Crocker Ranch', false);
+addStore(38.7958892, -121.3250722, 'Dutch Bros. Coffee', '-', '#e74c3c', 3, 'Crocker Ranch', false);
+addStore(38.7810244, -121.2863896, 'Perfecto Lounge', '973 Pleasant Grove Boulevard Roseville', '#e74c3c', 4, 'Veterans Plaza', false);
+addStore(38.7880054, -121.2897464, 'Walmart Supercenter', '900 Pleasant Grove Boulevard Roseville', '#f39c12', 0, 'Highland Reserve Marketplace', true);
+addStore(38.7864208, -121.2877333, 'Sam\'s Club', '904 Pleasant Grove Boulevard Roseville', '#f39c12', 0, 'Highland Reserve Marketplace', true);
+addStore(38.7863151, -121.2799849, 'Lowe\'s', '10201 Fairway Drive Roseville', '#f39c12', 0, 'Highland Reserve Marketplace', true);
+addStore(38.7911486, -121.2902047, 'Target', '10451 Fairway Drive Roseville', '#f39c12', 0, 'Highland Reserve Marketplace', true);
+addStore(38.7896493, -121.2831678, 'In-N-Out Burger', '10309 Fairway Drive Roseville', '#e74c3c', 0, 'Highland Reserve Marketplace', false);
+addStore(38.7885579, -121.2814968, 'ExtraMile', '-', '#e74c3c', 0, 'Highland Reserve Marketplace', false);
+addStore(38.7850827, -121.2860459, 'Chick-fil-A', '912 Pleasant Grove Boulevard Roseville', '#e74c3c', 0, 'Highland Reserve Marketplace', false);
+addStore(38.7844009, -121.2879657, 'Wendy\'s', '924 Pleasant Grove Boulevard Roseville', '#e74c3c', 0, 'Highland Reserve Marketplace', false);
+addStore(38.769881, -121.3321196, 'Raley\'s', '4051 Woodcreek Oaks Boulevard', '#f39c12', 5, 'Unnamed Retail Center', true);
+addStore(38.7512399, -121.3085997, 'Walgreens', '3999 Foothills Boulevard Roseville', '#f39c12', 1, 'Unnamed Retail Center', true);
+addStore(38.7532952, -121.3113513, 'Raley\'s Bel Air', '4008 Foothills Boulevard Roseville', '#f39c12', 1, 'Unnamed Retail Center', true);
+addStore(38.7522725, -121.3113428, 'Rite Aid', '4004 Foothills Boulevard Roseville', '#f39c12', 1, 'Unnamed Retail Center', true);
+addStore(38.7501472, -121.3098619, 'McDonald\'s', '3994 Foothills Boulevard Roseville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7537656, -121.3099961, 'Bank of America', '4012 Foothills Boulevard Roseville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7527543, -121.3098816, 'Carl\'s Jr. / The Green Burrito', '4002 Foothills Boulevard Roseville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7600648, -121.3105236, 'Taco Bell', '5002 Foothills Boulevard Roseville', '#e74c3c', 2, 'Foothill Village Oaks', false);
+addStore(38.7602865, -121.312664, 'Save Mart', '5060 Foothills Boulevard', '#f39c12', 2, 'Foothill Village Oaks', true);
+addStore(38.7609299, -121.309624, 'Wells Fargo', '5007 Foothills Boulevard', '#e74c3c', 2, 'Foothill Village Oaks', false);
+addStore(38.7616066, -121.3097853, 'Burger King', '5121 Foothills Boulevard Roseville', '#e74c3c', 2, 'Foothill Village Oaks', false);
+addStore(38.7622496, -121.3101922, 'Denny\'s', '5586 Foothills Boulevard', '#e74c3c', 2, 'Foothill Village Oaks', false);
+addStore(38.7513121, -121.307784, 'O\'Reilly Auto Parts', '3993 Foothills Boulevard', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7503731, -121.3112957, 'Trojan Self Storage', '1299 Baseline Road Roseville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.799573, -121.2936785, 'Chevys', '-', '#e74c3c', 6, 'Blue Oaks Marketplace', false);
+addStore(38.8004145, -121.2940484, 'Starbucks', '6612 Lone Tree Boulevard Rocklin', '#e74c3c', 6, 'Blue Oaks Marketplace', false);
+addStore(38.7997681, -121.2937666, 'Carl\'s Jr.', '6608 Lonetree Boulevard Rocklin', '#e74c3c', 6, 'Blue Oaks Marketplace', false);
+addStore(38.7890625, -121.2867241, 'Kohl\'s', '10375 Fairway Drive Roseville', '#f39c12', 0, 'Highland Reserve Marketplace', true);
+addStore(38.7407319, -121.3060828, 'Builders Showcase', '2017 Opportunity Drive', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(38.7511908, -121.3127544, 'Sundance Self Storage', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7512373, -121.3097829, 'Shell', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7414943, -121.3083361, 'Walgreens', '3999 Foothills Boulevard Roseville', '#f39c12', 8, 'Unnamed Retail Center', true);
+addStore(38.7430745, -121.3098089, 'Arco', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(38.7773406, -121.2915953, 'Safeway', '1080 Pleasant Grove Boulevard Roseville', '#f39c12', 7, 'Highland Crossing', true);
+addStore(38.75156, -121.3103914, 'Dutch Bros. Coffee', '1225 Baseline Road Roseville', '#3498db', 1, 'Unnamed Retail Center', false);
+ 
+  // ---- Tenant name filter ----
+  var allTenantNames = ['24 Hour Fitness', 'A&W', 'AAA Insurance', 'Aaron Brothers', 'All Seasons', 'America\'s Best', 'ampm', 'Arco', 'AutoZone', 'Bank of America', 'Batteries Plus Bulbs', 'BevMo!', 'Big Lots', 'Builders Showcase', 'Burger King', 'California Sun', 'Carl\'s Jr.', 'Carl\'s Jr. / The Green Burrito', 'Cartridge World', 'ChargePoint', 'Chase', 'Chevron', 'Chevys', 'Chick-fil-A', 'Chipotle', 'Citibank', 'Coinstar', 'Coldwell Banker', 'Crunch Fitness', 'Crystal Nails', 'Curves', 'Del Taco', 'Denny\'s', 'Dollar Tree', 'Dry Clean Today', 'Dutch Bros. Coffee', 'Ethan Allen', 'ExtraMile', 'Extreme Soccer', 'Fresh Cleaners', 'GameStop', 'GNC', 'Golden 1 Credit Union', 'Goodwill Donation Express', 'Great Clips', 'Great Cuts', 'Grocery Outlet', 'Hawaii Massage', 'Hobby Lobby', 'In-N-Out Burger', 'India Supermarket', 'Jack in the Box', 'Jamba', 'KFC', 'Kohl\'s', 'Krispy Kreme', 'Liquor & Wine', 'Little Caesars', 'Live-More', 'Lowe\'s', 'Massage Envy', 'McDonald\'s', 'MOD Pizza', 'Mountain Mike\'s', 'Nugget Markets', 'O\'Reilly Auto Parts', 'Old Gold Exchange', 'Panda Express', 'Panera Bread', 'Papa Murphy\'s', 'Paris Baguette', 'Perfecto Lounge', 'PetSmart', 'Pizza Hut', 'Quiznos', 'Raley\'s', 'Raley\'s Bel Air', 'Redbox', 'Rite Aid', 'Roseville Cleaners', 'Round Table Pizza', 'Safeway', 'Sam\'s Club', 'Save Mart', 'Shell', 'Sherman Clay', 'Sleep Train', 'Smashburger', 'Sportsman\'s Warehouse', 'Starbucks', 'State Farm', 'Subway', 'Sundance Self Storage', 'Supercuts', 'T-Mobile', 'Taco Bell', 'Target', 'The Doggie Bag', 'The Sandwich Spot', 'The UPS Store', 'Threaded Beauty', 'Top Ten Nails', 'Trader Joe\'s', 'Trendy Nails', 'Trojan Self Storage', 'U.S. Bank', 'UFC Gym', 'Union Bank', 'USPS', 'V Max Cleaners', 'Walgreens', 'Walmart Supercenter', 'Wells Fargo', 'Wendy\'s', 'Woodcreek Nails & Spa', 'Xtreme Extensions'];
+  var selectedNames = new Set(allTenantNames);
+ 
+  var plazaNameIndex = {};
+  storesData.forEach(function(s) {
+    if (s.plazaId === -1) return;
+    if (!plazaNameIndex[s.plazaId]) plazaNameIndex[s.plazaId] = new Set();
+    plazaNameIndex[s.plazaId].add(s.name);
+  });
+ 
+  var tenantControl = L.control({position: 'topleft'});
+  tenantControl.onAdd = function() {
+    var container = L.DomUtil.create('div', 'tenant-filter');
+    container.innerHTML =
+      '<button id="tenantToggleBtn" class="tenant-toggle-btn" type="button">'
+      + 'Tenants: All (' + allTenantNames.length + ')</button>'
+      + '<div id="tenantPanel" class="tenant-panel" style="display:none;">'
+      +   '<input id="tenantSearch" class="tenant-search" type="text" placeholder="Search tenants...">'
+      +   '<div class="tenant-actions">'
+      +     '<button id="tenantSelectAll" type="button">Select all</button>'
+      +     '<button id="tenantDeselectAll" type="button">Deselect all</button>'
+      +   '</div>'
+      +   '<div id="tenantList" class="tenant-list"></div>'
+      + '</div>';
+    L.DomEvent.disableClickPropagation(container);
+    L.DomEvent.disableScrollPropagation(container);
+    return container;
+  };
+  tenantControl.addTo(map);
+ 
+  function updateTenantToggleLabel() {
+    var btn = document.getElementById('tenantToggleBtn');
+    var n = selectedNames.size;
+    var total = allTenantNames.length;
+    var label;
+    if (n === total) {
+      label = 'Tenants: All (' + total + ')';
+    } else if (n === 0) {
+      label = 'Tenants: none selected';
+    } else {
+      label = 'Tenants: ' + n + ' of ' + total + ' selected';
+    }
+    btn.innerHTML = label;
+  }
+ 
+  var tenantRows = [];
+  var tenantListEl = document.getElementById('tenantList');
+  allTenantNames.forEach(function(name) {
+    var row = document.createElement('label');
+    row.className = 'tenant-item';
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = true;
+    cb.addEventListener('change', function() {
+      if (cb.checked) { selectedNames.add(name); } else { selectedNames.delete(name); }
+      updateTenantToggleLabel();
+      updateVisibility();
+    });
+    row.appendChild(cb);
+    row.appendChild(document.createTextNode(' ' + name));
+    tenantListEl.appendChild(row);
+    tenantRows.push({el: row, checkbox: cb, lower: name.toLowerCase()});
+  });
+ 
+  document.getElementById('tenantToggleBtn').addEventListener('click', function() {
+    var panel = document.getElementById('tenantPanel');
+    panel.style.display = (panel.style.display === 'none') ? 'block' : 'none';
+  });
+ 
+  document.getElementById('tenantSearch').addEventListener('input', function(e) {
+    var q = e.target.value.toLowerCase();
+    tenantRows.forEach(function(r) {
+      r.el.style.display = (r.lower.indexOf(q) !== -1) ? '' : 'none';
+    });
+  });
+ 
+  document.getElementById('tenantSelectAll').addEventListener('click', function() {
+    tenantRows.forEach(function(r) { r.checkbox.checked = true; });
+    selectedNames = new Set(allTenantNames);
+    updateTenantToggleLabel();
+    updateVisibility();
+  });
+ 
+  document.getElementById('tenantDeselectAll').addEventListener('click', function() {
+    tenantRows.forEach(function(r) { r.checkbox.checked = false; });
+    selectedNames = new Set();
+    updateTenantToggleLabel();
+    updateVisibility();
+  });
+  // ---- end tenant name filter ----
+ 
+  map.on('overlayadd overlayremove', updateVisibility);
+  updateVisibility();
+ 
+  var overlays = {
+    '🔴  Multi-anchor plazas (2+ anchors)': layerMultiAnchor,
+    '⭕  Single-anchor plazas': layerSingleAnchor,
+    '🟣  Plaza Center Points': layerPlazaCenters,
+    '🟡  Anchor Stores (in Plaza)': layerAnchors,
+    '🔵🔴  Tenants (In Plaza)': layerTenants,
+    '━━━━━━━━━━━━━━': L.layerGroup(),
+    '🔥  High Density Plazas (10+ tenants)': layerHighDensity,
+    '🔹  Lower Density (< 10 tenants)': layerLowDensity
+  };
+ 
+  var countyDivider = false;
+  for (var county in countyLayers) {
+    if (!countyDivider) {
+        overlays['━━━━━━━━━━━━━━ '] = L.layerGroup();
+        countyDivider = true;
+    }
+    overlays['📍 ' + county] = countyLayers[county];
+  }
+ 
+  L.control.layers(null, overlays, {
+    position: 'topright',
+    collapsed: false,
+  }).addTo(map);
+ 
+  var legend = L.control({position: 'bottomright'});
+  legend.onAdd = function() {
+    var div = L.DomUtil.create('div', 'legend');
+    div.innerHTML = '<b>Retail Centers – Roseville, CA</b><br>'
+      + '<span class="legend-dot" style="background:#e74c3c"></span> Named plaza<br>'
+      + '<span class="legend-dot" style="background:#3498db"></span> Unnamed plaza<br>'
+      + '<span class="legend-dot" style="background:#8e44ad"></span> Plaza center point<br>'
+      + '<span class="legend-dot" style="background:#f39c12"></span> Anchor store (in plaza)<br>'
+      + '<span class="legend-dot" style="background:#27ae60"></span> Standalone store<br>'
+      + '⚓ = anchor &nbsp; 🔥 = 10+ tenants<br>'
+      + '<span style="font-size:11px;color:#666;">Use the Tenants filter (top-left) to isolate specific names.</span>';
+    return div;
+  };
+  legend.addTo(map);
+
+  document.getElementById('legendHeader').addEventListener('click', function() {
+    var body = document.getElementById('legendBody');
+    var icon = document.getElementById('legendToggleIcon');
+    var collapsed = (body.style.display === 'none');
+    body.style.display = collapsed ? 'block' : 'none';
+    icon.textContent = collapsed ? '▾' : '▸';
+  });
+</script>
+</body>
+</html>
