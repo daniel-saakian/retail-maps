@@ -25,8 +25,30 @@ export default function SitePresentationsPage() {
  
     const [downloading, setDownloading] = useState(false);
     const [downloaded, setDownloaded] = useState(false);
+    const [isFullscreen, setIsFullscreen] = useState(false);
  
     const editorRef = useRef<LuckysheetEditorHandle>(null);
+ 
+    // Lock page scroll only while the editor is actually fullscreen -- in
+    // the embedded layout the page scrolls normally.
+    useEffect(() => {
+        if (!isFullscreen) return;
+        const prevOverflow = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+        return () => {
+            document.body.style.overflow = prevOverflow;
+        };
+    }, [isFullscreen]);
+ 
+    // Esc exits fullscreen, same as any other fullscreen surface on the web.
+    useEffect(() => {
+        if (!isFullscreen) return;
+        function onKey(e: KeyboardEvent) {
+            if (e.key === "Escape") setIsFullscreen(false);
+        }
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [isFullscreen]);
  
     useEffect(() => {
         api
@@ -141,36 +163,72 @@ export default function SitePresentationsPage() {
             </form>
  
             {previewFile && (
-                <section className="mt-8">
-                    <div className="mb-3 flex items-center justify-between">
+                <section
+                    className={
+                        isFullscreen
+                            ? "fixed inset-0 z-50 flex flex-col bg-white"
+                            : "mt-8"
+                    }
+                >
+                    <div
+                        className={
+                            isFullscreen
+                                ? "flex items-center justify-between gap-4 border-b border-line px-6 py-3"
+                                : "mb-3 flex items-center justify-between"
+                        }
+                    >
                         <div>
                             <h2 className="font-display text-lg font-bold text-ink">Preview</h2>
                             <p className="text-xs text-charcoal/70">
                                 Edit any cell directly below, then download when it looks right.
                             </p>
                         </div>
-                        <button
-                            onClick={handleDownload}
-                            disabled={!editorReady || downloading}
-                            className="rounded-lg bg-ink px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-ink-2 disabled:opacity-40"
-                        >
-                            {downloading ? "Downloading..." : "Download"}
-                        </button>
+                        <div className="flex items-center gap-3">
+                            {downloaded && isFullscreen && (
+                                <span className="rounded-lg bg-success/10 px-3 py-1.5 text-sm text-success-dark">
+                                    Downloaded.
+                                </span>
+                            )}
+                            {error && isFullscreen && (
+                                <span className="rounded-lg bg-danger/10 px-3 py-1.5 text-sm text-danger-dark">
+                                    {error}
+                                </span>
+                            )}
+                            <button
+                                onClick={() => setIsFullscreen((v) => !v)}
+                                className="rounded-lg border border-line px-4 py-2.5 text-sm font-semibold text-charcoal transition hover:bg-paper"
+                                title={isFullscreen ? "Exit fullscreen (Esc)" : "Expand to fullscreen"}
+                            >
+                                {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+                            </button>
+                            <button
+                                onClick={handleDownload}
+                                disabled={!editorReady || downloading}
+                                className="rounded-lg bg-ink px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-ink-2 disabled:opacity-40"
+                            >
+                                {downloading ? "Downloading..." : "Download"}
+                            </button>
+                        </div>
                     </div>
  
-                    {downloaded && (
+                    {!isFullscreen && downloaded && (
                         <p className="mb-3 rounded-lg bg-success/10 p-3 text-sm text-success-dark">
                             Downloaded.
                         </p>
                     )}
+                    {!isFullscreen && error && (
+                        <p className="mb-3 rounded-lg bg-danger/10 p-3 text-sm text-danger-dark">{error}</p>
+                    )}
  
-                    <LuckysheetEditor
-                        ref={editorRef}
-                        file={previewFile}
-                        onReady={() => setEditorReady(true)}
-                        onError={(msg) => setError(msg)}
-                        height={640}
-                    />
+                    <div className={isFullscreen ? "min-h-0 flex-1" : ""}>
+                        <LuckysheetEditor
+                            ref={editorRef}
+                            file={previewFile}
+                            onReady={() => setEditorReady(true)}
+                            onError={(msg) => setError(msg)}
+                            height={isFullscreen ? "100%" : 640}
+                        />
+                    </div>
                 </section>
             )}
         </main>
