@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8' />
+  <title>Retail Centers – San Ramon, CA</title>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' />
+  <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
+  <style>
+    body { margin: 0; font-family: sans-serif; }
+    #map { height: 100vh; width: 100%; }
+    .legend {
+      background: white; padding: 10px 14px; border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); line-height: 1.8;
+      font-size: 13px;
+    }
+    .legend-dot { display: inline-block; width: 12px; height: 12px;
+                   border-radius: 50%; margin-right: 6px; }
+    .tenant-filter { font-size: 13px; }
+    .tenant-toggle-btn {
+      background: white; border: 2px solid rgba(0,0,0,0.2); border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); padding: 8px 12px; font-size: 13px;
+      font-family: sans-serif; cursor: pointer; min-width: 180px; text-align: left;
+    }
+    .tenant-toggle-btn:hover { background: #f4f4f4; }
+    .tenant-panel {
+      background: white; border-radius: 6px; box-shadow: 0 1px 5px rgba(0,0,0,0.3);
+      margin-top: 4px; padding: 10px; width: 260px; max-height: 380px;
+      display: flex; flex-direction: column;
+    }
+    .tenant-search {
+      width: 100%; box-sizing: border-box; padding: 6px 8px; margin-bottom: 8px;
+      border: 1px solid #ccc; border-radius: 4px; font-size: 13px;
+    }
+    .tenant-actions { display: flex; gap: 6px; margin-bottom: 8px; }
+    .tenant-actions button {
+      flex: 1; padding: 5px 6px; font-size: 12px; border: 1px solid #ccc;
+      border-radius: 4px; background: #f7f7f7; cursor: pointer;
+    }
+    .tenant-actions button:hover { background: #eaeaea; }
+    .tenant-list { overflow-y: auto; max-height: 260px; border-top: 1px solid #eee; padding-top: 6px; }
+    .tenant-item {
+      display: block; font-size: 12.5px; padding: 3px 2px; cursor: pointer;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .tenant-item:hover { background: #f4f4f4; }
+    .tenant-item input { margin-right: 6px; }
+  </style>
+</head>
+<body>
+<div id='map'></div>
+<script>
+  var map = L.map('map').setView([37.74402694455547, -121.9467045727081], 12);
+ 
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(map);
+ 
+  var plazasData = [];
+  var storesData = [];
+ 
+  var layerMultiAnchor = L.layerGroup().addTo(map);
+  var layerSingleAnchor = L.layerGroup().addTo(map);
+  var layerPlazaCenters = L.layerGroup().addTo(map);
+  var layerAnchors = L.layerGroup().addTo(map);
+  var layerTenants = L.layerGroup().addTo(map);
+  var layerStandalone = L.layerGroup().addTo(map);
+  var layerHighDensity = L.layerGroup().addTo(map);
+  var layerLowDensity = L.layerGroup().addTo(map);
+  var countyLayers = {};
+ 
+  function getOrCreateCountyLayer(county) {
+    if (!county || county === '-') county = 'Unknown';
+    if (!countyLayers[county]) {
+        countyLayers[county] = L.layerGroup().addTo(map);
+    }
+    return countyLayers[county];
+  }
+ 
+  function addPlaza(lat, lng, radius_m, plazaId, name, address, county, city, numAnchors, anchors, numTenants, tenants, color, leasingHtml) {
+    var popup = '<b>' + name + '</b><br>'
+      + (address !== '-' ? address + '<br>' : '')
+      + city + (county !== '-' ? ', ' + county + ' County' : '') + '<br>'
+      + leasingHtml
+      + '<br><b>' + numAnchors + ' anchor(s): </b><br>'
+      + anchors.split(', ').join('<br>')
+      + '<br><br><b>' + numTenants + ' other tenant(s):</b><br>'
+      + tenants.split(', ').join('<br>');
+    
+    var circle = L.circle([lat, lng], {
+      radius: radius_m,
+      color: color,
+      fillColor: color,
+      fillOpacity: 0.08,
+      weight: 2
+    });
+    if (numAnchors > 1) {
+      layerMultiAnchor.addLayer(circle);
+    } else {
+      layerSingleAnchor.addLayer(circle);
+    }
+ 
+    var center = L.circleMarker([lat,lng], {
+        radius: 9,
+        color: '#fff',
+        fillColor: '#8e44ad',
+        fillOpacity: 1,
+        weight: 2
+    }).bindPopup(popup, {maxHeight: 320, autoPanPadding: [20, 20]}).bindTooltip(name, {permanent: false, direction: 'top'});
+ 
+    var cleanCounty = (!county || county === '-') ? 'Unknown' : county;
+    getOrCreateCountyLayer(cleanCounty);
+ 
+    plazasData.push({
+        circle: circle,
+        center: center,
+        id: plazaId,
+        name: name,
+        county: cleanCounty,
+        numAnchors: numAnchors,
+        numTenants: numTenants
+    });
+  }
+ 
+  function addStore(lat, lng, name, address, color, plazaId, plaza, isAnchor) {
+    var size = isAnchor ? 11 : 9;
+    var icon = L.divIcon({
+      className: '',
+      html: '<div style="position:absolute;width:' + size + 'px;height:' + size + 'px;'
+          + 'border-radius:50%;background:' + color + ';border:2px solid white;'
+          + 'box-shadow:0 1px 3px rgba(0,0,0,0.4);top:50%;left:50%;'
+          + 'transform:translate(-50%,-50%)'
+          + (isAnchor ? ';outline:2px solid rgba(0,0,0,0.25)' : '')
+          + '"></div>',
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2]
+    });
+    var marker = L.marker([lat, lng], {icon: icon})
+      .bindPopup('<b>' + name + '</b>' + (isAnchor ? '⚓' : '')+ '<br>' 
+        + '<i>' + plaza + '</i><br>'
+        + address)
+      .bindTooltip(name, {direction: 'top'})
+    
+    storesData.push({
+      marker: marker,
+      plazaId: plazaId,
+      plazaLabel: plaza,
+      isAnchor: isAnchor,
+      name: name
+    });
+  }
+ 
+  function tenantFilterMatchesPlaza(plazaId) {
+    // Fast path: nothing deselected, every plaza passes.
+    if (selectedNames.size >= allTenantNames.length) return true;
+    var names = plazaNameIndex[plazaId];
+    if (!names) return false;
+    for (var n of names) {
+      if (selectedNames.has(n)) return true;
+    }
+    return false;
+  }
+ 
+  function updateVisibility() {
+    plazasData.forEach(function(p) {
+      var anchorMatch = (p.numAnchors > 1) ? map.hasLayer(layerMultiAnchor): map.hasLayer(layerSingleAnchor);
+      var densityMatch = (p.numTenants >= 10) ? map.hasLayer(layerHighDensity) : map.hasLayer(layerLowDensity);
+      var countyLayer = countyLayers[p.county];
+      var countyMatch = countyLayer ? map.hasLayer(countyLayer) : true;
+      var tenantMatch = tenantFilterMatchesPlaza(p.id);
+ 
+      var plazaVisible = anchorMatch && densityMatch && countyMatch && tenantMatch;
+      p.isActive = plazaVisible;
+ 
+      if (plazaVisible) {
+        // FIX 2: Changed map.has() to map.hasLayer()
+        if (!map.hasLayer(p.circle)) p.circle.addTo(map);
+      } else {
+        if (map.hasLayer(p.circle)) map.removeLayer(p.circle);
+      }
+ 
+      if (plazaVisible && map.hasLayer(layerPlazaCenters)) {
+        if (!map.hasLayer(p.center)) p.center.addTo(map);
+      } else {
+        if (map.hasLayer(p.center)) map.removeLayer(p.center);
+      }
+    });
+      
+    storesData.forEach(function(s) {
+        var storeVisible = false;
+        var nameMatch = selectedNames.has(s.name);
+ 
+        if (s.plazaId === -1) {
+            // Standalone store
+            storeVisible = map.hasLayer(layerStandalone) && nameMatch;
+ 
+        } else {
+            var parentPlaza = plazasData.find(function(p) {
+                return p.id === s.plazaId;
+            });
+ 
+            if (parentPlaza && parentPlaza.isActive) {
+                storeVisible = (s.isAnchor
+                    ? map.hasLayer(layerAnchors)
+                    : map.hasLayer(layerTenants)) && nameMatch;
+            }
+        }
+ 
+        if (storeVisible) {
+            if (!map.hasLayer(s.marker))
+                s.marker.addTo(map);
+        } else {
+            if (map.hasLayer(s.marker))
+                map.removeLayer(s.marker);
+        }
+    });
+  }
+ 
+  addPlaza(37.777755661363635, -121.97042297045455, 295.5, 0, 'Unnamed Retail Center', '3181 Crow Canyon Place San Ramon', 'Contra Costa County', 'San Ramon', 3, 'Ace Hardware, Big 5 Sporting Goods, Sprouts Farmers Market', 41, '20/20 Optometry, Bank of America, Betty\'s Nail Salon, C2 Education, Carl\'s Jr., Charles Schwab, Chase, Citibank, Comerica Bank, Cute Poodles and Doodles, Elegant Flowers & Gifts, F45 Training, GNC, Habit Burger & Grill, IVX Health, Ike\'s Love and Sandwiches, Jamba, Jazen Tea, Jenny Craig, Leslie\'s Pool Supplies, Massage Envy, Mathnasium, McCurley’s Floor Coverings, Nick’s Shoe Repair, Panda Express, Panera Bread, Peet\'s Coffee, Phở Hòa, Pizza My Heart, Quality Haircuts, Roger Fernando - State Farm, Shampooches, Shell, Starbucks, State Farm - Bob Arnold, T-Mobile, Top Notch Garage Doors, Total Wine, Ulta Beauty, Wells Fargo, ampm Locksmith', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.crexi.com/lease/properties/1111592/california-crow-canyon-commons" target="_blank" rel="noopener">Retail West, Inc. — AJ Schrader</a><br><a href="https://www.crexi.com/lease/properties/1183877/california-flexible-workspace-in-crow-canyon-plaza-book-a-tour-get-info" target="_blank" rel="noopener">Regus — Regus US Admin</a><br><a href="https://www.crexi.com/lease/properties/1183877/california-flexible-workspace-in-crow-canyon-plaza-book-a-tour-get-info" target="_blank" rel="noopener">Regus — IWG US 73</a><br><a href="https://www.crexi.com/lease/properties/1170948/california-guidepost-montessori-san-ramon" target="_blank" rel="noopener">Colliers International Walnut Creek — Ray Devlin</a><br><a href="https://www.crexi.com/lease/properties/1179109/california-3150-crow-canyon-pl" target="_blank" rel="noopener">Compass Real Estate — Tyler Brown</a><br>');
+addPlaza(37.774873328205125, -121.97808661538463, 343.9, 1, 'Unnamed Retail Center', '2505 San Ramon Valley Boulevard San Ramon', 'Contra Costa County', 'San Ramon', 2, 'BevMo!, Safeway', 37, 'AAA Insurance, American Automobile Association, Blue Cave Smokeshop, Chevron, Chipotle, Classy Nails Spa, Clear Blue Test Only Star Smog Station, Diablo Hair, Elements Massage, Enterprise, Eyelab Factory Outlet, Farmers Insurance - Mariam Nassiry, Fast & Easy Mart, Fremont Table Tennis Academy, Global Art San Ramon, Great Clips, H&R Block, JewelSmiths, King\'s Land Chess, McDonald\'s, Nob Hill Cleaners, Orangetheory Fitness, Postbox, Princess Nails & Reflexology, San Ramon Cleaners, Sharetea, Shell, Starbucks, Subway, Taco Bell Cantina, Tesla Supercharger, Texaco, The Bath Studio, The UPS Store, U.S. Bank, Valero, WW Studio', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.crexi.com/lease/properties/202953/california-diablo-plaza" target="_blank" rel="noopener">Regency Centers — Raquel Laman</a><br>');
+addPlaza(37.76294176486487, -121.96027773783784, 295.8, 2, 'Unnamed Retail Center', '100 Sunset Drive San Ramon', 'Contra Costa County', 'San Ramon', 3, 'HomeGoods, Nike, Whole Foods Market', 34, 'AT&T, Amazon Counter, Anthropologie, Athleta, BNP Paribas, BR Nails, Boba Guys, Chipotle, Crumbl Cookies, Equinox, Gap, Joe & The Juice, LoveSac, M by Maggie Rizer, Madewell, Madison Reed, Mancini\'s Sleepworld, Marugame Udon, Mendocino Farms, Peet\'s Coffee, Philz Coffee, Pottery Barn, Pottery Barn Kids, Salt & Straw, Sephora, SkinGlamour Studio, Starbucks, Supercuts, The Lash Empire, Trader, Utopia Tanning and Spa, Wells Fargo, Williams-Sonoma, west elm', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.crexi.com/lease/properties/1183751/california-flexible-workspace-in-bishop-ranch-3-book-a-tour-get-info" target="_blank" rel="noopener">Regus — Regus US Admin</a><br><a href="https://www.crexi.com/lease/properties/1183751/california-flexible-workspace-in-bishop-ranch-3-book-a-tour-get-info" target="_blank" rel="noopener">Regus — IWG US 24</a><br>');
+addPlaza(37.79840146285714, -121.91937918285714, 384.1, 3, 'Unnamed Retail Center', '3438 Camino Tassajara Danville', 'Contra Costa County', 'Danville', 2, 'Ace Hardware, Safeway', 33, 'Bagel Street Cafe, Baja Fresh, Blackhawk Cleaners, Blackhwak Beauty Bar, BurgerIM, Chase, Citibank, Club Pilates, Coinstar, CorePower Yoga, Country Club Cleaners, Danville Self Storage, Edward Jones, ExtraMile, Five Guys, Great Clips, Happy Lemon, Haven Studio, Huntington Learning Center, Luxe Beauty by Jenna, Nails4U Salon & Spa, Patio & Fireplace, Phenix Salon Suites Danville, PostalAnnex, Pyrenees Pets, Shell, Starbucks, Tesla Supercharger, Texaco, Togo\'s, U.S. Bank, Verizon, Wells Fargo', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(37.70365337142857, -121.92775106857142, 372.5, 4, 'Unnamed Retail Center', '6750 Amador Plaza Road Dublin', 'Alameda County', 'Dublin', 2, 'Big 5 Sporting Goods, Safeway', 33, 'Advantage Automotive, Airport Home Appliance, BMO, Bank of America, Bassett Home Furnishings, Benjamin Moore, Chase, Chipotle, Debut Salon, Dublin Collision, Guns, Fishing & Other Stuff, Happy Nails & Spa, Home Remodelers Contracting, Kelly-Moore Paints, King Kong Comics and Games, Mancini\'s Sleepworld, Mike\'s Car Clinic, Music Exchange, Panda Express, Peak Auto Body, Performance Autowerk, PetSmart, SalonCentric, Sleep Train, Supercuts, Tesla Store and Service Center, Tesla Supercharger, The Golf Mart, The Plumbery, Tri-Valley Mufflers, Xpress Dry Cleaners, Yogurtland, Zorba Automotive', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(37.705817253125, -121.9358821, 298.5, 5, 'Unnamed Retail Center', '7333 Regional Street Dublin', 'Alameda County', 'Dublin', 3, '99 Ranch Market, Dollar Tree, Grocery Outlet', 29, 'Austin Louis Salon, Baskin-Robbins, C2 Education, Cassara\'s Italian Men\'s Wear, Cathay Bank, Circle K, Country Waffles, Crow Canyon Dry Cleaners, Deer Creek Funeral Service, Discount Cigarettes, Dogtopia, Dublin Floral Design, Erik\'s DeliCafé, Exxon, FASTSIGNS, Hog\'s Breath Barber Shop, Hollywood Hair Style, Jams Music, Justin Michael\'s Salon, Mathnasium, Nails Spa, Nails and Spa, Optometrist, Relax Center, Round Table Pizza, SummerWinds Nursery, Tesla Supercharger, Valero, Viange Hair', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(37.70758345909091, -121.92793236818183, 389.8, 6, 'Unnamed Retail Center', '7153 Amador Plaza Road Dublin', 'Alameda County', 'Dublin', 1, 'Sprouts Farmers Market', 21, '5 Star Medical Supply, All Smogs, Auto Pro Detailing, Bank of America, Carpeteria, Chuck E. Cheese, Custom Fireplace, Patio & BBQ, DXL Men\'s Apparel, Diamond Sharp Equipment, Dublin Carpet, J Salon & Supply, Kids N Cribs, Metro by T-Mobile, Panera Bread, REI, Schuck’s Transmission & Auto Repair, Smoker Friendly, The Floor Store, The Frame Company, Togo\'s, Tous les Jours', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(37.72386555, -121.94320314545456, 289.7, 7, 'Unnamed Retail Center', '21001 San Ramon Valley Boulevard San Ramon', 'Alameda County', 'San Ramon', 2, 'Dollar Tree, Lucky', 20, 'Australian Tan, Avatar Nails and Spa, Bike Fixstation, Blink, Chevron, Chocolate Works East Bay, Dairy Queen, Elevated Smoke Shop, ExtraMile, Fur Pal Grooming Spa, Griffiths, H&R Block, Lashed, McDonald\'s, Papa Murphy\'s, Sola Salons, Starbucks, Subway, Tesla Supercharger, The UPS Store', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(37.763780847619046, -121.95209943333332, 289.7, 8, 'Unnamed Retail Center', '300 Market Place San Ramon', 'Contra Costa County', 'San Ramon', 1, 'Trader Joe\'s', 20, 'Bank of America, Chase, Cold Stone Creamery, EVPASSPORT, Learning Express, Mimi\'s Cuts, Nob Hill Foods, Pet Salon, RE/MAX, Residence Inn, Round Table Pizza, School of Rock, Shish Market, Sport Clips Haircuts, Sports Basement, Starbucks, The Posh Pet Grooming Salon, The UPS Store, Tina\'s Nail Salon, Vitality Bowls San Ramon', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://gallellire.com/property/620-third-street-306-f-street-kathleen-place/" target="_blank" rel="noopener">Gallelli Real Estate — Brandon Sessions</a><br><a href="https://gallellire.com/property/620-third-street-306-f-street-kathleen-place/" target="_blank" rel="noopener">Gallelli Real Estate — Kannon Kuhn</a><br>');
+addPlaza(37.78098676315789, -121.97282876842105, 331.5, 9, 'Unnamed Retail Center', '2005 Crow Canyon Place San Ramon', 'Contra Costa County', 'San Ramon', 5, 'Costco, Costco Meat Department, Marshalls, Petco, Petco Grooming', 14, 'Acanthus Fine Frames & Mirrors, Baskin-Robbins, Boswell\'s Discout Party Supplies, Cardtronics, Electrify America, Extended Stay America, Heller Jewelers, Hertz, Home Consignment Center - Danville, Rolex, See\'s Candies, Starbucks, Tuesday Morning, W Salon', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.crexi.com/lease/properties/1183877/california-flexible-workspace-in-crow-canyon-plaza-book-a-tour-get-info" target="_blank" rel="noopener">Regus — Regus US Admin</a><br><a href="https://www.crexi.com/lease/properties/1183877/california-flexible-workspace-in-crow-canyon-plaza-book-a-tour-get-info" target="_blank" rel="noopener">Regus — IWG US 73</a><br>');
+addPlaza(37.70215786875, -121.9330500875, 310.9, 10, 'Unnamed Retail Center', '7886 Dublin Boulevard Dublin', 'Alameda County', 'Dublin', 2, 'Marshalls, Ross', 14, 'American Furnishings, Avalon West Dublin, Burger King, Citibank, DSW, H Mart, Half Price Books, Holiday Inn Dublin, Mattress Firm, Michaels, O\'Reilly Auto Parts, Popeyes, Video Only, Wheel Works', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(37.7749715, -121.9230528923077, 289.7, 11, 'Unnamed Retail Center', '11060 Bollinger Canyon Road San Ramon', 'Contra Costa County', 'San Ramon', 1, 'Safeway', 12, 'Boar\'s Head, Chase, Crystal Cleaners, Fantastic Sams, PT Salon, Peet\'s Coffee, Redbox, Starbucks, Subway, T4 Tea For U, The UPS Store, Wells Fargo', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(37.729641515384614, -121.93007496923077, 339.9, 12, 'Unnamed Retail Center', '9100 Alcosta Boulevard San Ramon', 'Alameda County', 'San Ramon', 1, 'Walmart Neighborhood Market', 12, 'Advanced Health Massage, Alcosta Smoke Shop, Apli Locksmith Services, Coinstar, Enchanted Florist & Gifts, Extra Space Storage, Kumon, Starbucks, Studio 9110 Nail Salon, Subway, Supercuts, T4 Tea For U', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(37.71080158181818, -121.92668563636363, 289.7, 13, 'Unnamed Retail Center', '7373 Village Parkway Dublin', 'Alameda County', 'Dublin', 1, 'Ace Hardware', 10, 'Arco, Dublin Corners Barber Shop, Hunter Joseph Salon, Iron Horse Optometric Group, Jack in the Box, Little Caesars, Oil Changers, Sharetea, Taco Bell, United Car Stereo', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(37.70302387, -121.93649291, 311.6, 14, 'Unnamed Retail Center', '11976 Dublin Boulevard Dublin', 'Alameda County', 'Dublin', 1, 'Petco', 9, 'A1 Liquor & Party Rentals, Challenge Dairy Products, Chevron, Foodle Market, Lamps Plus, Shell, Starbucks, The UPS Store, Trek', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(37.70525628888889, -121.93263658888888, 289.7, 15, 'Unnamed Retail Center', '6900 Amador Plaza Road Dublin', 'Alameda County', 'Dublin', 2, 'Burlington, Target', 7, 'Ashley HomeStore, Budget Cleaners, Daiso Japan, Fitness 19, Savers, Smoker\'s Gift Shop, Wells Fargo', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(37.7623765, -121.96425880000001, 289.7, 16, 'Unnamed Retail Center', '2610 Bishop Drive San Ramon', 'Contra Costa County', 'San Ramon', 1, 'Target', 4, 'Pizza Hut Express, San Ramon Marriott, Starbucks, Tesla Supercharger San Ramon', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://namdarrealtygroup.com/?page=search&proptype=&keyword=San+Ramon&state=CA" target="_blank" rel="noopener">Namdar Realty Group — Namdar Realty Group</a><br><a href="https://www.crexi.com/lease/properties/1183751/california-flexible-workspace-in-bishop-ranch-3-book-a-tour-get-info" target="_blank" rel="noopener">Regus — Regus US Admin</a><br><a href="https://www.crexi.com/lease/properties/1183751/california-flexible-workspace-in-bishop-ranch-3-book-a-tour-get-info" target="_blank" rel="noopener">Regus — IWG US 24</a><br>');
+addPlaza(37.77519956, -121.98359464, 289.7, 17, 'Unnamed Retail Center', '2750 Crow Canyon Road San Ramon', 'Contra Costa County', 'San Ramon', 1, 'The Home Depot', 4, 'Angelarosa, Pottery Planet San Ramon, RoadrunnerPrintMail, Staples', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(37.773423799999996, -121.96967696666667, 289.7, 18, 'Unnamed Retail Center', '4475 Norris Canyon Road San Ramon', 'Contra Costa County', 'San Ramon', 1, '24 Hour Fitness', 2, 'Iwatani, UPS', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+  addStore(37.7616096, -121.962625, 'Chipotle', '132 Sunset Drive San Ramon', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7627649, -121.9515436, 'Nob Hill Foods', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(37.7740735, -121.9234799, 'Subway', '11000 Bollinger Canyon Road San Ramon', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(37.7737756, -121.969591, 'UPS', '-', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(37.7739677, -121.970338, '24 Hour Fitness', '-', '#f39c12', 18, 'Unnamed Retail Center', true);
+addStore(37.7786505, -121.9695955, 'Peet\'s Coffee', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7058214, -121.9343846, 'Valero', '7840 Amador Valley Boulevard Dublin', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(37.7057658, -121.9376201, 'SummerWinds Nursery', '7360 San Ramon Road', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(37.7105936, -121.9266493, 'Arco', '7249 Village Parkway', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(37.7097202, -121.927215, 'Oil Changers', '7194 Village Parkway Dublin', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(37.7119434, -121.926551, 'Little Caesars', '-', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(37.7750749, -121.9224521, 'Starbucks', '11060 Bollinger Canyon Road San Ramon', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(37.7751481, -121.9239489, 'Wells Fargo', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(37.7740407, -121.9232889, 'Peet\'s Coffee', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(37.703563, -121.9295956, 'Chase', '7600 Dublin Boulevard', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.7116879, -121.9264149, 'Ace Hardware', '7373 Village Parkway Dublin', '#f39c12', 13, 'Unnamed Retail Center', true);
+addStore(37.7121227, -121.9266556, 'Dublin Corners Barber Shop', '7437 Village Parkway Dublin', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(37.7119953, -121.9265685, 'United Car Stereo', '-', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(37.7777631, -121.9685526, 'F45 Training', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7786297, -121.9688433, 'Panda Express', '3141 Crow Canyon Place San Ramon', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7307195, -121.929394, 'Extra Space Storage', '9180 Alcosta Boulevard San Ramon', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(37.70318, -121.92533, 'Tesla Supercharger', '6701 Amador Plaza Road Dublin', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.723549, -121.9418979, 'Bike Fixstation', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(37.7308683, -121.927094, 'Kumon', '-', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(37.7620092, -121.953018, 'Sports Basement', '1041 Market Place San Ramon', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(37.704183, -121.926691, 'Bank of America', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.7021438, -121.9341123, 'Mattress Firm', '7916 Dublin Boulevard Dublin', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(37.701887, -121.9351477, 'Starbucks', '7940 Dublin Boulevard Dublin', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(37.7023146, -121.934425, 'Video Only', '7922 Dublin Boulevard', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(37.7022462, -121.9346822, 'American Furnishings', '7922 Dublin Boulevard', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(37.7021634, -121.936883, 'Petco', '11976 Dublin Boulevard Dublin', '#f39c12', 14, 'Unnamed Retail Center', true);
+addStore(37.701513, -121.936419, 'Shell', '-', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(37.70292, -121.9344999, 'O\'Reilly Auto Parts', '7100 Regional Street', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(37.702786, -121.935549, 'Chevron', '7007 San Ramon Road Dublin', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(37.7033571, -121.9345535, 'Popeyes', '7122 Regional Street Dublin', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(37.7044686, -121.9340667, 'Wells Fargo', '7181 Regional Street Dublin', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(37.7032425, -121.9335216, 'Citibank', '7889 Dublin Boulevard', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(37.7040638, -121.9323756, 'Ashley HomeStore', '7885 Dublin Boulevard Dublin', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(37.7059609, -121.9330508, 'Budget Cleaners', '7257 Regional Street Dublin', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(37.7056538, -121.9332144, 'Smoker\'s Gift Shop', '7209 Regional Street Dublin', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(37.7057593, -121.9332607, 'Baskin-Robbins', '7225 Regional Street Dublin', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(37.7063174, -121.9330991, '99 Ranch Market', '7333 Regional Street Dublin', '#f39c12', 5, 'Unnamed Retail Center', true);
+addStore(37.7044787, -121.9325767, 'Savers', '7117 Regional Street', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(37.7049365, -121.935484, 'C2 Education', '7208 Regional Street', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(37.7049243, -121.9355768, 'Relax Center', '7206 Regional Street', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(37.704911, -121.9356667, 'Optometrist', '7204 Regional Street', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(37.7048999, -121.9357605, 'Nails and Spa', '7202 Regional Street', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(37.7047391, -121.9360777, 'Viange Hair', '7196 Regional Street', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(37.704563, -121.9360408, 'Cathay Bank', '7190 Regional Street', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(37.7025592, -121.9302647, 'Xpress Dry Cleaners', '7802 Dublin Boulevard', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.7033709, -121.9307583, 'Mancini\'s Sleepworld', '7850 Dublin Boulevard', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.7034431, -121.9303834, 'SalonCentric', '7740 Dublin Boulevard', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.7035687, -121.930443, 'Music Exchange', '7704 Dublin Boulevard Dublin', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.7046246, -121.9270072, 'Bank of America', '7496 Dublin Boulevard', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(37.7041932, -121.9259892, 'Guns, Fishing & Other Stuff', '6705 Amador Plaza Road', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.7098925, -121.9264707, 'Hunter Joseph Salon', '7197 Village Parkway', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(37.7098431, -121.9264345, 'Iron Horse Optometric Group', '7197 Village Parkway', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(37.7073222, -121.9347829, 'Dollar Tree', '7775 Amador Valley Boulevard', '#f39c12', 5, 'Unnamed Retail Center', true);
+addStore(37.7071392, -121.9350833, 'Round Table Pizza', '7841 Amador Valley Boulevard', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(37.7075583, -121.9344, 'Mathnasium', '7723 Amador Valley Boulevard', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(37.7073365, -121.934284, 'Erik\'s DeliCafé', '7741 Amador Valley Boulevard', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(37.7040951, -121.935566, 'The UPS Store', '7172 Regional Street', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(37.7067694, -121.927889, 'REI', '7099 Amador Plaza Road Dublin', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(37.7071753, -121.9288062, 'Togo\'s', '7147 Amador Plaza Road', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(37.707128, -121.928924, 'Tous les Jours', '7151 Amador Plaza Road', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(37.7072909, -121.928357, 'Custom Fireplace, Patio & BBQ', '7111 Amador Plaza Road', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(37.707267, -121.928542, 'Carpeteria', '7123 Amador Plaza Road', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(37.7072347, -121.9286621, 'Smoker Friendly', '7135 Amador Plaza Road', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(37.7089859, -121.929352, 'Chuck E. Cheese', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(37.7086108, -121.9288901, 'The Floor Store', '7181 Amador Plaza Road', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(37.7048362, -121.9286232, 'BMO', '7533 Dublin Boulevard', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.704771, -121.9292817, 'Bassett Home Furnishings', '7575 Dublin Boulevard', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.7056819, -121.9289283, 'PetSmart', '6960 Amador Plaza Road Dublin', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.7063673, -121.9290879, 'Chipotle', '7020 Amador Plaza Road Dublin', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.7064628, -121.929138, 'Panera Bread', '7030 Amador Plaza Road Dublin', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(37.706988, -121.9333291, 'FASTSIGNS', '7660 Amador Valley Boulevard', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(37.706658, -121.9318096, 'Target', '7200 Amador Plaza Road Dublin', '#f39c12', 15, 'Unnamed Retail Center', true);
+addStore(37.7061339, -121.931216, 'Metro by T-Mobile', '7172 Amador Plaza Road', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(37.7050994, -121.930946, 'Burlington', '6900 Amador Plaza Road Dublin', '#f39c12', 15, 'Unnamed Retail Center', true);
+addStore(37.70207, -121.9314355, 'Ross', '7886 Dublin Boulevard Dublin', '#f39c12', 10, 'Unnamed Retail Center', true);
+addStore(37.7019607, -121.9318016, 'Michaels', '7890 Dublin Boulevard Dublin', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(37.7018599, -121.9321261, 'Marshalls', '7892 Dublin Boulevard', '#f39c12', 10, 'Unnamed Retail Center', true);
+addStore(37.7017719, -121.9324172, 'DSW', '7896 Dublin Boulevard Dublin', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(37.7017761, -121.9326921, 'Half Price Books', '7898 Dublin Boulevard Dublin', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(37.7042834, -121.9375214, 'Lamps Plus', '7256 San Ramon Road', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(37.7050155, -121.9385091, 'Crow Canyon Dry Cleaners', '7272 San Ramon Road', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(37.7044362, -121.938375, 'Trek', '7222 San Ramon Road Dublin', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(37.7048468, -121.937502, 'Country Waffles', '7274 San Ramon Road', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(37.7052182, -121.9356123, 'Hog\'s Breath Barber Shop', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(37.7052065, -121.9356774, 'Discount Cigarettes', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(37.7051827, -121.9358772, 'Nails Spa', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(37.7052978, -121.9361374, 'Hollywood Hair Style', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(37.7054081, -121.936162, 'Dogtopia', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(37.7054676, -121.9284353, 'Happy Nails & Spa', '6920 Amador Plaza Road', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.7103922, -121.927438, 'Sharetea', '-', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(37.7725281, -121.9691019, 'Iwatani', '4475 Norris Canyon Road San Ramon', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(37.7055705, -121.9329, 'Fitness 19', '7201 Regional Street', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(37.7080278, -121.9266276, 'Schuck’s Transmission & Auto Repair', '7016 Village Parkway', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(37.7081063, -121.9266853, 'All Smogs', '7034 Village Parkway', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(37.7086421, -121.9263641, 'Dublin Carpet', '7078 Village Parkway', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(37.7085392, -121.9262749, '5 Star Medical Supply', '7066 Village Parkway', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(37.7084713, -121.9262179, 'Kids N Cribs', '7054 Village Parkway', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(37.7083341, -121.9260985, 'The Frame Company', '7038 Village Parkway', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(37.708266, -121.9260442, 'J Salon & Supply', '7030 Village Parkway', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(37.7081986, -121.9259852, 'Diamond Sharp Equipment', '7022 Village Parkway', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(37.76256, -121.9513441, 'Sport Clips Haircuts', '120 Market Place San Ramon', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(37.7788703, -121.969755, 'Panera Bread', '3121 Crow Canyon Place San Ramon', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7786871, -121.9694711, 'Habit Burger & Grill', '3121 Crow Canyon Place', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7294682, -121.93138, 'Starbucks', '9150 Alcosta Boulevard San Ramon', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(37.7053529, -121.9327895, 'Daiso Japan', '7201 Regional Street', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(37.76292, -121.96366, 'Tesla Supercharger San Ramon', '2610 Bishop Drive San Ramon', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(37.7628773, -121.960075, 'Starbucks', '6000 Bollinger Canyon Road San Ramon', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7630383, -121.959677, 'Williams-Sonoma', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7632402, -121.959233, 'Anthropologie', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7633547, -121.958926, 'Sephora', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7636092, -121.959233, 'Trader', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7636616, -121.95908, 'M by Maggie Rizer', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7635111, -121.959478, 'Athleta', 'Bishop Drive San Ramon', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7040629, -121.9357551, 'A1 Liquor & Party Rentals', '7174 Regional Street', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(37.7627237, -121.9527032, 'Shish Market', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(37.7766051, -121.9720744, 'Shampooches', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7775385, -121.972835, 'Comerica Bank', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7772581, -121.9714124, 'Nick’s Shoe Repair', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7768609, -121.97033, 'McCurley’s Floor Coverings', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7766705, -121.9705413, 'GNC', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7765966, -121.9707654, '20/20 Optometry', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7766533, -121.971013, 'Phở Hòa', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7763938, -121.971594, 'Big 5 Sporting Goods', '-', '#f39c12', 0, 'Unnamed Retail Center', true);
+addStore(37.7773795, -121.9716226, 'Chase', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7773603, -121.971332, 'Ike\'s Love and Sandwiches', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7767734, -121.970389, 'T-Mobile', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7766297, -121.9706017, 'Jenny Craig', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7766341, -121.971086, 'Jazen Tea', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7763305, -121.97177, 'Leslie\'s Pool Supplies', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7776336, -121.972737, 'Starbucks', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7772717, -121.9715114, 'Quality Haircuts', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7769687, -121.970333, 'Massage Envy', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7765878, -121.970888, 'C2 Education', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7060421, -121.9377413, 'Cassara\'s Italian Men\'s Wear', '7372 San Ramon Road', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(37.7986554, -121.9201194, 'Wells Fargo', '3402 Camino Tassajara Danville', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.7986081, -121.9198432, 'Country Club Cleaners', '3412 Camino Tassajara Danville', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.7977209, -121.918035, 'PostalAnnex', '3494 Camino Tassajara Danville', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.7976464, -121.9181289, 'Huntington Learning Center', '3490 Camino Tassajara Danville', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.7976496, -121.918453, 'Verizon', '3478 Camino Tassajara Danville', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.7976615, -121.9185391, 'Great Clips', '3478 Camino Tassajara Danville', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.7976971, -121.9186471, 'Blackhwak Beauty Bar', '3478 Camino Tassajara Danville', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.7977133, -121.91887, 'Edward Jones', '3472 Camino Tassajara Danville', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.797735, -121.919135, 'Five Guys', '3456 Camino Tassajara Danville', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.7977641, -121.9194867, 'Togo\'s', '3454 Camino Tassajara Danville', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.7977955, -121.919616, 'Happy Lemon', '3450 Camino Tassajara Danville', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.7977998, -121.9198463, 'Pyrenees Pets', '3440 Camino Tassajara Danville', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.7977544, -121.9200746, 'Ace Hardware', '3438 Camino Tassajara Danville', '#f39c12', 3, 'Unnamed Retail Center', true);
+addStore(37.7977306, -121.9206393, 'Patio & Fireplace', '3426 Camino Tassajara Danville', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.797762, -121.9207679, 'Bagel Street Cafe', '3422 Camino Tassajara Danville', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.797883, -121.921388, 'Club Pilates', '3418 Camino Tassajara Danville', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.780167, -121.9729697, 'Petco', '2005 Crow Canyon Place San Ramon', '#f39c12', 9, 'Unnamed Retail Center', true);
+addStore(37.7755399, -121.9238323, 'Chase', '11030 Bollinger Canyon Rd San Ramon', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(37.7975364, -121.9157387, 'Danville Self Storage', '3550 Camino Tassajara Danville', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.7982916, -121.916876, 'Texaco', '3500 Camino Tassajara Danville', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.7983914, -121.922075, 'Baja Fresh', '11000 Crow Canyon Road Danville', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.798512, -121.922101, 'BurgerIM', '11000 Crow Canyon Road Danville', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.7986109, -121.922094, 'Blackhawk Cleaners', '11000 Crow Canyon Road Danville', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.7634522, -121.95967, 'Mendocino Farms', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7636636, -121.959854, 'Boba Guys', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7637649, -121.959908, 'Marugame Udon', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7640537, -121.9592567, 'The Lash Empire', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7639109, -121.958695, 'west elm', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7633099, -121.959059, 'Madewell', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7626941, -121.9589892, 'Joe & The Juice', '6000 Bollinger Canyon Road', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7630442, -121.958156, 'Philz Coffee', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7632699, -121.958302, 'Pottery Barn Kids', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7634631, -121.958458, 'Pottery Barn', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7634038, -121.958714, 'LoveSac', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7627398, -121.959989, 'Madison Reed', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7062102, -121.931255, 'DXL Men\'s Apparel', '7188 Amador Plaza Road', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(37.7059096, -121.927759, 'Supercuts', '6851 Amador Plaza Road', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.7294537, -121.9293442, 'Coinstar', '-', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(37.7068527, -121.9374684, 'Austin Louis Salon', '7446 San Ramon Road', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(37.7071238, -121.9375328, 'Dublin Floral Design', '7460 San Ramon Road', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(37.7067546, -121.937451, 'Deer Creek Funeral Service', '7440 San Ramon Road', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(37.7030282, -121.9345542, 'Wheel Works', '7100 Regional Street', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(37.7635557, -121.959376, 'Gap', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7635313, -121.958925, 'Nike', '-', '#f39c12', 2, 'Unnamed Retail Center', true);
+addStore(37.7634035, -121.960037, 'Equinox', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7635557, -121.960052, 'Salt & Straw', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.77477, -121.97979, 'Tesla Supercharger', '2415 San Ramon Valley Boulevard San Ramon', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.775065, -121.9792867, 'Taco Bell Cantina', '2415 San Ramon Valley Boulevard San Ramon', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7825357, -121.9727031, 'Costco Meat Department', '-', '#f39c12', 9, 'Unnamed Retail Center', true);
+addStore(37.782514, -121.9745191, 'Boswell\'s Discout Party Supplies', '1901 Camino Ramon', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(37.7826667, -121.9746534, 'Home Consignment Center - Danville', '1901 Camino Ramon', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(37.783025, -121.9748562, 'Tuesday Morning', '1901 Camino Ramon', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(37.7616674, -121.9622155, 'HomeGoods', '120 Sunset Drive San Ramon', '#f39c12', 2, 'Unnamed Retail Center', true);
+addStore(37.7614467, -121.9625105, 'AT&T', '134 Sunset Drive', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7616776, -121.9625105, 'BR Nails', '130 Sunset Drive', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7617336, -121.9619483, 'Wells Fargo', '116 Sunset Drive', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7617824, -121.9616991, 'Mancini\'s Sleepworld', '110 Sunset Drive', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7629703, -121.9614305, 'SkinGlamour Studio', '160 Sunset Drive', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7629989, -121.9615568, 'Utopia Tanning and Spa', '158 Sunset Drive', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7629264, -121.9618201, 'Crumbl Cookies', '152 Sunset Drive', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7629112, -121.9619446, 'Supercuts', '150 Sunset Drive', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7625912, -121.9628901, 'BNP Paribas', '140 Sunset Drive', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7619027, -121.9641515, 'Starbucks', '2610 Bishop Drive San Ramon', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(37.7620534, -121.9639271, 'Pizza Hut Express', '2610 Bishop Drive San Ramon', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(37.7996928, -121.9207977, 'Chase', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.7752915, -121.9231018, 'Crystal Cleaners', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(37.7752676, -121.9229294, 'The UPS Store', '11040 Bollinger Canyon Road San Ramon', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(37.7793046, -121.97084, 'ampm Locksmith', '3140 Crow Canyon Road', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7984668, -121.9175342, 'Coinstar', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.7984843, -121.9177565, 'Starbucks', '3496 Camino Tassajara Danville', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.7982923, -121.9181062, 'U.S. Bank', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.7641577, -121.9520829, 'Trader Joe\'s', '300 Market Place San Ramon', '#f39c12', 8, 'Unnamed Retail Center', true);
+addStore(37.7636979, -121.9524933, 'Vitality Bowls San Ramon', '211 Market Place', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(37.7637674, -121.9525351, 'The UPS Store', '231 Market Place', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(37.763387, -121.9519423, 'Tina\'s Nail Salon', '170 Market Place', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(37.7632974, -121.9518982, 'Mimi\'s Cuts', '168 Market Place', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(37.763071, -121.9517623, 'Learning Express', '136 Market Place', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(37.7643756, -121.9511445, 'The Posh Pet Grooming Salon', '420 Montgomery Street', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(37.7640211, -121.9512116, 'Round Table Pizza', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(37.775568, -121.9802083, 'Fast & Easy Mart', '2820 Crow Canyon Road', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7756113, -121.9800739, 'Classy Nails Spa', '2830 Crow Canyon Road', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7756361, -121.9800126, 'San Ramon Cleaners', '2840 Crow Canyon Road', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7757142, -121.9798735, 'Clear Blue Test Only Star Smog Station', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.775751, -121.9797443, 'Shell', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7750458, -121.9793507, 'Diablo Hair', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7749714, -121.9795521, 'Global Art San Ramon', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7749704, -121.9791795, 'The UPS Store', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7748793, -121.9791237, 'Orangetheory Fitness', '2415 San Ramon Valley Boulevard San Ramon', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7748078, -121.9790976, 'WW Studio', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.774709, -121.979029, 'Elements Massage', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7745723, -121.9789542, 'BevMo!', '2425 San Ramon Valley Boulevard', '#f39c12', 1, 'Unnamed Retail Center', true);
+addStore(37.7743588, -121.9786278, 'Starbucks', '2435 San Ramon Valley Boulevard San Ramon', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7743413, -121.9785368, 'AAA Insurance', '2435 San Ramon Valley Boulevard San Ramon', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.774297, -121.9785857, 'American Automobile Association', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7742502, -121.9783339, 'Eyelab Factory Outlet', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7741807, -121.9781231, 'H&R Block', '2435 San Ramon Valley Boulevard', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7738978, -121.9774279, 'Nob Hill Cleaners', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7736918, -121.9772833, 'Princess Nails & Reflexology', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7737717, -121.977043, 'JewelSmiths', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7741156, -121.9761686, 'Great Clips', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7751585, -121.9779827, 'Chipotle', '2421 San Ramon Valley Boulevard San Ramon', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7746906, -121.9778091, 'Subway', '2441 San Ramon Valley Boulevard San Ramon', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7747081, -121.9776565, 'Sharetea', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7638196, -121.9520232, 'Cold Stone Creamery', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(37.7754934, -121.9770908, 'Enterprise', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7755646, -121.9763405, 'Fremont Table Tennis Academy', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7755128, -121.9763865, 'King\'s Land Chess', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7754311, -121.976135, 'Farmers Insurance - Mariam Nassiry', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7753485, -121.975949, 'The Bath Studio', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7289839, -121.930158, 'Studio 9110 Nail Salon', '9110 Alcosta Boulevard', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(37.7290639, -121.9300194, 'Advanced Health Massage', '-', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(37.7291795, -121.9297817, 'Supercuts', '-', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(37.7651034, -121.9522076, 'Chase', '300 Montgomery Street', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(37.7652749, -121.9519573, 'RE/MAX', '350 Montgomery Street', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(37.7650262, -121.9517161, 'Pet Salon', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(37.7649327, -121.9516599, 'Bank of America', '450 Montgomery Street', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(37.7648274, -121.9515691, 'School of Rock', '460 Montgomery Street', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(37.723773, -121.9419695, 'Fur Pal Grooming Spa', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(37.7238919, -121.9419799, 'Avatar Nails and Spa', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(37.723951, -121.9419776, 'Lashed', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(37.7241045, -121.941989, 'Elevated Smoke Shop', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(37.7238846, -121.9430947, 'Dairy Queen', 'San Ramon', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(37.7237871, -121.9430673, 'Sola Salons', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(37.7237103, -121.9430647, 'Subway', '21001 San Ramon Valley Boulevard San Ramon', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(37.7242384, -121.9430681, 'Blink', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(37.724586, -121.9442584, 'The UPS Store', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(37.7245453, -121.9442741, 'H&R Block', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(37.7234595, -121.944209, 'Papa Murphy\'s', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(37.7236196, -121.9442858, 'Australian Tan', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(37.7231575, -121.9436787, 'Chocolate Works East Bay', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(37.7086935, -121.9270396, 'Auto Pro Detailing', '7106 Village Parkway Dublin', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(37.72308, -121.94425, 'Tesla Supercharger', '21001 San Ramon Valley Boulevard San Ramon', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(37.7293146, -121.9314888, 'Subway', '-', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(37.7292243, -121.9316458, 'Alcosta Smoke Shop', '-', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(37.7291994, -121.9317367, 'Apli Locksmith Services', '-', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(37.7303129, -121.929821, 'Enchanted Florist & Gifts', '-', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(37.7302772, -121.9298969, 'T4 Tea For U', '-', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(37.7047732, -121.9377382, 'Jams Music', '7282 San Ramon Road', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(37.7743636, -121.9747456, 'Blue Cave Smokeshop', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7733327, -121.976677, 'U.S. Bank', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7821981, -121.9732573, 'Cardtronics', '-', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(37.7801601, -121.9727247, 'Petco Grooming', '-', '#f39c12', 9, 'Unnamed Retail Center', true);
+addStore(37.7801775, -121.9725423, 'Hertz', '-', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(37.780043, -121.9724494, 'W Salon', '-', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(37.7799377, -121.9723402, 'Starbucks', '2005 Crow San Ramon', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(37.7798095, -121.9720783, 'See\'s Candies', '-', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(37.7798262, -121.9719893, 'Baskin-Robbins', '2005 Crow Canyon Place San Ramon', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(37.779771, -121.9717376, 'Rolex', '-', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(37.7797221, -121.9717047, 'Heller Jewelers', '-', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(37.7796797, -121.9712065, 'Acanthus Fine Frames & Mirrors', '-', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(37.7793929, -121.9708934, 'State Farm - Bob Arnold', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.779479, -121.9710587, 'Elegant Flowers & Gifts', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7792819, -121.9709259, 'Cute Poodles and Doodles', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7778408, -121.9684521, 'IVX Health', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7783683, -121.9686635, 'Pizza My Heart', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7785113, -121.9687732, 'Betty\'s Nail Salon', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7786921, -121.968881, 'Jamba', '3141 Crow Canyon Place San Ramon', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7759937, -121.9685319, 'Mathnasium', '2240 Camino Ramon', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7773668, -121.9682859, 'Roger Fernando - State Farm', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7766594, -121.9695522, 'Top Notch Garage Doors', '2238 Camino Ramon', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7752981, -121.9230123, 'PT Salon', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(37.7752494, -121.9228412, 'Fantastic Sams', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(37.77494, -121.9224178, 'Boar\'s Head', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(37.7748496, -121.9223544, 'Redbox', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(37.7749807, -121.9239753, 'T4 Tea For U', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(37.799982, -121.9189379, 'CorePower Yoga', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.8001139, -121.9201424, 'Luxe Beauty by Jenna', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.8002409, -121.9202658, 'Haven Studio', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.8002933, -121.9200077, 'Phenix Salon Suites Danville', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.800147, -121.9187461, 'Nails4U Salon & Spa', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.70644, -121.9351, 'Tesla Supercharger', '7841 Amador Valley Boulevard Dublin', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(37.706867, -121.9362111, 'Grocery Outlet', '7991 Amador Valley Boulevard', '#f39c12', 5, 'Unnamed Retail Center', true);
+addStore(37.7042097, -121.935955, 'Foodle Market', '7182 Regional Street', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(37.7057943, -121.9276576, 'Panda Express', '6851 Amador Plaza Road Dublin', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.7058638, -121.9277213, 'Yogurtland', '6851 Amador Plaza Road', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.7047354, -121.9266605, 'Airport Home Appliance', '7460 Dublin Boulevard Dublin', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.79915, -121.91873, 'Tesla Supercharger', '3380 Blackhawk Plaza Circle Danville', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.7757485, -121.9773651, 'Postbox', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7744378, -121.9849144, 'Angelarosa', '-', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(37.7619202, -121.9614185, 'Amazon Counter', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7239038, -121.9443452, 'Griffiths', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(37.7049695, -121.9380652, 'Justin Michael\'s Salon', '7292 San Ramon Road', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(37.7022835, -121.9310411, 'H Mart', '7884 Dublin Boulevard Dublin', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(37.78045, -121.97342, 'Electrify America', '-', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(37.7643144, -121.9548181, 'EVPASSPORT', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(37.7756692, -121.9844856, 'The Home Depot', '2750 Crow Canyon Road San Ramon', '#f39c12', 17, 'Unnamed Retail Center', true);
+addStore(37.7621755, -121.9643587, 'Target', '2610 Bishop Drive San Ramon', '#f39c12', 16, 'Unnamed Retail Center', true);
+addStore(37.7743746, -121.9765918, 'McDonald\'s', '2481 San Ramon Valley Boulevard San Ramon', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7777041, -121.9689389, 'Total Wine', '3161 Crow Canyon Place San Ramon', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7783329, -121.9710214, 'Citibank', '3101 Crow Canyon Place', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7779298, -121.9718373, 'Bank of America', '3100 Crow Canyon Place', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7786564, -121.9702741, 'Wells Fargo', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7790226, -121.9692117, 'Carl\'s Jr.', '3131 Crow Canyon Place San Ramon', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7827164, -121.9733778, 'Costco', '3150 Fostoria Way Danville', '#f39c12', 9, 'Unnamed Retail Center', true);
+addStore(37.779034, -121.971351, 'Ulta Beauty', '2015 Crow Canyon Place San Ramon', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7787398, -121.9722565, 'Shell', '3048 Crow Canyon Road', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7794381, -121.9705219, 'Charles Schwab', '3150 Crow Canyon Road', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(37.7812794, -121.9710646, 'Extended Stay America', '2100 Camino Ramon', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(37.7820694, -121.9741524, 'Marshalls', '3140 Fostoria Way', '#f39c12', 9, 'Unnamed Retail Center', true);
+addStore(37.7764918, -121.9778915, 'Valero', '2350 San Ramon Valley Boulevard', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7756392, -121.9775153, 'Texaco', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7760162, -121.9789505, 'Chevron', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(37.7762044, -121.9817499, 'RoadrunnerPrintMail', '100 Ryan Industrial Court', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(37.7743885, -121.9851755, 'Staples', '2710 Crow Canyon Road San Ramon', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(37.7627694, -121.9612987, 'Peet\'s Coffee', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(37.7617317, -121.9612652, 'Whole Foods Market', '100 Sunset Drive San Ramon', '#f39c12', 2, 'Unnamed Retail Center', true);
+addStore(37.7631504, -121.9506314, 'Starbucks', '500 The Marketplace San Ramon', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(37.7292743, -121.9292141, 'Walmart Neighborhood Market', '9100 Alcosta Boulevard San Ramon', '#f39c12', 12, 'Unnamed Retail Center', true);
+addStore(37.7095709, -121.9261799, 'Taco Bell', '7123 Village Parkway Dublin', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(37.7076637, -121.9291362, 'Sprouts Farmers Market', '7153 Amador Plaza Road Dublin', '#f39c12', 6, 'Unnamed Retail Center', true);
+addStore(37.7748755, -121.9220533, 'Safeway', '11060 Bollinger Canyon Road San Ramon', '#f39c12', 11, 'Unnamed Retail Center', true);
+addStore(37.7631159, -121.9538263, 'Residence Inn', '1071 Market Place San Ramon', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(37.7234288, -121.9421403, 'Chevron', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(37.7234718, -121.9417969, 'ExtraMile', '21320 San Ramon Valley Boulevard', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(37.7249018, -121.9442503, 'Dollar Tree', '21001 San Ramon Valley Boulevard', '#f39c12', 7, 'Unnamed Retail Center', true);
+addStore(37.7240166, -121.9446124, 'Lucky', '21001 San Ramon Valley Boulevard', '#f39c12', 7, 'Unnamed Retail Center', true);
+addStore(37.724561, -121.9432599, 'McDonald\'s', '21001 San Ramon Valley Boulevard San Ramon', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(37.7983184, -121.9165253, 'ExtraMile', '3500 Camino Tassajara Danville', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.7987601, -121.9211485, 'Citibank', '3400 Camino Tassajara Danville', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.7980708, -121.917784, 'Safeway', '3496 Camino Tassajara Danville', '#f39c12', 3, 'Unnamed Retail Center', true);
+addStore(37.7027445, -121.924988, 'Tesla Store and Service Center', '6701 Amador Plaza Road Dublin', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.7025309, -121.9266628, 'The Golf Mart', '6694 Amador Plaza Road Dublin', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.7025735, -121.9332045, 'Burger King', '6921 Regional Street Dublin', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(37.7055235, -121.9353049, 'Circle K', '7850 Amador Valley Boulevard', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(37.7110556, -121.9269646, 'Jack in the Box', '7265 Village Parkway Dublin', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(37.7732091, -121.9768849, 'Safeway', '2505 San Ramon Valley Boulevard San Ramon', '#f39c12', 1, 'Unnamed Retail Center', true);
+addStore(37.7062036, -121.9273123, 'Safeway', '7449 Dublin Boulevard Dublin', '#f39c12', 4, 'Unnamed Retail Center', true);
+addStore(37.7034294, -121.9272558, 'Benjamin Moore', '6698 Amador Plaza Road Dublin', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.704043, -121.9276646, 'Big 5 Sporting Goods', '6750 Amador Plaza Road Dublin', '#f39c12', 4, 'Unnamed Retail Center', true);
+addStore(37.7037787, -121.9274895, 'King Kong Comics and Games', '6700 Amador Plaza Road Dublin', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.704248, -121.9278036, 'Debut Salon', '6766 Amador Plaza Road Dublin', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.7026002, -121.9268325, 'Home Remodelers Contracting', '6694 Amador Plaza Road Dublin', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.7027915, -121.9269383, 'Kelly-Moore Paints', '6694 Amador Plaza Road Dublin', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.7043604, -121.9278633, 'Sleep Train', '6780 Amador Plaza Road Dublin', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.7024936, -121.9262636, 'The Plumbery', '6694 Amador Plaza Road Dublin', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.700802, -121.9377579, 'Challenge Dairy Products', '11875 Dublin Boulevard', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(37.7016119, -121.9268819, 'Advantage Automotive', '6421 Golden Gate Drive Dublin', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.7017685, -121.9268717, 'Dublin Collision', '6429 Golden Gate Drive Dublin', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.7014544, -121.9274286, 'Mike\'s Car Clinic', '6407 Golden Gate Drive Dublin', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.7015689, -121.9270389, 'Peak Auto Body', '6417 Golden Gate Drive Dublin', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.7016962, -121.9271026, 'Performance Autowerk', '6435 Golden Gate Drive Dublin', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.7015518, -121.9275641, 'Tri-Valley Mufflers', '6447 Golden Gate Drive Dublin', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.7015043, -121.9277153, 'Zorba Automotive', '6449 Golden Gate Drive Dublin', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(37.7000848, -121.9333084, 'Holiday Inn Dublin', '6680 Regional Street Dublin', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(37.7008931, -121.9304262, 'Avalon West Dublin', '7688 Saint Patrick Way', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(37.7628309, -121.9651967, 'San Ramon Marriott', '-', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(37.7056482, -121.9352866, 'Exxon', '7850 Amador Valley Boulevard', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(37.7971196, -121.9213149, 'Shell', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(37.7234206, -121.9429995, 'Starbucks', '21001 San Ramon Valley Boulevard San Ramon', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(37.7752979, -121.9816478, 'Pottery Planet San Ramon', '2810 Old Crow Canyon Road', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(37.7772645, -121.9698602, 'Sprouts Farmers Market', '3181 Crow Canyon Place San Ramon', '#f39c12', 0, 'Unnamed Retail Center', true);
+addStore(37.7774893, -121.9694262, 'Ace Hardware', '3181 Crow Canyon Place San Ramon', '#f39c12', 0, 'Unnamed Retail Center', true);
+ 
+  // ---- Tenant name filter ----
+  var allTenantNames = ['20/20 Optometry', '24 Hour Fitness', '5 Star Medical Supply', '99 Ranch Market', 'A1 Liquor & Party Rentals', 'AAA Insurance', 'Acanthus Fine Frames & Mirrors', 'Ace Hardware', 'Advanced Health Massage', 'Advantage Automotive', 'Airport Home Appliance', 'Alcosta Smoke Shop', 'All Smogs', 'Amazon Counter', 'American Automobile Association', 'American Furnishings', 'ampm Locksmith', 'Angelarosa', 'Anthropologie', 'Apli Locksmith Services', 'Arco', 'Ashley HomeStore', 'AT&T', 'Athleta', 'Austin Louis Salon', 'Australian Tan', 'Auto Pro Detailing', 'Avalon West Dublin', 'Avatar Nails and Spa', 'Bagel Street Cafe', 'Baja Fresh', 'Bank of America', 'Baskin-Robbins', 'Bassett Home Furnishings', 'Benjamin Moore', 'Betty\'s Nail Salon', 'BevMo!', 'Big 5 Sporting Goods', 'Bike Fixstation', 'Blackhawk Cleaners', 'Blackhwak Beauty Bar', 'Blink', 'Blue Cave Smokeshop', 'BMO', 'BNP Paribas', 'Boar\'s Head', 'Boba Guys', 'Boswell\'s Discout Party Supplies', 'BR Nails', 'Budget Cleaners', 'Burger King', 'BurgerIM', 'Burlington', 'C2 Education', 'Cardtronics', 'Carl\'s Jr.', 'Carpeteria', 'Cassara\'s Italian Men\'s Wear', 'Cathay Bank', 'Challenge Dairy Products', 'Charles Schwab', 'Chase', 'Chevron', 'Chipotle', 'Chocolate Works East Bay', 'Chuck E. Cheese', 'Circle K', 'Citibank', 'Classy Nails Spa', 'Clear Blue Test Only Star Smog Station', 'Club Pilates', 'Coinstar', 'Cold Stone Creamery', 'Comerica Bank', 'CorePower Yoga', 'Costco', 'Costco Meat Department', 'Country Club Cleaners', 'Country Waffles', 'Crow Canyon Dry Cleaners', 'Crumbl Cookies', 'Crystal Cleaners', 'Custom Fireplace, Patio & BBQ', 'Cute Poodles and Doodles', 'Dairy Queen', 'Daiso Japan', 'Danville Self Storage', 'Debut Salon', 'Deer Creek Funeral Service', 'Diablo Hair', 'Diamond Sharp Equipment', 'Discount Cigarettes', 'Dogtopia', 'Dollar Tree', 'DSW', 'Dublin Carpet', 'Dublin Collision', 'Dublin Corners Barber Shop', 'Dublin Floral Design', 'DXL Men\'s Apparel', 'Edward Jones', 'Electrify America', 'Elegant Flowers & Gifts', 'Elements Massage', 'Elevated Smoke Shop', 'Enchanted Florist & Gifts', 'Enterprise', 'Equinox', 'Erik\'s DeliCafé', 'EVPASSPORT', 'Extended Stay America', 'Extra Space Storage', 'ExtraMile', 'Exxon', 'Eyelab Factory Outlet', 'F45 Training', 'Fantastic Sams', 'Farmers Insurance - Mariam Nassiry', 'Fast & Easy Mart', 'FASTSIGNS', 'Fitness 19', 'Five Guys', 'Foodle Market', 'Fremont Table Tennis Academy', 'Fur Pal Grooming Spa', 'Gap', 'Global Art San Ramon', 'GNC', 'Great Clips', 'Griffiths', 'Grocery Outlet', 'Guns, Fishing & Other Stuff', 'H Mart', 'H&R Block', 'Habit Burger & Grill', 'Half Price Books', 'Happy Lemon', 'Happy Nails & Spa', 'Haven Studio', 'Heller Jewelers', 'Hertz', 'Hog\'s Breath Barber Shop', 'Holiday Inn Dublin', 'Hollywood Hair Style', 'Home Consignment Center - Danville', 'Home Remodelers Contracting', 'HomeGoods', 'Hunter Joseph Salon', 'Huntington Learning Center', 'Ike\'s Love and Sandwiches', 'Iron Horse Optometric Group', 'IVX Health', 'Iwatani', 'J Salon & Supply', 'Jack in the Box', 'Jamba', 'Jams Music', 'Jazen Tea', 'Jenny Craig', 'JewelSmiths', 'Joe & The Juice', 'Justin Michael\'s Salon', 'Kelly-Moore Paints', 'Kids N Cribs', 'King Kong Comics and Games', 'King\'s Land Chess', 'Kumon', 'Lamps Plus', 'Lashed', 'Learning Express', 'Leslie\'s Pool Supplies', 'Little Caesars', 'LoveSac', 'Lucky', 'Luxe Beauty by Jenna', 'M by Maggie Rizer', 'Madewell', 'Madison Reed', 'Mancini\'s Sleepworld', 'Marshalls', 'Marugame Udon', 'Massage Envy', 'Mathnasium', 'Mattress Firm', 'McCurley’s Floor Coverings', 'McDonald\'s', 'Mendocino Farms', 'Metro by T-Mobile', 'Michaels', 'Mike\'s Car Clinic', 'Mimi\'s Cuts', 'Music Exchange', 'Nails and Spa', 'Nails Spa', 'Nails4U Salon & Spa', 'Nick’s Shoe Repair', 'Nike', 'Nob Hill Cleaners', 'Nob Hill Foods', 'O\'Reilly Auto Parts', 'Oil Changers', 'Optometrist', 'Orangetheory Fitness', 'Panda Express', 'Panera Bread', 'Papa Murphy\'s', 'Patio & Fireplace', 'Peak Auto Body', 'Peet\'s Coffee', 'Performance Autowerk', 'Pet Salon', 'Petco', 'Petco Grooming', 'PetSmart', 'Phenix Salon Suites Danville', 'Philz Coffee', 'Phở Hòa', 'Pizza Hut Express', 'Pizza My Heart', 'Popeyes', 'PostalAnnex', 'Postbox', 'Pottery Barn', 'Pottery Barn Kids', 'Pottery Planet San Ramon', 'Princess Nails & Reflexology', 'PT Salon', 'Pyrenees Pets', 'Quality Haircuts', 'RE/MAX', 'Redbox', 'REI', 'Relax Center', 'Residence Inn', 'RoadrunnerPrintMail', 'Roger Fernando - State Farm', 'Rolex', 'Ross', 'Round Table Pizza', 'Safeway', 'SalonCentric', 'Salt & Straw', 'San Ramon Cleaners', 'San Ramon Marriott', 'Savers', 'School of Rock', 'Schuck’s Transmission & Auto Repair', 'See\'s Candies', 'Sephora', 'Shampooches', 'Sharetea', 'Shell', 'Shish Market', 'SkinGlamour Studio', 'Sleep Train', 'Smoker Friendly', 'Smoker\'s Gift Shop', 'Sola Salons', 'Sport Clips Haircuts', 'Sports Basement', 'Sprouts Farmers Market', 'Staples', 'Starbucks', 'State Farm - Bob Arnold', 'Studio 9110 Nail Salon', 'Subway', 'SummerWinds Nursery', 'Supercuts', 'T-Mobile', 'T4 Tea For U', 'Taco Bell', 'Taco Bell Cantina', 'Target', 'Tesla Store and Service Center', 'Tesla Supercharger', 'Tesla Supercharger San Ramon', 'Texaco', 'The Bath Studio', 'The Floor Store', 'The Frame Company', 'The Golf Mart', 'The Home Depot', 'The Lash Empire', 'The Plumbery', 'The Posh Pet Grooming Salon', 'The UPS Store', 'Tina\'s Nail Salon', 'Togo\'s', 'Top Notch Garage Doors', 'Total Wine', 'Tous les Jours', 'Trader', 'Trader Joe\'s', 'Trek', 'Tri-Valley Mufflers', 'Tuesday Morning', 'U.S. Bank', 'Ulta Beauty', 'United Car Stereo', 'UPS', 'Utopia Tanning and Spa', 'Valero', 'Verizon', 'Viange Hair', 'Video Only', 'Vitality Bowls San Ramon', 'W Salon', 'Walmart Neighborhood Market', 'Wells Fargo', 'west elm', 'Wheel Works', 'Whole Foods Market', 'Williams-Sonoma', 'WW Studio', 'Xpress Dry Cleaners', 'Yogurtland', 'Zorba Automotive'];
+  var selectedNames = new Set(allTenantNames);
+ 
+  var plazaNameIndex = {};
+  storesData.forEach(function(s) {
+    if (s.plazaId === -1) return;
+    if (!plazaNameIndex[s.plazaId]) plazaNameIndex[s.plazaId] = new Set();
+    plazaNameIndex[s.plazaId].add(s.name);
+  });
+ 
+  var tenantControl = L.control({position: 'topleft'});
+  tenantControl.onAdd = function() {
+    var container = L.DomUtil.create('div', 'tenant-filter');
+    container.innerHTML =
+      '<button id="tenantToggleBtn" class="tenant-toggle-btn" type="button">'
+      + 'Tenants: All (' + allTenantNames.length + ')</button>'
+      + '<div id="tenantPanel" class="tenant-panel" style="display:none;">'
+      +   '<input id="tenantSearch" class="tenant-search" type="text" placeholder="Search tenants...">'
+      +   '<div class="tenant-actions">'
+      +     '<button id="tenantSelectAll" type="button">Select all</button>'
+      +     '<button id="tenantDeselectAll" type="button">Deselect all</button>'
+      +   '</div>'
+      +   '<div id="tenantList" class="tenant-list"></div>'
+      + '</div>';
+    L.DomEvent.disableClickPropagation(container);
+    L.DomEvent.disableScrollPropagation(container);
+    return container;
+  };
+  tenantControl.addTo(map);
+ 
+  function updateTenantToggleLabel() {
+    var btn = document.getElementById('tenantToggleBtn');
+    var n = selectedNames.size;
+    var total = allTenantNames.length;
+    var label;
+    if (n === total) {
+      label = 'Tenants: All (' + total + ')';
+    } else if (n === 0) {
+      label = 'Tenants: none selected';
+    } else {
+      label = 'Tenants: ' + n + ' of ' + total + ' selected';
+    }
+    btn.innerHTML = label;
+  }
+ 
+  var tenantRows = [];
+  var tenantListEl = document.getElementById('tenantList');
+  allTenantNames.forEach(function(name) {
+    var row = document.createElement('label');
+    row.className = 'tenant-item';
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = true;
+    cb.addEventListener('change', function() {
+      if (cb.checked) { selectedNames.add(name); } else { selectedNames.delete(name); }
+      updateTenantToggleLabel();
+      updateVisibility();
+    });
+    row.appendChild(cb);
+    row.appendChild(document.createTextNode(' ' + name));
+    tenantListEl.appendChild(row);
+    tenantRows.push({el: row, checkbox: cb, lower: name.toLowerCase()});
+  });
+ 
+  document.getElementById('tenantToggleBtn').addEventListener('click', function() {
+    var panel = document.getElementById('tenantPanel');
+    panel.style.display = (panel.style.display === 'none') ? 'block' : 'none';
+  });
+ 
+  document.getElementById('tenantSearch').addEventListener('input', function(e) {
+    var q = e.target.value.toLowerCase();
+    tenantRows.forEach(function(r) {
+      r.el.style.display = (r.lower.indexOf(q) !== -1) ? '' : 'none';
+    });
+  });
+ 
+  document.getElementById('tenantSelectAll').addEventListener('click', function() {
+    tenantRows.forEach(function(r) { r.checkbox.checked = true; });
+    selectedNames = new Set(allTenantNames);
+    updateTenantToggleLabel();
+    updateVisibility();
+  });
+ 
+  document.getElementById('tenantDeselectAll').addEventListener('click', function() {
+    tenantRows.forEach(function(r) { r.checkbox.checked = false; });
+    selectedNames = new Set();
+    updateTenantToggleLabel();
+    updateVisibility();
+  });
+  // ---- end tenant name filter ----
+ 
+  map.on('overlayadd overlayremove', updateVisibility);
+  updateVisibility();
+ 
+  var overlays = {
+    '🔴  Multi-anchor plazas (2+ anchors)': layerMultiAnchor,
+    '⭕  Single-anchor plazas': layerSingleAnchor,
+    '🟣  Plaza Center Points': layerPlazaCenters,
+    '🟡  Anchor Stores (in Plaza)': layerAnchors,
+    '🔵🔴  Tenants (In Plaza)': layerTenants,
+    '━━━━━━━━━━━━━━': L.layerGroup(),
+    '🔥  High Density Plazas (10+ tenants)': layerHighDensity,
+    '🔹  Lower Density (< 10 tenants)': layerLowDensity
+  };
+ 
+  var countyDivider = false;
+  for (var county in countyLayers) {
+    if (!countyDivider) {
+        overlays['━━━━━━━━━━━━━━ '] = L.layerGroup();
+        countyDivider = true;
+    }
+    overlays['📍 ' + county] = countyLayers[county];
+  }
+ 
+  L.control.layers(null, overlays, {
+    position: 'topright',
+    collapsed: false,
+  }).addTo(map);
+ 
+  var legend = L.control({position: 'bottomright'});
+  legend.onAdd = function() {
+    var div = L.DomUtil.create('div', 'legend');
+    div.innerHTML = '<b>Retail Centers – San Ramon, CA</b><br>'
+      + '<span class="legend-dot" style="background:#e74c3c"></span> Named plaza<br>'
+      + '<span class="legend-dot" style="background:#3498db"></span> Unnamed plaza<br>'
+      + '<span class="legend-dot" style="background:#8e44ad"></span> Plaza center point<br>'
+      + '<span class="legend-dot" style="background:#f39c12"></span> Anchor store (in plaza)<br>'
+      + '<span class="legend-dot" style="background:#27ae60"></span> Standalone store<br>'
+      + '⚓ = anchor &nbsp; 🔥 = 10+ tenants<br>'
+      + '<span style="font-size:11px;color:#666;">Use the Tenants filter (top-left) to isolate specific names.</span>';
+    return div;
+  };
+  legend.addTo(map);
+
+  document.getElementById('legendHeader').addEventListener('click', function() {
+    var body = document.getElementById('legendBody');
+    var icon = document.getElementById('legendToggleIcon');
+    var collapsed = (body.style.display === 'none');
+    body.style.display = collapsed ? 'block' : 'none';
+    icon.textContent = collapsed ? '▾' : '▸';
+  });
+</script>
+</body>
+</html>
