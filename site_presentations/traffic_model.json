@@ -1,0 +1,24 @@
+{
+  "coefficients": [
+    2.4763769627610213,
+    0.5636747910094049,
+    0.1640093946627316,
+    0.0293439603268038,
+    0.40187483616635,
+    0.09654409429553851,
+    -0.032152371201871796
+  ],
+  "feature_names": [
+    "intercept",
+    "class_rank",
+    "lanes",
+    "speed_mph",
+    "log_pop_density",
+    "log_emp_density",
+    "rank_x_logpop"
+  ],
+  "r2": 0.5772518268040858,
+  "median_abs_pct_error": 53.62138265021661,
+  "n_train": 220,
+  "n_test": 56
+}

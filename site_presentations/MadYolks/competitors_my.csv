@@ -1,0 +1,76 @@
+brand,address,city,state,zip,sales,lat,lon
+eggslut,317 S Broadway Stall D-1,Los Angeles,CA,90013,--,34.0508,-118.2491
+eggslut,1611 Pacific Ave,Los Angeles,CA,90291,--,33.9875,-118.4716
+eggslut,8500 Beverly Blvd Unit 101,Los Angeles,CA,90048,--,34.075,-118.3771
+eggslut,329 Marietta St NW,Atlanta,GA,30313,--,33.7621,-84.3957
+eggslut,3700 Flamingo Road,Las Vegas,NV,89103,--,36.1175,-115.1881
+eggslut,3708 Las Vegas Blvd,South Las Vegas,NV,89109,--,36.1097,-115.174
+eggslut,4237 N Mississippi Ave,Portland,OR,97217,--,45.5539,-122.6756
+eggslut,1531 Melrose Ave,Seattle,WA,98122,--,47.6146,-122.3278
+eggslut,841 Southcenter Mall,Tukwila,WA,98188,--,47.4594,-122.2591
+Mimosa House,2760 Sutterville Rd,Sacramento,CA,95820,--,38.5398,-121.4827
+Mimosa House,5641 J St,Sacramento,CA,95819,--,38.567,-121.4398
+Mimosa House,3155 Zinfandel Dr,Rancho Cordova,CA,95670,--,38.583,-121.2721
+Mimosa House,2023 Vine St,El Dorado Hills,CA,95762,--,38.6534,-121.0701
+Mimosa House,761 Pleasant Grove Blvd,Roseville,CA,95678,--,38.7898,-121.2794
+Mimosa House,2180 Golden Centre Lane,Gold River,CA,95670,--,38.6231,-121.2659
+Mimosa House,25075 Blue Ravine Rd,Folsom,CA,95630,--,38.6558,-121.1219
+Mimosa House,1002 Riley St,Folsom,CA,95630,--,38.6738,-121.161
+Mimosa House,6861 Douglas Blvd,Granite Bay,CA,95746,--,38.7495,-121.1852
+Egghead,2475 San Ramon Valley Blvd Unit 6,San Ramon,CA,94583,--,37.7656,-121.9682
+Egghead,3957 Rivermark Plaza,Santa Clara,CA,95054,--,37.3941,-121.9472
+Egghead,519 W Capitol Expy,San Jose,CA,95136,--,37.2798,-121.8617
+Egghead,80 S 1st St,San Jose,CA,95113,--,37.3353,-121.8893
+Egghead,6201 Santa Teresa Blvd,San Jose,CA,95123,--,37.2343,-121.7891
+Hatched,855 El Camino Real #161,Palo Alto,CA,94301,--,37.4363,-122.1558
+Hatched,155 E Maude Ave,Sunnyvale,CA,94085,--,37.382,-122.0298
+Egg Tuck,9530 Reseda Blvd,Northridge,CA,91324,--,34.2435,-118.5361
+Egg Tuck,521 N Hollywood Way Ste D,Burbank,CA,91505,--,34.1598,-118.3435
+Egg Tuck,7131 W Sunset Blvd Unit B,Los Angeles,CA,90046,--,34.098,-118.3456
+Egg Tuck,1049 Gayley Ave,Los Angeles,CA,90024,--,34.0628,-118.4475
+Egg Tuck,2213 W Sunset Blvd,Los Angeles,CA,90026,--,34.0774,-118.265
+Egg Tuck,3458 Wilshire Blvd Ste 1/2,Los Angeles,CA,90010,--,34.0612,-118.2993
+Egg Tuck,3340 La Cienaga Blvd,Los Angeles,CA,90016,--,34.0249,-118.3762
+Egg Tuck,2528 S Figueroa St,Los Angeles,CA,90007,--,34.0287,-118.2748
+Egg Tuck,13131 Crossroads Pkwy South,City of Industry,CA,91746,--,34.0203,-118.0441
+Egg Tuck,1400 W Redondo Beach Blvd Suite 120,Gardena,CA,90247,--,33.892,-118.3013
+Egg Tuck,17901 Pioneer Blvd Unit J,Artesia,CA,90701,--,33.871,-118.082
+Egg Tuck,8170 E Santa Ana Canyon Rd Ste #189,Anaheim,CA,92808,--,33.8647,-117.7478
+Egg Tuck,1331 Columbia St Suite 102,San Diego,CA,92101,--,32.7196,-117.1678
+Egg Tuck,326 N Michigan,Chicago,IL,60601,--,41.8872,-87.6244
+Egg Tuck,2411 N Clark St,Chicago,IL,60614,--,41.9261,-87.6412
+Egg Tuck,1098 S Roselle Rd,Schaumburg,IL,60193,--,42.015,-88.0778
+Egg Tuck,2102 S 31st St #120,Temple,TX,76504,--,33.0766,-97.3592
+EggBred,102 San Pablo Towne Center,San Pablo,CA,94806,--,37.961,-122.3325
+EggBred,6740 Lone Tree Way,Brentwood,CA,94513,--,37.962,-121.7334
+EggBred,1127 N Willow Ave Ste 105,Clovis,CA,93611,--,36.8436,-119.7188
+EggBred,9000 Ming Ave,Bakersfield,CA,93311,--,35.3498,-119.1023
+EggBred,641 Marks St,Henderson,NV,89014,--,36.0653,-115.0368
+EggBred,3737 Pacific Coast Hwy Suite C,Torrance,CA,90505,--,33.8053,-118.3507
+EggBred,777 E Ocean Blvd Unit A,Long Beach,CA,90802,--,33.7667,-118.1818
+EggBred,12430 Seal Beach Blvd Unit E,Seal Beach,CA,90740,--,33.7816,-118.0716
+EggBred,7012 Walnut Grove Dr,Whittier,CA,90606,--,33.9856,-118.0461
+EggBred,9120 Adams Ave Unit 15,Huntington Beach,CA,92646,--,33.6738,-117.9691
+EggBred,9816 Chapman Ave,Garden Grove,CA,92841,--,33.7885,-117.962
+EggBred,1454 S Harbor Blvd,La Habra,CA,90631,--,33.9168,-117.9255
+EggBred,15081 Newport Ave,Tustin,CA,92780,--,33.7317,-117.8286
+EggBred,1085 E Imperial Hwy,Placentia,CA,92870,--,33.9103,-117.8549
+EggBred,4200 Chino Hills Pkwy #900,Chino Hills,CA,91709,--,33.9934,-117.7478
+EggBred,1150 E Philadelphia St #106,Ontario,CA,91761,--,34.027,-117.6253
+EggBred,420 Main St Suite 111,Corona,CA,92880,--,33.886,-117.5645
+EggBred,1158 W San Marcos Blvd,San Marcos,CA,92078,--,33.1332,-117.1895
+EggBred,16611 Dove Canyon Rd,San Diego,CA,92127,--,33.0149,-117.11
+EggBred,544 W McDowell Rd,Phoenix,AZ,85003,--,33.4661,-112.0823
+EggBred,3424 S Elisworth Rd Suite 104,Mesa,AZ,85212,--,33.3512,-111.6355
+EggBred,327 E XCrossroads Blvd,Saratoga Springs,UT,84045,--,40.3541,-111.9056
+EggBred,97 E Germantown Pike,East Norriton Township,PA,19401,--,40.1419,-75.3284
+EggBred,1856 W Arlington Blvd,Greenville,NC,27834,--,35.5861,-77.3912
+EggBred,3052 Eastway Dr,Charlotte,NC,28205,--,35.2268,-80.7891
+EggBred,112 Bartram Oaks Walk Unit 103,Fruit Cove,FL,32289,--,30.1065,-81.6225
+EggBred,56 Saint George St,St Augustine,FL,32084,--,29.8967,-81.3142
+EggBred,16916 Focus Loop,Land O' Lakes,FL,34638,--,28.2195,-82.5284
+EggBred,8560 Stirling Road Ste 101,Davie,FL,33024,--,26.0463,-80.2558
+Egg Drop,8848 Calvine Rd Ste 160,Sacramento,CA,95828,--,38.4623,-121.3651
+Egg Drop,1164 Galleria Blvd,Roseville,CA,95678,--,38.7753,-121.2691
+Egg Drop,100 N Almaden Ave #170,San Jose,CA,95110,--,37.3364,-121.8943
+Egg Drop,68 Monitor Street,Jersey City,NJ,73040,--,40.7132,-74.0628

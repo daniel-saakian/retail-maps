@@ -266,6 +266,9 @@ app.add_middleware(
 
 from sco.demographics_api import router as demographics_router
 app.include_router(demographics_router)
+
+from site_presentations.api import router as site_presentations_router
+app.include_router(site_presentations_router)
  
 @app.get("/api/defaults")
 def get_defaults():

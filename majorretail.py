@@ -369,23 +369,23 @@ is_in({lat}, {lng});
 out tags;
 """.strip()
  
-def run_overpass(query: str, retries: int = 3) -> list:
+def run_overpass(query: str, retries: int = 2) -> list:
     last_error = None
     for mirror in overpass_mirrors:
         for attempt in range(retries):
             try:
-                resp = requests.post(mirror, data={"data": query}, headers=headers, timeout=30)
+                resp = requests.post(mirror, data={"data": query}, headers=headers, timeout=12)
                 if resp.status_code == 400:
                     print(f"\n  [Overpass 400] Query:\n{query}\n  Response: {resp.text[:300]}")
                     resp.raise_for_status()
                 if resp.status_code == 429:
-                    wait = 10 * (attempt + 1)
+                    wait = 8 * (attempt + 1)
                     print(f"  [warn] {mirror} rate limited (429), waiting {wait}s...")
                     time.sleep(wait)
                     last_error = RuntimeError(f"HTTP 429 from {mirror}")
                     continue  # ← try next attempt, then next mirror
                 if resp.status_code in (502, 503, 504):
-                    wait = 3 * (attempt + 1)
+                    wait = 2 * (attempt + 1)
                     print(f"  [warn] {mirror} returned {resp.status_code}, waiting {wait}s...")
                     time.sleep(wait)
                     last_error = RuntimeError(f"HTTP {resp.status_code} from {mirror}")
@@ -393,14 +393,14 @@ def run_overpass(query: str, retries: int = 3) -> list:
                 resp.raise_for_status()
                 return resp.json().get("elements", [])
             except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-                wait = 3 * (attempt + 1)
+                wait = 2 * (attempt + 1)
                 print(f"  [warn] {mirror} timed out (attempt {attempt+1}/{retries}), waiting {wait}s...")
                 last_error = e
                 time.sleep(wait)
                 continue
             except requests.exceptions.HTTPError as e:
                 if "429" in str(e):
-                    wait = 10 * (attempt + 1)
+                    wait = 8 * (attempt + 1)
                     print(f"  [warn] {mirror} rate limited, waiting {wait}s...")
                     time.sleep(wait)
                     last_error = e

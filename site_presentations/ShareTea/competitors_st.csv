@@ -1,0 +1,630 @@
+brand,address,city,state,zip,sales,lat,lon
+HeyTea,1407 Broadway,New York,NY,10018,--,40.753246,-73.9878778
+HeyTea,35 Main St,Flushing,NY,11354,--,40.7454457,-73.8256694
+HeyTea,1293 Broadway,New York,NY,10001,--,40.7497992,-73.988341
+HeyTea,42-20 27th St,Long Island City,NY,11101,--,40.7498988,-73.941037
+HeyTea,2120 86th St,Brooklyn,NY,11214,--,40.6027914,-73.9956768
+HeyTea,2125 Shattuck Ave,Berkeley,CA,94704,--,37.8709151,-122.2679513
+HeyTea,500 Westlake Center,Daly City,CA,94015,--,37.6994208,-122.4826552
+HeyTea,1628 Hostetter Rd,San Jose,CA,95131,--,37.387232,-121.885334
+HeyTea,302 W El Camino Real,Sunnyvale,CA,94087,--,37.3682254,-122.0355835
+HeyTea,5414 Walnut Ave,Irvine,CA,92604,--,33.689276,-117.7704477
+HeyTea,500 N Atlantic Blvd,Monterey Park,CA,91754,--,34.0686929,-118.1336587
+HeyTea,479 N Rodeo Dr,Beverly Hills,CA,90210,--,34.0705102,-118.4047162
+HeyTea,223 Newbury St,Boston,MA,02116,--,42.3500725,-71.0816142
+HeyTea,162 Harvard Ave,Boston,MA,02134,--,42.3515562,-71.131425
+HeyTea,910 John St,Seattle,WA,98109,--,47.6199895,-122.339502
+HeyTea,700 110th Ave NE,Bellevue,WA,98004,--,47.6164697,-122.1925263
+HeyTea,12925 El Camino Real,San Diego,CA,92130,--,32.9516484,-117.2330717
+HeyTea,1731 NJ-27,Edison,NJ,08817,--,40.5125542,-74.4079745
+HeyTea,5015 Westheimer Rd,Houston,TX,77056,--,29.7394353,-95.4629964
+HeyTea,1 American Dream Way,East Rutherford,NJ,07073,--,40.8086222,-74.0689331
+HeyTea,372 Barber Ln,Milpitas,CA,95035,--,37.4224848,-121.9166693
+HeyTea,3251 20th Ave,San Francisco,CA,94132,--,37.7277303,-122.4769749
+HeyTea,302 W El Camino Real,Sunnyvale,CA,94087,--,37.3682254,-122.0355835
+HeyTea,2855 Stevens Creek Blvd,Santa Clara,CA,95050,--,37.3267237,-121.9433972
+HeyTea,165 4th St,San Francisco,CA,94103,--,37.7839649,-122.4031672
+HeyTea,19469 Stevens Creek Blvd,Cupertino,CA,95014,--,37.3238225,-122.0105082
+HeyTea,1065 Brea Mall,Brea,CA,92821,--,33.9153422,-117.8864509
+HeyTea,5414 Walnut Ave Ste e,Irvine,CA,92604,--,33.6893266,-117.77029
+HeyTea,4545 La Jolla Village Dr Ste E5,San Diego,CA,92122,--,32.8717142,-117.2101827
+HeyTea,479 N Rodeo Dr Ste d,Beverly Hills,CA,90210,--,34.0705377,-118.4047291
+HeyTea,3738 S Figueroa St,Los Angeles,CA,90007,--,34.0170811,-118.2825032
+HeyTea,1190 Galleria Way,Glendale,CA,91210,--,34.143381,-118.258521
+HeyTea,101 E Valley Blvd Ste e,San Gabriel,CA,91776,--,34.0799965,-118.0993371
+HeyTea,17595 Harvard Ave #E,Irvine,CA,92614,--,33.6775767,-117.8328989
+HeyTea,9889 Bellaire Blvd Ste E217,Houston,TX,77036,--,29.7042755,-95.5530255
+HeyTea,1565 Broadway,New York,NY,10036,--,40.7593173,-73.9853989
+HeyTea,891 F Rockville Pike,Rockville,MD,20852,--,39.0743479,-77.1369549
+HeyTea,1961 Chain Bridge Rd F13L,Tysons,VA,22102,--,38.9170135,-77.2227938
+HeyTea,1001 Arch St,Philadelphia,PA,19107,--,39.953687,-75.156403
+HeyTea,126 East 86th St,New York,NY,10028,--,40.7794854,-73.9561419
+HeyTea,1 Garden State Plaza Pkwy,Paramus,NJ,07652,--,40.9181658,-74.0762757
+HeyTea,128 2nd Ave,New York,NY,10003,--,40.728279,-73.9874921
+HeyTea,106 Lafayette St,New York,NY,10013,--,40.7181257,-74.0010882
+HeyTea,38-02 Prince St,Flushing,NY,11354,--,40.7600253,-73.8328005
+HeyTea,10 Waverly Pl,New York,NY,10003,--,40.7297829,-73.9943746
+HeyTea,240 Grand St,New York,NY,10002,--,40.7134739,-73.9592154
+HeyTea,52 Willoughby St,Brooklyn,NY,11201,--,40.6920149,-73.9868132
+HeyTea,705 59th St,Brooklyn,NY,11220,--,40.6373891,-74.0108879
+HeyTea,2815 Broadway,New York,NY,10025,--,40.8034456,-73.9677257
+HeyTea,1245 Worcester St,Natick,MA,01760,--,42.301146,-71.384664
+HeyTea,180 Pleasant St,Malden,MA,02148,--,42.4270208,-71.0720814
+Boba Guys,378 Santana row Suite 115,San Jose,CA,95128,--,37.3198532,-121.9476413
+Boba Guys,201 1st St,Los Altos,CA,94022,--,37.3786262,-122.1182382
+Boba Guys,5925 College Ave,Oakland,CA,94618,--,37.8475442,-122.2524054
+Boba Guys,855 El Camino real #120,Palo Alto,CA,94301,--,37.4386007,-122.1589247
+Boba Guys,872 Laurel St,San Carlos,CA,94070,--,37.5027095,-122.2570029
+Boba Guys,1522 Fillmore St,San Francisco,CA,94115,--,37.7836663,-122.4326643
+Boba Guys,1002 16th St,San Francisco,CA,94107,--,37.7665419,-122.39716
+Boba Guys,836 Divisadero St,San Francisco,CA,94117,--,37.7774899,-122.4379982
+Boba Guys,429 Stockton St,San Francisco,CA,94108,--,37.7899784,-122.4072962
+Boba Guys,109 Visitacion Ave,Brisbane,CA,94005,--,37.6834053,-122.4028464
+Gong Cha,1501 Park Street,Alameda,CA,94501,--,37.765518,-122.24193
+Gong Cha,"6924 Beach Boulevard, K-336",Buena Park,CA,90621,--,33.860204,-117.997868
+Gong Cha,11823 South Street,Cerritos,CA,90703,--,33.858926,-118.081187
+Gong Cha,"4183 Chino Hills Parkway, Suite B",Chino Hills,CA,91709,--,33.98135,-117.713881
+Gong Cha,"17883 Colima Road, Suite B",City of Industry,CA,91748,--,33.990737,-117.913976
+Gong Cha,"6851 Amador Plaza Rd, Suite 104A",Dublin,CA,94568,--,37.706341,-121.927207
+Gong Cha,"18203 S. Western Avenue, Suite 103",Gardena,CA,90248,--,33.865243,-118.309528
+Gong Cha,20513 Hesperian Blvd,Hayward,CA,94541,--,37.665831,-122.118603
+Gong Cha,"14130 Culver Drive, Suite H-2",Irvine,CA,92604,--,33.707681,-117.782232
+Gong Cha,"6346 E Pacific Coast Hwy, Suite #B",Long Beach,CA,90803,--,33.75976,-118.114044
+Gong Cha,318 E 2nd Street,Los Angeles,CA,90012,--,34.048742,-118.241328
+Gong Cha,"30141 Antelope Road, Suite K",Menifee,CA,92584,--,33.683104,-117.170033
+Gong Cha,"39340 10th St. West, Suite A2",Palmdale,CA,93551,--,34.596118,-118.146646
+Gong Cha,439 Waverley Street,Palo Alto,CA,94301,--,37.447588,-122.160815
+Gong Cha,"6825 Stockton Boulevard, Suite 230",Sacramento,CA,95823,--,38.502249,-121.431082
+Gong Cha,9176 Mira Mesa Boulevard,San Diego,CA,92126,--,32.91826,-117.126177
+Gong Cha,272 O'Farrell Street,San Francisco,CA,94102,--,37.786452,-122.409323
+Gong Cha,140 Paseo De San Antonio,San Jose,CA,95112,--,37.333671,-121.884741
+Gong Cha,"2200 Eastridge Loop, Suite 2000",San Jose,CA,95122,--,37.325629,-121.813912
+Gong Cha,"1701 Lundy Avenue, Suite 170",San Jose,CA,95131,--,37.387109,-121.887617
+Gong Cha,"1600 Saratoga Avenue, Suite 115",San Jose,CA,95129,--,37.292455,-121.988821
+Gong Cha,"1087 Meridian Ave, #10",San Jose,CA,95125,--,37.304092,-121.914232
+Gong Cha,"3350 S Bristol St, Unit B",Santa Ana,CA,92704,--,33.702589,-117.885919
+Gong Cha,"2712 Augustine Drive, Suite 110",Santa Clara,CA,95054,--,37.3817,-121.974891
+Gong Cha,1641 Hollenbeck Avenue,Sunnyvale,CA,94087,--,37.339763,-122.042537
+Gong Cha,1661 Retherford St,Tulare,CA,93274,--,36.229189,-119.335881
+Gong Cha,31812 Alvarado Blvd,Union City,CA,94587,--,37.591665,-122.071113
+Gong Cha,3314 South Mooney Blvd,Visalia,CA,93277,--,36.301065,-119.312715
+Gong Cha,"760 S. Colorado Blvd., Unit F",Denver,CO,80246,--,39.702509,-104.93952
+Gong Cha,"9500 Heritage Hills Cir, Unit 300",Lone Tree,CO,80124,--,39.537126,-104.879471
+Gong Cha,1472 S. Pearl St.,denver,CO,80210,--,39.689808,-104.980118
+Gong Cha,"500 Westfarms Mall, #B125",Farmington,CT,06032,--,41.722981,-72.763282
+Gong Cha,"194 BUCKLAND HILLS DRIVE,, Kiosk-5536.",Manchester,CT,06042,--,41.807872,-72.546481
+Gong Cha,3279 M Street NW,Washington,DC,20007,--,38.90529,-77.065379
+Gong Cha,716 7th St. NW,Washington,DC,20001,--,38.899058,-77.022271
+Gong Cha,1399 New York Ave. NW,Washington,DC,20005,--,38.899913,-77.031529
+Gong Cha,"9810 Baymeadows rd, #4",Jacksonville,FL,32256,--,30.217873,-81.552872
+Gong Cha,"10720 W Flagler St, Unit#7",Miami,FL,33174,--,25.767158,-80.369606
+Gong Cha,1686 S Congress Ave,Palm Springs,FL,33461,--,26.637658,-80.086936
+Gong Cha,106 S. Flamingo Road,Pembroke Pines,FL,33027,--,26.006497,-80.314467
+Gong Cha,"4025 W Waters Ave, #105",Tampa,FL,33614,--,28.025804,-82.511336
+Gong Cha,4400 Ashford Dunwoody Rd,Atlanta,GA,30346,--,33.924559,-84.340976
+Gong Cha,"5592 Whitesville Rd, Ste U",Columbus,GA,31909,--,32.52293,-84.957573
+Gong Cha,1630 Pleasant Hill Road,Duluth,GA,30096,--,33.946801,-84.124053
+Gong Cha,"3821 Washington Rd, Ste A",Martinez,GA,30907,--,33.512638,-82.089274
+Gong Cha,6233 Jonesboro Rd,Morrow,GA,30260,--,33.585132,-84.339324
+Gong Cha,"1299 Old Peachtree Rd, #106",Suwanee,GA,30024,--,34.004718,-84.085115
+Gong Cha,"555 S. State St., University Center",Chicago,IL,60605,--,41.874793,-87.627406
+Gong Cha,"1295 E. Ogden Ave., HMart Store (Food court)",Naperville,IL,60563,--,41.797517,-88.122545
+Gong Cha,3420 Magazine Street,New Orleans,LA,70115,--,29.922587,-90.089412
+Gong Cha,154 Harvard Avenue,Allston,MA,02134,--,42.351703,-71.131533
+Gong Cha,"52 Highland Common East Berlin, MA",Berlin,MA,01503,--,42.393336,-71.597628
+Gong Cha,"175 Cambridge St, Suite 160",Boston,MA,02114,--,42.361447,-71.066026
+Gong Cha,"44 Harrison Ave, Chinatown",Boston,MA,02111,--,42.351635,-71.061012
+Gong Cha,1460 Dorchester Ave,Boston,MA,02122,--,42.300704,-71.05985
+Gong Cha,270 Newbury Street,Boston,MA,02116,--,42.349169,-71.083367
+Gong Cha,281 Huntington Ave,Boston,MA,02115,--,42.341916,-71.086429
+Gong Cha,"700 Atlantic Ave, Boston, MA",Boston,MA,02110,--,42.352379,-71.055121
+Gong Cha,"75 Middlesex TPK, Burlington Mall",Burlington,MA,01803,--,42.482516,-71.213717
+Gong Cha,"50 Church St, Harvard SQ",Cambridge,MA,02138,--,42.373962,-71.120481
+Gong Cha,"237 Boston Post Road West, RK Center II",Greater Boston,MA,01752,--,42.338732,-71.591488
+Gong Cha,"90 Pleasant Valley St STE 130, The Loop Plaza",Greater Boston,MA,01844,--,42.743659,-71.159427
+Gong Cha,1290 Westford St,Lowell,MA,01851,--,42.626047,-71.358778
+Gong Cha,140 Centre Street,Malden,MA,02148,--,42.425626,-71.071316
+Gong Cha,"70 Worcester-Providence Turnpike, Unit 623",Millbury,MA,01527,--,42.197243,-71.775818
+Gong Cha,"1245 Worcester St, Natick Collection",Natick,MA,01760,--,42.300919,-71.384274
+Gong Cha,"210 Andover St, North Shore Mall",Peabody,MA,01960,--,42.540781,-70.944278
+Gong Cha,7 Beale St,Quincy,MA,02170,--,42.267754,-71.016741
+Gong Cha,"412-414 Highland Ave, Davis SQ",Sommervile,MA,02144,--,42.396015,-71.121593
+Gong Cha,486 Main St,Woburn,MA,01801,--,42.482072,-71.150816
+Gong Cha,24 Southbridge St,Worcester,MA,01608,--,42.260377,-71.803288
+Gong Cha,618 Marketplace Drive,Bel Air,MD,21014,--,39.52393,-76.352445
+Gong Cha,"10400 Old Georgetown Rd, #6c",Bethesda,MD,20814,--,39.025464,-77.12695
+Gong Cha,"4531 Telfair Blvd Camp Springs, MD 20746, Suite 101",Camp Spring,MD,20746,--,38.827563,-76.909336
+Gong Cha,"6510 Baltimore National Pike, Suite 5c",Catonsville,MD,21228,--,39.287017,-76.761989
+Gong Cha,4209 Knox Road,College Park,MD,20740,--,38.981082,-76.942532
+Gong Cha,10300 Little Patuxent Pkwy,Columbia,MD,21044,--,39.217375,-76.863351
+Gong Cha,"8450 Baltimore National Pike, STE 142",Ellicott City,MD,21043,--,39.286617,-76.80661
+Gong Cha,"8194 Westside BLVD, SUITE B",Fulton,MD,20759,--,39.148775,-76.90952
+Gong Cha,"7654 Arundel Mills Blvd, Suite 110",Hanover,MD,21076,--,39.152245,-76.725811
+Gong Cha,"100 Shawan Rd., Suite B",Hunt Valley,MD,21030,--,39.498282,-76.654086
+Gong Cha,"1800 Rockville Pike, SUITE C",Rockville,MD,20852,--,39.060117,-77.121794
+Gong Cha,255 N Washington Street,Rockville,MD,20850,--,39.087513,-77.152651
+Gong Cha,12058 Cherry Hill Rd,Sliver Spring,MD,20904,--,39.055404,-76.954922
+Gong Cha,417 York Road,Towson,MD,21204,--,39.399975,-76.602761
+Gong Cha,641 E Grand River Ave,East Lansing,MI,48823,--,42.733343,-84.475449
+Gong Cha,1500 W Lake Lansing Rd,East Lansing,MI,48823,--,42.761128,-84.504074
+Gong Cha,31075 John R Road,Madison Heights,MI,48071,--,42.521363,-83.107173
+Gong Cha,7808 Rea Rd Suite E,Charlotte,NC,28277,--,35.06076,-80.81509
+Gong Cha,"4927 West Market St, 3104",Greensboro,NC,27407,--,36.066562,-79.875096
+Gong Cha,344 Tate St,Greensboro,NC,27403,--,36.068176,-79.805802
+Gong Cha,"300 Main St, #407",Nashua,NH,03060,--,42.751664,-71.460427
+Gong Cha,400 Commons Way,Bridgewater,NJ,08807,--,40.585483,-74.620037
+Gong Cha,1329 Prince Rodgers Ave,Bridgewater,NJ,08807,--,40.588312,-74.611106
+Gong Cha,"2000 NJ-38, Suite 514",Cherry Hill,NJ,08002,--,39.943054,-75.026489
+Gong Cha,245 Closter Dock Rd,Closter,NJ,07624,--,40.972715,-73.960925
+Gong Cha,1 American Dream Way,East Rutherford,NJ,07073,--,40.808622,-74.068933
+Gong Cha,"867 US Hwy 1, Logan Plaza (Store #4)",Edison,NJ,08817,--,40.515017,-74.376674
+Gong Cha,"1199 Amboy Avenue, Lotte Mart Food Court",Edison,NJ,08837,--,40.534244,-74.347117
+Gong Cha,9 E Palisade Ave,Englewood,NJ,07631,--,40.894076,-73.974578
+Gong Cha,1630 Lemoine Ave,Fort Lee,NJ,07024,--,40.850696,-73.970207
+Gong Cha,80 Main Street,Hackensack,NJ,07601,--,40.880623,-74.04369
+Gong Cha,"1700 Nottingham Way, Unit 9",Hamilton,NJ,08619,--,40.233013,-74.716091
+Gong Cha,706 US-206,Hillsborough Township,NJ,08844,--,40.494804,-74.648643
+Gong Cha,130 Broadway,Hillsdale,NJ,07642,--,41.003814,-74.040409
+Gong Cha,527 Washington Street,Hoboken,NJ,07030,--,40.743023,-74.028961
+Gong Cha,183 Newark Ave,Jersey City,NJ,07302,--,40.721185,-74.045613
+Gong Cha,"30 Mall Dr W, 3rd Floor",Jersey City,NJ,07302,--,40.726841,-74.037993
+Gong Cha,"300 E. Greentree Road,, Meetinghouse Square, Unit #7",Marlton,NJ,08053,--,39.915727,-74.921803
+Gong Cha,340 Millburn Ave,Millburn,NJ,07041,--,40.723764,-74.306949
+Gong Cha,343 Bloomfield Ave,Montclair,NJ,07042,--,40.811935,-74.214677
+Gong Cha,"1178 Morris Ave, Union, NJ, 07083, Union",NJ,NJ,07083,--,40.685837,-74.239988
+Gong Cha,396 George St,New Brunswick,NJ,08901,--,40.496189,-74.44439
+Gong Cha,850 River Rd,New Milford,NJ,07646,--,40.927056,-74.026903
+Gong Cha,"216 Old Tappan Rd, 14A",Old Tappan,NJ,07675,--,41.014601,-73.982915
+Gong Cha,256 Broad Ave,Palisades Park,NJ,07650,--,40.847338,-73.998012
+Gong Cha,"1 Garden State Plaza, Garden State Plaza Mall",Paramus,NJ,07652,--,40.918173,-74.076331
+Gong Cha,"10 Schalks Crossing Rd, Asian Food Market Food Court",Plainsboro,NJ,08536,--,40.336799,-74.594107
+Gong Cha,"321 Broad Avenue, Suite 108",Ridgefield,NJ,07657,--,40.824677,-74.009926
+Gong Cha,194 E Ridgewood Ave,Ridgewood,NJ,07450,--,40.978861,-74.115373
+Gong Cha,301 Mt Hope Ave,Rockaway Township,NJ,07866,--,40.908105,-74.553721
+Gong Cha,123W Clements Bridge Rd,Runnemede,NJ,08078,--,39.847648,-75.074963
+Gong Cha,"1055 Hamburg Turnpike, #16",Wayne,NJ,07470,--,40.959233,-74.23765
+Gong Cha,129 E Broad Street,Westfield,NJ,07090,--,40.65117,-74.349156
+Gong Cha,"4215 Spring Mountain Rd., #b 106b",Las Vegas,NV,89102,--,36.125381,-115.19598
+Gong Cha,"1 CROSSGATES MALL ROAD,, Space K104",ALBANY,NY,12203,--,42.688836,-73.849017
+Gong Cha,1232 Western Ave,Albany,NY,12203,--,42.677785,-73.829094
+Gong Cha,7408 3rd AVE,BROOKLYN,NY,11209,--,40.631948,-74.027813
+Gong Cha,327 E Fordham Rd,Bronx,NY,10458,--,40.862238,-73.893575
+Gong Cha,625 E 187th St,Bronx,NY,10458,--,40.855241,-73.886488
+Gong Cha,5723 8th Ave,Brooklyn,NY,11220,--,40.636622,-74.008108
+Gong Cha,136 Willoughby St.,Brooklyn,NY,11201,--,40.691927,-73.982943
+Gong Cha,1566 Flatbush Ave,Brooklyn,NY,11210,--,40.63235,-73.947455
+Gong Cha,108 Meserole Ave,Brooklyn,NY,11222,--,40.727065,-73.95245
+Gong Cha,1698 E 14th St,Brooklyn,NY,11229,--,40.607971,-73.959301
+Gong Cha,930 Nostrand Ave.,Brooklyn,NY,11225,--,40.666078,-73.950993
+Gong Cha,"313 9th St, Brooklyn, NY",Brooklyn,NY,11215,--,40.669271,-73.985924
+Gong Cha,1015 Foster Ave,Brooklyn,NY,11230,--,40.63224,-73.967158
+Gong Cha,1759 Middle Country Rd,Centereach,NY,11720,--,40.860823,-73.07168
+Gong Cha,714 Race Track Lane,Central Valley,NY,10917,--,41.316276,-74.124292
+Gong Cha,"90-15 Queens Blvd, Queens Center Mall",Elmhurst,NY,11373,--,40.734787,-73.868841
+Gong Cha,"8801 Queens Blvd, Queens Place, A-3",Elmhurst,NY,11373,--,40.735652,-73.874626
+Gong Cha,"136-20 Roosevelt Ave, New World Mall Food Court",Flushing,NY,11354,--,40.75916,-73.829252
+Gong Cha,159-17 Northern Blvd,Flushing,NY,11358,--,40.763176,-73.805844
+Gong Cha,"40-24 College Point Blvd, Skyview Center",Flushing,NY,11354,--,40.757476,-73.835635
+Gong Cha,4006 Union Street,Flushing,NY,11354,--,40.760188,-73.826565
+Gong Cha,"630 Old Country Rd, Roosevelt Field Mall",Garden City,NY,11530,--,40.7382,-73.612752
+Gong Cha,261 N Central Ave,Hartsdale,NY,10530,--,41.026699,-73.793358
+Gong Cha,311 N Broadway,Jericho,NY,11753,--,40.779832,-73.530439
+Gong Cha,"313 Smith Haven Mall, Smith Haven Mall",Lake Grove,NY,11755,--,40.86597,-73.130535
+Gong Cha,252-01 Northern Blvd,Little Neck,NY,11362,--,40.769955,-73.736464
+Gong Cha,196 2nd St,Mineola,NY,11501,--,40.741744,-73.639893
+Gong Cha,2061 Broadway,New York,NY,10023,--,40.778336,-73.982044
+Gong Cha,72 Bayard Street,New York,NY,10013,--,40.715742,-73.998236
+Gong Cha,2810 Broadway,New York,NY,10025,--,40.803216,-73.967045
+Gong Cha,"200 Broadway, Fulton Center",New York,NY,10013,--,40.710557,-74.008972
+Gong Cha,75 W 38th St,New York,NY,10018,--,40.752319,-73.985637
+Gong Cha,12 W 32nd Street,New York,NY,10002,--,40.747665,-73.986431
+Gong Cha,160 E. 44th Street,New York,NY,10017,--,40.752124,-73.97392
+Gong Cha,925 Lexington Ave,New York,NY,10065,--,40.767864,-73.963499
+Gong Cha,"2 Pennsylvania Plaza,, Penn station near jersey transit",New York,NY,10121,--,40.750034,-73.991607
+Gong Cha,1600 Broadway,New York,NY,10019,--,40.760271,-73.984408
+Gong Cha,1-45 Orangeburg Road,Orangeburg,NY,10962,--,41.045439,-73.95279
+Gong Cha,393 S Oyster Bay Road,Plainview,NY,11803,--,40.784333,-73.501701
+Gong Cha,48-18 Northern Blvd,Queens,NY,11101,--,40.751942,-73.914388
+Gong Cha,2508 Queens Plaza S,Queens,NY,11101,--,40.750344,-73.940356
+Gong Cha,"61-35 Junction Blvd, Rego Park Center",Rego Park,NY,11374,--,40.733211,-73.863512
+Gong Cha,"2655 Richmond Ave, Staten Island Mall, Suite 5518",Staten Island,NY,10314,--,40.581845,-74.16586
+Gong Cha,142-144 Walton St,Syracuse,NY,13202,--,43.048074,-76.155326
+Gong Cha,1521 6th ave Suite 112,Troy,NY,12180,--,42.727801,-73.687419
+Gong Cha,"2691 Palisades Center Dr, G209",West Nyack,NY,10994,--,41.097336,-73.954769
+Gong Cha,"2800 N Classen Blvd, Ste 103",Oklahoma City,OK,73106,--,35.497922,-97.533868
+Gong Cha,7320 Old York Rd,Elkins Park,PA,19027,--,40.062901,-75.136325
+Gong Cha,"130 Chestnut Street, Suite 1",Philadelphia,PA,19106,--,39.948281,-75.143674
+Gong Cha,917 Arch St,Philadelphia,PA,19107,--,39.953676,-75.155516
+Gong Cha,"3925 Walnut St., STE 136",Philadelphia,PA,19104,--,39.954236,-75.201192
+Gong Cha,1122 Washington Avenue,Philadelphia,PA,19147,--,39.936601,-75.162656
+Gong Cha,1303 E Carson St,Pittsburgh,PA,15203,--,40.428976,-79.985162
+Gong Cha,"2500 W Moreland Rd, Unit No. 1020",Willow Grove,PA,19090,--,40.140674,-75.12414
+Gong Cha,PR #2 Km 50,Manati,PR,00674,--,18.428918,-66.497687
+Gong Cha,1705 Calle San Javier,San Juan,PR,00926,--,18.374652,-66.054142
+Gong Cha,40 Sockanosset cranston RI,Cranston,RI,02920,--,41.752878,-71.464225
+Gong Cha,"1 Providence Pl Mall, Providence Mall",Providence,RI,02930,--,41.828489,-71.415438
+Gong Cha,7800 Rivers Ave,North Charleston,SC,29406,--,32.94759,-80.038494
+Gong Cha,"13201 Ranch Rd 620 N, #206",Austin,TX,78717,--,30.469168,-97.790498
+Gong Cha,2021 Guadalupe St.,Austin,TX,78705,--,30.283323,-97.741161
+Gong Cha,"3210 Esperanza Crossing, Suite #126",Austin,TX,78758,--,30.400186,-97.723257
+Gong Cha,4220 W William Cannon Dr,Austin,TX,78749,--,30.222115,-97.837727
+Gong Cha,8822 N Hwy 146 Suite 170,Baytown,TX,77523,--,29.808064,-94.902978
+Gong Cha,2701 Old Denton Rd.,Carrollton,TX,75007,--,32.988236,-96.91039
+Gong Cha,"29110 US-290, Suite# 250",Cypress,TX,77433,--,29.994537,-95.753969
+Gong Cha,"11613 N Central Expy, #106A",Dallas,TX,75243,--,32.907863,-96.769916
+Gong Cha,"6650 N Beach St, Ste 100",Fort Worth,TX,76137,--,32.862757,-97.289516
+Gong Cha,9615 N Fwy,Fort Worth,TX,76177,--,32.915352,-97.318554
+Gong Cha,19020 Gulf Fwy,Friendswood,TX,77546,--,29.544788,-95.146779
+Gong Cha,"9370 Warren Pkwy, #120",Frisco,TX,75035,--,33.109583,-96.801833
+Gong Cha,2625 W Pioneer Pkwy,Grand Prairie,TX,75051,--,32.710088,-97.045139
+Gong Cha,"601 South Expressway 83,, Suite H12",Harlingen,TX,78552,--,26.184664,-97.715061
+Gong Cha,"9889 Bellaire Blvd., Suite C318",Houston,TX,77036,--,29.702578,-95.553507
+Gong Cha,957 N Shepherd Dr,Houston,TX,77008,--,29.788713,-95.410819
+Gong Cha,"9105 W. Sam Houston Pkwy, Suite 400",Houston,TX,77064,--,29.903341,-95.555675
+Gong Cha,12647 Tomball Parkway #300,Houston,TX,77086,--,29.911273,-95.482328
+Gong Cha,"510 Gray Street, Suite C",Houston,TX,77002,--,29.750687,-95.375523
+Gong Cha,10625 Spring Green Blvd,Katy,TX,77494,--,29.715657,-95.815376
+Gong Cha,"23119 Colonial Pkwy, Suite B9",Katy,TX,77449,--,29.792594,-95.774643
+Gong Cha,"2405 S. Stemmons Fwy., Suite 132",Lewisville,TX,75067,--,33.002692,-96.970615
+Gong Cha,"405 Slide Rd, #119",Lubbock,TX,79416,--,33.591232,-101.922171
+Gong Cha,"6002 Slide Rd, #K200",Lubbock,TX,79414,--,33.539134,-101.925198
+Gong Cha,"4899 Hwy 6, #107c",Missouri City,TX,77459,--,29.579939,-95.578919
+Gong Cha,1930 Pearland Parkway Suite 178,Pearland,TX,77581,--,29.573426,-95.264077
+Gong Cha,"2205 N. Central Expy, Suite 110",Plano,TX,75075,--,33.029564,-96.709706
+Gong Cha,"1425 E. Belt Line Rd., #102",Richardson,TX,75081,--,32.946984,-96.699331
+Gong Cha,2903 N. Loop 1604 E. Suite 101,San Antonio,TX,78259,--,29.603543,-98.4428
+Gong Cha,849 E Commerce St,San Antonio,TX,78205,--,29.423384,-98.484075
+Gong Cha,9410 TX-151 Suite 105,San Antonio,TX,78251,--,29.445148,-98.668936
+Gong Cha,"6626 W Loop 1604 N, Suite 301",San Antonio,TX,78254,--,29.500601,-98.700836
+Gong Cha,"11707 Bandera Road, STE 105",San Antonio,TX,78250,--,29.550276,-98.665325
+Gong Cha,24441 Tomball Parkway,Tomball,TX,77377,--,30.037648,-95.606548
+Gong Cha,"1650 Wilson Blvd.,, 100A",Arlington,VA,22209,--,38.894035,-77.077783
+Gong Cha,"13850 Braddock Rd unit c, Centreville, VA 20121",Centreville,VA,20121,--,38.836018,-77.425365
+Gong Cha,13945 Metrotech Dr.,Chantilly,VA,20151,--,38.894715,-77.426732
+Gong Cha,"6787 Wilson Blvd., Suite B",Falls Church,VA,22044,--,38.873509,-77.155145
+Gong Cha,1632 Boro Place,McLean,VA,22102,--,38.924553,-77.233812
+Gong Cha,4400 Monarch Way,Norfolk,VA,23508,--,36.884307,-76.299984
+Gong Cha,6310 Springfield Plaza,Springfield,VA,22150,--,38.7815,-77.187087
+Gong Cha,"2029 Lynnhaven Pkwy, Suite 650",Virginia Beach,VA,23456,--,36.79264,-76.123187
+Kung Fu Tea,806 55th St,Brooklyn,NY,11220,--,40.6380363,-74.0064186
+Kung Fu Tea,1160 Massachusetts Ave,Cambridge,MA,02138,--,42.3712897,-71.114629
+Kung Fu Tea,73 Chrystie St,New York,NY,10002,--,40.7171525,-73.9945936
+Kung Fu Tea,136-20 Roosevelt Ave #7,Flushing,NY,11354,--,40.7607318,-73.8294275
+Kung Fu Tea,1129 Old York Rd,Abington,PA,19001,--,40.1154509,-75.1209818
+Kung Fu Tea,5231 Broadway St Suite 101,San Antonio,TX,78209,--,29.475889,-98.4632928
+Kung Fu Tea,2801 Old Dawson Rd Ste 130,Albany,GA,31707,--,31.613777,-84.2168117
+Kung Fu Tea,5600 Coors Blvd NW Suite B-4,Albuquerque,NM,87120,--,35.1459726,-106.6878313
+Kung Fu Tea,4410 Wyoming Blvd NE Suite H,Albuquerque,NM,87111,--,35.1298628,-106.5501392
+Kung Fu Tea,6328 Richmond Hwy,Alexandria,VA,22306,--,38.7794101,-77.0802798
+Kung Fu Tea,1502 S 4th Street,Allentown,PA,18103,--,40.5854463,-75.4621959
+Kung Fu Tea,7895 Heritage Dr,Annandale,VA,22003,--,38.8259412,-77.2137175
+Kung Fu Tea,22 Lancaster Ave,Ardmore,PA,19003,--,40.0072157,-75.2900165
+Kung Fu Tea,101 E Abram St Suite 170,Arlington,TX,76010,--,32.7358015,-97.1062757
+Kung Fu Tea,3018 Wilson Blvd,Arlington,VA,22201,--,38.8875029,-77.0946446
+Kung Fu Tea,7310 W 52nd Ave Unit E,Arvada,CO,80002,--,39.7907673,-105.0779126
+Kung Fu Tea,44110 Ashburn Shopping Plaza Suite 186,Ashburn,VA,20147,--,39.0442713,-77.4725028
+Kung Fu Tea,43800 Central Station Dr Suite 175,Ashburn,VA,20147,--,39.0072454,-77.4867129
+Kung Fu Tea,30-10 34th St,Astoria,NY,11103,--,40.7655517,-73.9193797
+Kung Fu Tea,12201 E Mississippi Ave #123A,Aurora,CO,80012,--,39.6975635,-104.8460551
+Kung Fu Tea,8701 W Highway 71 Suite 100,Austin,TX,78735,--,30.2499084,-97.8956364
+Kung Fu Tea,4238 Wilson Blvd Suite 127,Arlington,VA,22203,--,38.8788598,-77.1106824
+Kung Fu Tea,7584 Bluebonnet Blvd Ste B,Baton Rouge,LA,70810,--,30.3811548,-91.0989863
+Kung Fu Tea,42-21 Bell Blvd,Bayside,NY,11361,--,40.7620999,-73.7699873
+Kung Fu Tea,3939 Dowlen Rd Suite #8,Beaumont,TX,77706,--,30.1158728,-94.1705937
+Kung Fu Tea,2630 Colonel Glenn Highway,Fairborn,OH,45324,--,39.7780393,-84.0545051
+Kung Fu Tea,4900 Bergenline Ave #5,Union City,NJ,07087,--,40.7822643,-74.0209769
+Kung Fu Tea,558 Lancaster Avenue,Berwyn,PA,19312,--,40.0475325,-75.4375681
+Kung Fu Tea,7101 Democracy Blvd Unit 9210,Bethesda,MD,20817,--,39.0246507,-77.14723
+Kung Fu Tea,6215 Tattersall Blvd Suite 101,Birmingham,AL,35242,--,33.4193738,-86.6680275
+Kung Fu Tea,1200 South Main St,Blacksburg,VA,24060,--,37.2190106,-80.4032277
+Kung Fu Tea,1005 Blalock Rd Unit G,Houston,TX,77055,--,29.7855809,-95.5233913
+Kung Fu Tea,3287 W 3rd St,Bloomington,IN,47404,--,39.1625834,-86.5772346
+Kung Fu Tea,481 NE 20th St,Boca Raton,FL,33431,--,26.3684721,-80.0789305
+Kung Fu Tea,4015 Parris Bridge Rd,Boiling Springs,SC,29316,--,35.0402842,-81.9453783
+Kung Fu Tea,5511 Airline Drive,Bossier City,LA,71111,--,32.6233193,-93.7151111
+Kung Fu Tea,1121 Broadway Suite 102,Boulder,CO,80302,--,40.007786,-105.2752847
+Kung Fu Tea,426 Pinnacle Pkwy #366,Bristol,TN,37620,--,36.5929952,-82.2595448
+Kung Fu Tea,302 W 231st St,Bronx,NY,10463,--,40.8808105,-73.9086288
+Kung Fu Tea,8625 5th Ave,Brooklyn,NY,11209,--,40.620723,-74.026436
+Kung Fu Tea,2174 86th St,Brooklyn,NY,11214,--,40.6019891,-73.9943625
+Kung Fu Tea,1422 Ave U,Brooklyn,NY,11229,--,40.5985988,-73.9565322
+Kung Fu Tea,5100 Kings Plaza,Brooklyn,NY,11234,--,40.6097032,-73.9198354
+Kung Fu Tea,3480 Financial Center Way M-1000,Buford,GA,30519,--,34.0742758,-83.9866487
+Kung Fu Tea,9530B Old Keene Mill Rd,Burke,VA,22015,--,38.7783129,-77.2733523
+Kung Fu Tea,3401 Hartzdale Dr,Camp Hill,PA,17011,--,40.2232774,-76.9269441
+Kung Fu Tea,45470 Ford Rd,Canton,MI,48187,--,42.3225428,-83.4886703
+Kung Fu Tea,966 High House Rd Suite 124,Cary,NC,27513,--,35.7885794,-78.827017
+Kung Fu Tea,86 Ridgedale Ave #3,Cedar Knolls,NJ,07927,--,40.8224644,-74.4495533
+Kung Fu Tea,905 E Whitestone Blvd Ste C,Cedar Park,TX,78613,--,30.5253125,-97.8203553
+Kung Fu Tea,20209 E Smoky Hill Rd Suite B,Centennial,CO,80015,--,39.6110246,-104.752706
+Kung Fu Tea,13830 Lee Highway Unit 5,Centreville,VA,20120,--,38.839627,-77.4263389
+Kung Fu Tea,707 S 6th St Suite 107,Champaign,IL,61820,--,40.1096492,-88.230676
+Kung Fu Tea,8200 Providence Rd #1000,Charlotte,NC,28227,--,35.0952399,-80.77909
+Kung Fu Tea,4200 South Blvd,Charlotte,NC,28209,--,35.1862382,-80.8761922
+Kung Fu Tea,50 Frazier Ave Suite 200,Chattanooga,TN,37405,--,35.0622565,-85.3068317
+Kung Fu Tea,1469 Brace Rd Suite E,Cherry Hill,NJ,08034,--,39.8892597,-75.0158522
+Kung Fu Tea,2032 Dell Range Blvd,Cheyenne,WY,82009,--,41.164035,-104.7911301
+Kung Fu Tea,2126B S Archer Ave,Chicago,IL,60616,--,41.854329,-87.6328857
+Kung Fu Tea,2314 SE Military Suite 109,San Antonio,TX,78223,--,29.35121,-98.4569333
+Kung Fu Tea,22705 Clarksburg Rd Unit 868,Clarksburg,MD,20871,--,39.2281865,-77.2857697
+Kung Fu Tea,304 Bay Area Blvd #200,Webster,TX,77598,--,29.5475092,-95.1315513
+Kung Fu Tea,11312 Euclid Ave,Cleveland,OH,44106,--,41.5083482,-81.6056463
+Kung Fu Tea,1916 Beacon St,Brighton,MA,02135,--,42.3365503,-71.1490462
+Kung Fu Tea,5645 N Atlantic Ave Unit 104,Cocoa Beach,FL,32931,--,28.3695937,-80.6075397
+Kung Fu Tea,2001 Coit Road Suite 137,Plano,TX,75075,--,33.0285712,-96.7711485
+Kung Fu Tea,723 Texas Ave,College Station,TX,77840,--,30.6260742,-96.330095
+Kung Fu Tea,7489 Academy Blvd N,Colorado Springs,CO,80920,--,38.939388,-104.7976272
+Kung Fu Tea,1904 Southgate Road,Colorado Springs,CO,80906,--,38.8048383,-104.8199033
+Kung Fu Tea,10100 Twin Rivers Rd C-117,Columbia,MD,21044,--,39.2157874,-76.8651887
+Kung Fu Tea,5555 Whittlesey Blvd #1740,Columbus,GA,31909,--,32.5460013,-84.9486493
+Kung Fu Tea,2505-K Airport Thruway,Columbus,GA,31904,--,32.5216234,-84.9571559
+Kung Fu Tea,1161 Kenny Centre Mall,Columbus,OH,43220,--,40.0494543,-83.0517822
+Kung Fu Tea,2202 North High St,Columbus,OH,43201,--,40.0071823,-83.0092488
+Kung Fu Tea,7370 Sawmill Rd,Columbus,OH,43235,--,40.1159669,-83.089484
+Kung Fu Tea,6348 Corporate Dr,Houston,TX,77036,--,29.7088534,-95.5520892
+Kung Fu Tea,2222 Cottman Ave,Philadelphia,PA,19149,--,40.048565,-75.061782
+Kung Fu Tea,71178 Highway 21 Suite 200,Covington,LA,70433,--,30.4586445,-90.1255988
+Kung Fu Tea,911 Market Place Blvd Ste G-8,Cumming,GA,30041,--,34.1816443,-84.1336811
+Kung Fu Tea,25704 Northwest Fwy,Cypress,TX,77429,--,29.9699709,-95.6904213
+Kung Fu Tea,3516 Sangani Blvd Suite F1,D'Iberville,MS,39540,--,30.45914,-88.8921069
+Kung Fu Tea,6819 Stirling Rd,Davie,FL,33314,--,26.046474,-80.2364143
+Kung Fu Tea,2735 W University Dr Suite 1061,Denton,TX,76201,--,33.2292914,-97.1685702
+Kung Fu Tea,8302 E Northfield Blvd Unit 1580,Denver,CO,80238,--,39.7808491,-104.8913423
+Kung Fu Tea,306 Hiawatha Blvd W J209,Syracuse,NY,13204,--,43.067665,-76.1715132
+Kung Fu Tea,507 14th Ave SE,Minneapolis,MN,55414,--,44.981858,-93.2350588
+Kung Fu Tea,1624 W Division St,Chicago,IL,60622,--,41.9039495,-87.6685865
+Kung Fu Tea,5280-A Buford Hwy,Doraville,GA,30340,--,33.8968913,-84.2823496
+Kung Fu Tea,1088 E Lancaster Ave,Downingtown,PA,19335,--,40.018146,-75.677029
+Kung Fu Tea,233 N Main St Suite 11,Greenville,SC,29601,--,34.853581,-82.397946
+Kung Fu Tea,8661 Colesville Rd #B-159,Silver Spring,MD,20910,--,38.996879,-77.0259216
+Kung Fu Tea,6 W State St,Doylestown,PA,18901,--,40.3097213,-75.1307775
+Kung Fu Tea,191 East 12300,South Draper,UT,84020,--,40.5270385,-111.8856203
+Kung Fu Tea,3175 John F Kennedy Boulevard,Philadelphia,PA,19104,--,39.9561722,-75.1876427
+Kung Fu Tea,21100 Dulles Town Circle Suite 140,Sterling,VA,20166,--,39.0323719,-77.4239384
+Kung Fu Tea,3473 Old Norcross Rd Ste 202,Duluth,GA,30096,--,33.9662715,-84.1342596
+Kung Fu Tea,2929 Hannah Blvd Suite 2,East Lansing,MI,48823,--,42.7184653,-84.4585679
+Kung Fu Tea,378 West Washington St,East Peoria,IL,61611,--,40.6705938,-89.584571
+Kung Fu Tea,1 American Dream Way,East Rutherford,NJ,07073,--,40.8086222,-74.0689331
+Kung Fu Tea,2532 Eastern Blvd,York,PA,17402,--,39.9726956,-76.6749324
+Kung Fu Tea,2891 Jamcha Rd Suite C,El Cajon,CA,92019,--,32.7397604,-116.9371931
+Kung Fu Tea,8889 Gateway Blvd W #2910,El Paso,TX,79925,--,31.7715639,-106.3751836
+Kung Fu Tea,1275 Eldridge Pkwy Ste 195,Houston,TX,77077,--,29.7629842,-95.6252769
+Kung Fu Tea,9210 Baltimore National Pike Store W5,Ellicott City,MD,21042,--,39.2795971,-76.831198
+Kung Fu Tea,1267 Forest Ave,Staten Island,NY,10302,--,40.6265786,-74.1319788
+Kung Fu Tea,86-12 Justice Ave,Elmhurst,NY,11373,--,40.7375544,-73.8766596
+Kung Fu Tea,3845 Richmond Ave,Staten Island,NY,10312,--,40.544124,-74.1648296
+Kung Fu Tea,726 Clark St,Evanston,IL,60201,--,42.0498222,-87.6813287
+Kung Fu Tea,56 Willow Pk Ctr Unit 50A,Farmingdale,NY,11735,--,40.7506263,-73.4211058
+Kung Fu Tea,7821 Good Middling Dr Unit 106,Fayetteville,NC,28304,--,35.0290426,-79.0588773
+Kung Fu Tea,1045-2 Bustleton Pike,Featerville,PA,19053,--,40.1518267,-75.0002322
+Kung Fu Tea,251-73 Jericho Turnpike,Jamaica,NY,11426,--,40.7274239,-73.7109219
+Kung Fu Tea,70-10 Austin St Store3,Forest Hills,NY,11375,--,40.7206695,-73.8468264
+Kung Fu Tea,2608 S Timberline Rd Ste 102,Fort Collins,CO,80525,--,40.5517088,-105.0373942
+Kung Fu Tea,721 N Federal Hwy Retail Bay 6,Fort Lauderdale,FL,33304,--,26.13252,-80.13784
+Kung Fu Tea,2151 Lemoine Ave,Fort Lee,NJ,07024,--,40.8562859,-73.9670497
+Kung Fu Tea,4946 Overton Ridge Blvd,Fort Worth,TX,76132,--,32.6771843,-97.4017863
+Kung Fu Tea,2000 Hamilton St Suite #107,Philadelphia,PA,19130,--,39.9621897,-75.1721985
+Kung Fu Tea,5500 Buckeystown Pike Unit K009,Frederick,MD,21703,--,39.3828579,-77.4060038
+Kung Fu Tea,61-07 Utopia Pkwy,Fresh Meadows,NY,11365,--,40.7385318,-73.7926478
+Kung Fu Tea,9292 Warren Pkwy #230,Frisco,TX,75035,--,33.1103265,-96.8025932
+Kung Fu Tea,3102 SW 34th St,Gainesville,FL,32608,--,29.6251488,-82.3729248
+Kung Fu Tea,6 Grand Corner Ave,Gaithersburg,MD,20878,--,39.1182638,-77.2014649
+Kung Fu Tea,2638 Chapel Lake Dr,Gambrills,MD,21054,--,39.039735,-76.680591
+Kung Fu Tea,1 Garden State Plaza #9152,Paramus,NJ,07652,--,40.9181281,-74.0756677
+Kung Fu Tea,19717 Frederick Rd,Germantown,MD,20876,--,39.1785433,-77.2371699
+Kung Fu Tea,224 Rowan Blvd,Glassboro,NJ,08028,--,39.7054483,-75.1137486
+Kung Fu Tea,610 Milwaukee Ave Suite 150,Glenview,IL,60025,--,42.0663395,-87.8500677
+Kung Fu Tea,5220 S State Highway 360 Suite 120,Grand Prairie,TX,75052,--,32.646518,-97.0606077
+Kung Fu Tea,5301 S Division Ave Ste C,Grand Rapids,MI,49548,--,42.866936,-85.6646482
+Kung Fu Tea,2453 Grant Ave,Philadelphia,PA,19114,--,40.0802982,-75.0259983
+Kung Fu Tea,2034 Green Acres Rd #0104a,Valley Stream,NY,11581,--,40.6619638,-73.7200891
+Kung Fu Tea,581 Haywood Rd,Greenville,SC,29607,--,34.8480768,-82.3410881
+Kung Fu Tea,8721A US 31 S,Indianapolis,IN,46227,--,39.6400878,-86.1283849
+Kung Fu Tea,2040 Coliseum Dr #A13,Hampton,VA,23666,--,37.0456793,-76.389502
+Kung Fu Tea,15640 SE Happy Valley Town Center Dr,Happy Valley,OR,97086,--,45.4271912,-122.5014926
+Kung Fu Tea,11020 Harlem Rd #200,Richmond,TX,77406,--,29.6558943,-95.7151955
+Kung Fu Tea,1645 Reservoir St Unit 175,Harrisonburg,VA,22801,--,38.4309231,-78.8547464
+Kung Fu Tea,5 South Main St,West Hartford,CT,06107,--,41.761654,-72.742451
+Kung Fu Tea,6616 Watts Rd,Haymarket,VA,20169,--,38.8145312,-77.6387563
+Kung Fu Tea,3070 Route 35 Unit 21D,Hazlet,NJ,07730,--,40.4187521,-74.1812901
+Kung Fu Tea,1961 High House Rd,Cary,NC,27519,--,35.788992,-78.8487673
+Kung Fu Tea,5815 Samet Dr Suite 111,High Point,NC,27265,--,36.03297,-79.96079
+Kung Fu Tea,2483 Hilliard Rome Rd,Hilliard,OH,43026,--,40.001647,-83.1560546
+Kung Fu Tea,2185 NE Allie Ave,Hillsboro,OR,97124,--,45.5370175,-122.8787756
+Kung Fu Tea,536 Washington St,Hoboken,NJ,07030,--,40.7433607,-74.0294143
+Kung Fu Tea,12760 Riley St,Holland,MI,49424,--,42.8260841,-86.0970799
+Kung Fu Tea,9889 Bellaire Blvd #222,Houston,TX,77036,--,29.7037705,-95.553434
+Kung Fu Tea,16108 Cross Bay Blvd,Howard Beach,NY,11414,--,40.655558,-73.8393149
+Kung Fu Tea,6730 Atascocita Rd Unit 111,Humble,TX,77346,--,29.9934243,-95.1764738
+Kung Fu Tea,1022 Midcity Drive,Huntsville,AL,35806,--,34.7381029,-86.6662688
+Kung Fu Tea,5501 Baltimore Ave #105b,Hyattsville,MD,20781,--,38.9554451,-76.9396776
+Kung Fu Tea,143 Dryden Rd,Ithaca,NY,14850,--,42.4415134,-76.4860699
+Kung Fu Tea,82-02 Roosevelt Ave,Jackson Heights,NY,11372,--,40.7474917,-73.8837578
+Kung Fu Tea,12630 Beach Blvd #1,Jacksonville,FL,32246,--,30.2868233,-81.4861649
+Kung Fu Tea,87-52A Parsons Blvd,Jamaica,NY,11432,--,40.7079887,-73.8031043
+Kung Fu Tea,2755 Jamie Lane #2,Lincoln,NE,68516,--,40.7281,-96.6806855
+Kung Fu Tea,9700 Medlock Bridge Rd Suite 174,John's Creek,GA,30097,--,34.0180079,-84.1931745
+Kung Fu Tea,3113 St Paul St,Baltimore,MD,21218,--,39.3263473,-76.6155703
+Kung Fu Tea,5043 West Main St,Kalamazoo,MI,49009,--,42.2953597,-85.6496286
+Kung Fu Tea,900 South Main Street Ste 340,Keller,TX,76248,--,32.91839,-97.25547
+Kung Fu Tea,2505 Chastain Meadows Pkwy Suite 115,Marietta,GA,30066,--,34.0161845,-84.556239
+Kung Fu Tea,130 Market St,Gaithersburg,MD,20878,--,39.1220413,-77.2348434
+Kung Fu Tea,78 Brookside Ave #124,Chester,NY,10918,--,41.3578377,-74.2840013
+Kung Fu Tea,160 N Gulph Rd K103A,King of Prussia,PA,19406,--,40.0879934,-75.3922237
+Kung Fu Tea,3001 Knox St #107A,Dallas,TX,75205,--,32.8213944,-96.7870557
+Kung Fu Tea,8851 Town and Country Circle,Knoxville,TN,37923,--,35.916358,-84.0852368
+Kung Fu Tea,16722 Golden Valley Pkwy,Lathrop,CA,95330,--,37.8097903,-121.3000281
+Kung Fu Tea,7740 West Alameda Ave Unit D,Lakewood,CO,80226,--,39.7105236,-105.0827196
+Kung Fu Tea,1846 Fruitville Pike,Lancaster,PA,17601,--,40.072211,-76.320164
+Kung Fu Tea,7717 Ulmerton Rd,Largo,FL,33771,--,27.8949721,-82.7444264
+Kung Fu Tea,5030 Spring Mountain Rd,Las Vegas,NV,89146,--,36.1270344,-115.2097177
+Kung Fu Tea,14722 Baltimore Ave #101,Laurel,MD,20707,--,39.0939433,-76.8565926
+Kung Fu Tea,2500 S 4th St,Leavenworth,KS,66048,--,39.2921513,-94.9085141
+Kung Fu Tea,19337 Diamond Lake Dr,Leesburg,VA,20176,--,39.0816618,-77.4931319
+Kung Fu Tea,4034 Veterans Hwy,Levittown,PA,19056,--,40.1337771,-74.8839536
+Kung Fu Tea,114 N Milwaukee Ave #114,Libertyville,IL,60048,--,42.2834797,-87.952924
+Kung Fu Tea,4451 N 26th St Suite 100,Lincoln,NE,68521,--,40.8558037,-96.6835879
+Kung Fu Tea,8555 W Belleview Ave Ste G21,Littleton,CO,80123,--,39.6256067,-105.0922535
+Kung Fu Tea,80 Livingston St,Brooklyn,NY,11201,--,40.6912687,-73.9910488
+Kung Fu Tea,11516 Middlebelt Rd,Livonia,MI,48150,--,42.3688509,-83.3317819
+Kung Fu Tea,1232 S Hover St C-300,Longmont,CO,80501,--,40.1475477,-105.1295063
+Kung Fu Tea,5000 Shelbyville Rd,Louisville,KY,40207,--,38.2468253,-85.6223271
+Kung Fu Tea,43 Merrimack St,Lowell,MA,08152,--,42.6457224,-71.3082045
+Kung Fu Tea,625 H Street NW,Washington,DC,20001,--,38.9000227,-77.0210931
+Kung Fu Tea,71 Atlantic Avenue,Lynbrook,NY,11563,--,40.6546754,-73.6719857
+Kung Fu Tea,449 State St Unit A,Madison,WI,53703,--,43.0745314,-89.3934203
+Kung Fu Tea,3 Pleasant Street,Malden,MA,02148,--,42.4266897,-71.0673778
+Kung Fu Tea,650 Carnegie Blvd Suite M1,Malvern,PA,19355,--,40.048686,-75.5181429
+Kung Fu Tea,10689 Sudley Manor Dr #104,Manassas,VA,20109,--,38.7853675,-77.5166211
+Kung Fu Tea,655 South Willow St,Manchester,NH,03103,--,42.9646237,-71.4494166
+Kung Fu Tea,3930 S Las Vegas Blvd #119A,Las Vegas,NV,89119,--,36.0935506,-115.176387
+Kung Fu Tea,11 W 32nd St,New York,NY,10001,--,40.7477348,-73.9861939
+Kung Fu Tea,12483 Elm Creek Blvd N,Maple Grove,MN,55369,--,45.0922919,-93.4343956
+Kung Fu Tea,4907B Merrick Rd,Massapeque Park,NY,11762,--,40.666703,-73.4543676
+Kung Fu Tea,551 Medford Center,Medford,OR,97504,--,42.3323431,-122.8674124
+Kung Fu Tea,8 E State St,Media,PA,19063,--,39.9177459,-75.3890915
+Kung Fu Tea,4000 Summer Ave Suite 101,Memphis,TN,38122,--,35.1494536,-89.9274416
+Kung Fu Tea,3492 McKee Rd,Merced,CA,95340,--,37.3316353,-120.442881
+Kung Fu Tea,125 Dolson Ave #23,Middletown,NY,10940,--,41.4292408,-74.4236766
+Kung Fu Tea,3201 Louisiana St #106,Houston,TX,77006,--,29.7427382,-95.3798672
+Kung Fu Tea,3224 Yoakum Blvd,Houston,TX,77006,--,29.7441399,-95.392855
+Kung Fu Tea,42 West 38th St,New York,NY,10018,--,40.7515489,-73.9846695
+Kung Fu Tea,315C Millburn Ave,Millburn,NJ,07041,--,40.7244662,-74.3055816
+Kung Fu Tea,825 Washington Ave SE Suite 101,Minneapolis,ME,55414,--,44.973803,-93.2258457
+Kung Fu Tea,2532 Nicollet Ave,Minneapolis,MN,55404,--,44.9563217,-93.2783417
+Kung Fu Tea,620 W Edison Rd Ste 128,Mishawaka,IN,46545,--,41.6955429,-86.1907459
+Kung Fu Tea,5822 Sienna Pkwy #800,Missouri City,TX,77459,--,29.5331223,-95.5337242
+Kung Fu Tea,3440 Mchenry Ave Suite D14,Modesto,CA,95350,--,37.688438,-120.9925495
+Kung Fu Tea,375 Bloomfield Ave,Montclair,NJ,07042,--,40.8125262,-74.2154336
+Kung Fu Tea,2775 Bell Rd,Montgomery,AL,36117,--,32.33977,-86.1933796
+Kung Fu Tea,12 US 9 #103A,Morganville,NJ,07751,--,40.3625905,-74.3033723
+Kung Fu Tea,2441 Old Fort Pkwy,Murfreesboro,TN,37128,--,35.8433858,-86.4410097
+Kung Fu Tea,160 E FM 544 Suite 90,Murphy,TX,75094,--,33.0105432,-96.6098904
+Kung Fu Tea,210-A Fresh Drive,Myrtle Beach,SC,29579,--,33.7600804,-78.8567336
+Kung Fu Tea,3108 Illinois Route 59 Suite 132,Naperville,IL,60564,--,41.7090483,-88.2040065
+Kung Fu Tea,493 Amherst St,Nashua,NH,03063,--,42.7932545,-71.5217622
+Kung Fu Tea,1245 Worcester St Unit 6522,Natick,MA,01760,--,42.301146,-71.384664
+Kung Fu Tea,1615 E Plaza Blvd Unit #101,National City,CA,91950,--,32.6769046,-117.0884667
+Kung Fu Tea,2828 Highway 365 Suite #700,Nederland,TX,77627,--,29.9536102,-93.9880259
+Kung Fu Tea,22117 Market Place Dr Suite 600,New Caney,TX,77357,--,30.1310439,-95.2383228
+Kung Fu Tea,37 Church St,New Haven,CT,06510,--,41.3045336,-72.9266192
+Kung Fu Tea,434 Hillsdale Ave,Williston Park,NY,11596,--,40.754102,-73.6574
+Kung Fu Tea,3348 W Esplanade Ave S Suite C,Metairie,LA,70002,--,30.0136362,-90.1573517
+Kung Fu Tea,579 North Avenue,New Rochelle,NY,10801,--,40.9217163,-73.7876872
+Kung Fu Tea,600 Washington Ave Unit 16,Philadelphia,PA,19147,--,39.9349132,-75.1550601
+Kung Fu Tea,73 Halsey St,Newark,NJ,07102,--,40.7399305,-74.1716621
+Kung Fu Tea,93 E Main St,Newark,DE,19711,--,39.6830455,-75.7496409
+Kung Fu Tea,520-H W 21st St,Norfolk,VA,23517,--,36.8699105,-76.2939173
+Kung Fu Tea,2907 Swede Rd Suite 6,Norristown,PA,19401,--,40.1464325,-75.3192221
+Kung Fu Tea,400 Galleria Dr,Middletown,NY,10941,--,41.4624355,-74.3703798
+Kung Fu Tea,14701 Biscayne Blvd,North Miami,FL,33181,--,25.9119159,-80.1557342
+Kung Fu Tea,1222 Welsh Rd Ste D,North Wales,PA,19454,--,40.2253846,-75.2547478
+Kung Fu Tea,244 Livingston St,Northvale,NJ,07647,--,41.0116488,-73.9460064
+Kung Fu Tea,44325 W 12 Mile Suite H172,Novi,MI,48377,--,42.4918662,-83.4850635
+Kung Fu Tea,31 Waverly Place Unit 5,New York,NY,10003,--,40.7306749,-73.9952692
+Kung Fu Tea,801 Oakdale Rd Suite D5,Modesto,CA,95355,--,37.654596,-120.9589778
+Kung Fu Tea,605b Mission Ave,Oceanside,CA,92054,--,33.1963474,-117.3783793
+Kung Fu Tea,3128 Olney Sandy Spring Rd,Olney,MD,20832,--,39.1510389,-77.0642939
+Kung Fu Tea,1110 S 71st St Bay B,Omaha,NE,68106,--,41.248318,-96.022683
+Kung Fu Tea,2211 South Mountain Ave,Ontario,CA,91762,--,34.0332849,-117.6677884
+Kung Fu Tea,12098 Collegiate Way,Orlando,FL,32817,--,28.5965734,-81.210679
+Kung Fu Tea,7501 W Colonial Dr,Orlando,FL,32818,--,28.5533009,-81.4852217
+Kung Fu Tea,10209 Grand Central Ave #120,Owings Mills,MD,21117,--,39.4060693,-76.7815751
+Kung Fu Tea,1 Brighton Ave,Allston,MA,02134,--,42.3526138,-71.1254243
+Kung Fu Tea,1000 Palisades Center Dr Suite Z215,West Nyack,NY,10994,--,41.0971305,-73.9561591
+Kung Fu Tea,5439 MacArthur Blvd NW,Washington,DC,20016,--,38.9299648,-77.1064785
+Kung Fu Tea,38050 47th Street E Suite C,Palmdale,CA,93552,--,34.5740846,-118.0430344
+Kung Fu Tea,11153 S Parker Rd #J,Parker,CO,80134,--,39.5116635,-104.7657845
+Kung Fu Tea,8155 Ritchie Hwy Unit #D,Pasadena,MD,21122,--,39.1235934,-76.5841669
+Kung Fu Tea,11200 Broadway St Suite 1370,Pearland,TX,77584,--,29.5529732,-95.392946
+Kung Fu Tea,1100 S Hayes St Apt 1116,Arlington,VA,22202,--,38.8631313,-77.0603099
+Kung Fu Tea,4500 City Ave,Philadelphia,PA,19131,--,40.0031175,-75.2216014
+Kung Fu Tea,1006 Arch St,Philadelphia,PA,19107,--,39.9534207,-75.1567535
+Kung Fu Tea,238 Bridge St,Phoenixville,PA,19460,--,40.1335966,-75.5176386
+Kung Fu Tea,8220 Refugee Rd Suite 6,Pickerington,OH,43147,--,39.9085449,-82.7417193
+Kung Fu Tea,2109 Murray Ave,Pittsburgh,PA,15217,--,40.433416,-79.922847
+Kung Fu Tea,2683 E Main St Suite 107,Plainfield,IN,46168,--,39.7165176,-86.3538686
+Kung Fu Tea,10 Schalks Crossing Rd Unit #8,Plainsboro Township,NJ,08536,--,40.337219,-74.5955794
+Kung Fu Tea,11601 108th St FC101,Pleasant Prairie,WI,53158,--,42.5177783,-87.9474188
+Kung Fu Tea,700 E Black Horse Pike #40,Pleasantville,NJ,08232,--,39.3907463,-74.5252751
+Kung Fu Tea,8653 Sancus Blvd,Columbus,OH,43240,--,40.1398902,-82.9928983
+Kung Fu Tea,24123 Peachland Blvd Unit C9,Port Charlotte,FL,33954,--,27.0158692,-82.054894
+Kung Fu Tea,742 Prince Frederick Blvd,Prince Frederick,MD,20678,--,38.5529222,-76.5974054
+Kung Fu Tea,80 Nassau St,Princeton,NJ,08542,--,40.3496753,-74.6603124
+Kung Fu Tea,1565 US-50 #160,Pueblo,CO,81008,--,38.3107249,-104.6273617
+Kung Fu Tea,3320 US-1 #Ki32,Lawrenceville,NJ,08648,--,40.2918673,-74.6818003
+Kung Fu Tea,136-20 Kung Fu Tea #7 38th Ave,Flushing,NY,11354,--,40.7639356,-73.818757
+Kung Fu Tea,1 Beale St,Quincy,MA,02170,--,42.2678353,-71.0166718
+Kung Fu Tea,7345 S Rainbow Blvd Ste 110,Las Vegas,NV,89139,--,36.0548277,-115.2439899
+Kung Fu Tea,10251 Little Brier Creek Lane,Raleigh,NC,27617,--,35.9113219,-78.7853401
+Kung Fu Tea,12732 Foothill Blvd Suite #101,Rancho Cucamonga,CA,91739,--,34.1066134,-117.5272834
+Kung Fu Tea,107 E Colton Avenue Suite 200,Redland,CA,92374,--,34.0631152,-117.1812155
+Kung Fu Tea,593 Woodside Rd Ste D,Redwood City,CA,94061,--,37.469409,-122.2230916
+Kung Fu Tea,17629 108th Ave SE #027,Renton,WA,98055,--,47.444474,-122.1975481
+Kung Fu Tea,2280-A Hunters Woods Plaza,Reston,VA,20191,--,38.936858,-77.3632311
+Kung Fu Tea,946 West Grace St,Richmond,VA,23220,--,37.551142,-77.452796
+Kung Fu Tea,901 S China Lake Blvd #100,Ridgecrest,CA,93555,--,35.6074884,-117.6711024
+Kung Fu Tea,1912 Wellspring Avenue SE,Rio Rancho,NM,87124,--,35.2212829,-106.6965383
+Kung Fu Tea,5914 Providence Rd,River View,FL,33578,--,27.8947976,-82.3181811
+Kung Fu Tea,3678 Central Avenue Suite 102,Riverside,CA,92506,--,33.9533925,-117.3937059
+Kung Fu Tea,1256 Walton Blvd,Rochester Hills,MI,48309,--,42.6830592,-83.1512011
+Kung Fu Tea,12113 Rockville Pike,North Bethesda,MD,20852,--,39.0573153,-77.1183362
+Kung Fu Tea,2882 Walnut St #8,Rogers,AR,72758,--,36.3339782,-94.1590947
+Kung Fu Tea,1643 Algonquin Rd,Rolling Meadows,IL,60008,--,42.0539313,-87.9981296
+Kung Fu Tea,7504 W 19th St,Overland Park,KS,66213,--,38.9822282,-94.6707917
+Kung Fu Tea,99 Rockingham Park Blvd,Salem,NH,03079,--,42.7679496,-71.2313648
+Kung Fu Tea,7211 Green Glen Drive,San Antonio,TX,78255,--,29.589237,-98.6308287
+Kung Fu Tea,11491 Carmel Mountain Rd,San Diego,CA,92128,--,32.977844,-117.0835811
+Kung Fu Tea,6415 San Felipe St R1,Houston,TX,77057,--,29.7496,-95.4980568
+Kung Fu Tea,457 Saratoga Ave,San Jose,CA,95129,--,37.3197275,-121.9748379
+Kung Fu Tea,14 Creekside Dr Ste #101,San Marcos,CA,92078,--,33.1355044,-117.1787237
+Kung Fu Tea,8404 Lockwood Ridge Rd,Sarasota,FL,34243,--,27.3912517,-82.5081456
+Kung Fu Tea,206 W Broughton St,Savannah,GA,31401,--,32.0797618,-81.0943497
+Kung Fu Tea,420 E Golf Rd,Schaumburg,IL,60173,--,42.051673,-88.06892
+Kung Fu Tea,10827 W Broad St,Glen Allen,VA,23060,--,37.6452369,-77.5825497
+Kung Fu Tea,324 W 25th,Sioux City,IA,51104,--,42.5159571,-96.417918
+Kung Fu Tea,1905 Scenic Hwy Suite 700,Snellville,GA,30078,--,33.8766863,-84.015055
+Kung Fu Tea,87 Evergreen Way,South Windsor,CT,06074,--,41.809947,-72.5576203
+Kung Fu Tea,7000 Brookfield Plaza Unit E,Springfield,VA,22150,--,38.7730744,-77.1846016
+Kung Fu Tea,1475 Stafford Market Place Ste 103,Stafford,VA,22556,--,38.4710071,-77.4121633
+Kung Fu Tea,46950 Community Plaza Unit 104,Sterling,VA,20164,--,39.0163052,-77.3769248
+Kung Fu Tea,2105 15 Mile Rd,Sterling Heights,MI,48310,--,42.5507125,-83.0869896
+Kung Fu Tea,2601 Preston Road,Frisco,TX,75034,--,33.0989053,-96.8134967
+Kung Fu Tea,1009 North Country Road,Stony Brook,NY,11790,--,40.9225092,-73.1274345
+Kung Fu Tea,13509 University Blvd #A300,Sugar Land,TX,77479,--,29.584271,-95.6471506
+Kung Fu Tea,1291 Old Peachtree Rd NW,Suwanee,GA,30024,--,34.0049893,-84.0832149
+Kung Fu Tea,334 Massachusetts Ave,Boston,MA,02115,--,42.3425523,-71.0841185
+Kung Fu Tea,26487 Ynez Road Suite G,Temecula,CA,92591,--,33.5217881,-117.1585826
+Kung Fu Tea,925 Battery Ave Suite 1100,Atlanta,GA,30339,--,33.8872561,-84.4705862
+Kung Fu Tea,3091 College Park Dr Suite 180,The Woodlands,TX,77384,--,30.2050314,-95.4634484
+Kung Fu Tea,4038 Talmadge Road Suite 106,Toledo,OH,43623,--,41.6923076,-83.6439263
+Kung Fu Tea,508 York Rd,Towson,MD,21204,--,39.4007406,-76.6020912
+Kung Fu Tea,785 S Tracy Blvd,Tracy,CA,95376,--,37.7247456,-121.4367548
+Kung Fu Tea,5956 S Yale Ave,Tulsa,OK,74135,--,36.0774682,-95.9228772
+Kung Fu Tea,2220 W Monte Vista Ave,Turlock,CA,95382,--,37.5211581,-120.8740949
+Kung Fu Tea,3501 ROute 42 Suite 310,Turnersville,NY,08012,--,43.2994285,-74.2179326
+Kung Fu Tea,1961 Chain Bridge Rd,Mclean,VA,22102,--,38.916776,-77.2197961
+Kung Fu Tea,1047 Stuycesant Ave,Union,NJ,07083,--,40.6971051,-74.2680988
+Kung Fu Tea,700 South Gregory St #D,Urbana,IL,61801,--,40.1064847,-88.221307
+Kung Fu Tea,28520 Cole Grade Rd,Valley Center,CA,92082,--,33.2301971,-117.0246978
+Kung Fu Tea,910 NE Tenney Rd Suite 125,Vancouver,WA,98685,--,45.7192338,-122.6613084
+Kung Fu Tea,"661 E 450 North, Building R",Vineyard,UT,84059,--,40.3053453,-111.7382768
+Kung Fu Tea,1949 Lynnhaven Pkwy Unit 113,Virginia Beach,VA,23456,--,36.7954822,-76.119068
+Kung Fu Tea,700 Haddonfield-Berlin Rd,Voorhees Township,NJ,08043,--,39.8530874,-74.9822917
+Kung Fu Tea,721 S 4th St Ste 114,Waco,TX,76706,--,31.5517468,-97.1246447
+Kung Fu Tea,1488 US-9 #4,Wappingers Fall,NY,12590,--,41.5912368,-73.9070476
+Kung Fu Tea,810 SR 96 Suite 2000,Warner Robins,GA,31088,--,32.5535342,-83.6649955
+Kung Fu Tea,4053 Broadway,New York,NY,10032,--,40.84302,-73.9394182
+Kung Fu Tea,2000 Piazza Ave Suite 150,Wesley Chapel,FL,33543,--,28.1877877,-82.3486112
+Kung Fu Tea,9000 South 1391 West,West Jordan,UT,84088,--,40.5878733,-111.9864363
+Kung Fu Tea,4587 Okeechobee Blvd Unit 131,West Palm Beach,FL,33417,--,26.7073926,-80.1125419
+Kung Fu Tea,814 E Ogden Ave,Westmont,IL,60559,--,41.8120967,-87.9499648
+Kung Fu Tea,12009 Georgia Ave Unit 102,Wheaton,MD,20902,--,39.0520993,-77.0497227
+Kung Fu Tea,184 Martine Ave,White Plains,NY,10601,--,41.0311339,-73.7667206
+Kung Fu Tea,4800 Whitesburg Drive Suite #39,Huntsville,AL,35802,--,34.6937676,-86.5689283
+Kung Fu Tea,1625 S Rock Rd Suite 129,Wichita,KS,67207,--,37.6630726,-97.2460866
+Kung Fu Tea,4902 Courthouse St,Williamsburg,VA,23188,--,37.2782927,-76.7411596
+Kung Fu Tea,1400 Willowbrook Mall #5543,Wayne,NJ,07470,--,40.8887069,-74.2593816
+Kung Fu Tea,4160 Merchant Plaza,Woodbridge,VA,22192,--,38.6745686,-77.3336055
+Kung Fu Tea,2035 Springwood Rd,York,PA,17403,--,39.9407466,-76.6914331
+Kung Fu Tea,10895 N Michigan Rd Suite 130,Zionsville,IN,46077,--,39.945651,-86.2378079

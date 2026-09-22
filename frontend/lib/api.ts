@@ -90,7 +90,17 @@ export interface DemographicsResponse {
     wfh_pct: number | null;
     rings: Record<string, RingProfile>;
 }
- 
+
+export interface SitePresentationBrand {
+    code: string;
+    label: string;
+}
+
+export interface SitePresentationPreview {
+    blob: Blob;
+    filename: string;
+}
+
 async function authHeaders(): Promise<HeadersInit> {
     const supabase = createClient();
     const {
@@ -128,11 +138,20 @@ async function apiJson<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 async function downloadFile(path: string, fallbackName: string): Promise<void> {
     const res = await apiFetch(path);
-    const blob = await res.blob();
-    const disposition = res.headers.get("Content-Disposition") || "";
-    const match = disposition.match(/filename="?([^"]+)"?/);
-    const filename = match?.[1] || fallbackName;
+    await _saveBlob(res, fallbackName);
+}
  
+async function downloadFilePost(path: string, body: unknown, fallbackName: string): Promise<void> {
+    const res = await apiFetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+    });
+    await _saveBlob(res, fallbackName);
+}
+ 
+async function _saveBlob(res: Response, fallbackName: string): Promise<void> {
+    const { blob, filename } = await _readBlob(res, fallbackName);
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -141,6 +160,29 @@ async function downloadFile(path: string, fallbackName: string): Promise<void> {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
+}
+ 
+async function _readBlob(res: Response, fallbackName: string): Promise<SitePresentationPreview> {
+    const blob = await res.blob();
+    const disposition = res.headers.get("Content-Disposition") || "";
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    return { blob, filename: match?.[1] || fallbackName };
+}
+ 
+// Like downloadFilePost, but returns the blob instead of triggering a
+// browser download -- used for the Site Presentations preview, where the
+// file needs to be loaded into an in-page editor first.
+async function fetchBlobPost(
+    path: string,
+    body: unknown,
+    fallbackName: string
+): Promise<SitePresentationPreview> {
+    const res = await apiFetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+    });
+    return _readBlob(res, fallbackName);
 }
  
 export const api = {
@@ -162,10 +204,10 @@ export const api = {
         }),
  
     deleteSearch: (id: string) => apiFetch(`/api/searches/${id}`, { method: "DELETE" }),
-
-    cancelSearch: (id:string) => apiFetch(`/api/searches/${id}/cancel`, {method: "POST"}),
  
-
+    cancelSearch: (id: string) => apiFetch(`/api/searches/${id}/cancel`, { method: "POST" }),
+ 
+    // Fetched as text and rendered via <iframe srcDoc=...> in the caller.
     getMapHtml: (id: string) => apiFetch(`/api/searches/${id}/map`).then((r) => r.text()),
  
     downloadExcel: (id: string, cityLabel: string) =>
@@ -179,19 +221,19 @@ export const api = {
         downloadFile(`/api/history/${id}/excel`, `${cityLabel}.xlsx`),
  
     getMe: () => apiJson<UserProfile>("/api/me"),
-
-    updateMe: (fields: { first_name?: string; last_name?: string}) =>
+ 
+    updateMe: (fields: { first_name?: string; last_name?: string }) =>
         apiJson<UserProfile>("/api/me", {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(fields),
         }),
-    
-    uploadAvatar: (file:File) => {
+ 
+    uploadAvatar: (file: File) => {
         const formData = new FormData();
         formData.append("file", file);
-
-
+        // No Content-Type header here -- letting fetch set the multipart
+        // boundary itself. Setting it manually breaks the upload.
         return apiJson<UserProfile>("/api/me/avatar", {
             method: "POST",
             body: formData,
@@ -217,11 +259,31 @@ export const api = {
     deleteOwnAccount: () => apiFetch("/api/users/me", { method: "DELETE" }),
  
     deleteUser: (userId: string) => apiFetch(`/api/users/${userId}`, { method: "DELETE" }),
-    
+ 
     getDemographics: (address: string, radii: number[]) =>
         apiJson<DemographicsResponse>("/api/demographics", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ address, radii }),
         }),
+ 
+    listSitePresentationBrands: () =>
+        apiJson<SitePresentationBrand[]>("/api/site-presentations/brands"),
+ 
+
+    
+    previewSitePresentation: (brand: string, address: string) =>
+        fetchBlobPost(
+            "/api/site-presentations/generate",
+            { brand, address },
+            `${brand}_site_summary.xlsx`
+        ),
+
+
+    exportSitePresentation: (filename: string, sheets: unknown[]) =>
+        downloadFilePost(
+            "/api/site-presentations/export",
+            { filename, sheets },
+            filename
+        ),
 };

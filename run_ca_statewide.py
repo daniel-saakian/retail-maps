@@ -48,11 +48,11 @@ def discover_and_scrape(label:str, lat: float, lng: float, radius_km:float, sb=N
     
     if needs_scoring:
         print(f"  Scoring {len(needs_scoring)} previously-unscored matched plaza(s)...")
-
+ 
     if new_plazas:
         print(f"  Looking up counties for {len(new_plazas)} new/stale plaza(s)...")
         mr.attach_counties(new_plazas)
-
+ 
         print(f"  [5/5] Searching brokerage sites for leasing broker contacts...")
         try:
             from scraper import scrape_listings
@@ -65,11 +65,15 @@ def discover_and_scrape(label:str, lat: float, lng: float, radius_km:float, sb=N
  
 def push_anchor_results(sb, plazas: list, label:str, lat: float, lng: float,
                         radius_km: float, state:str) -> tuple[int,int,int]:
+    # city_runs no longer has a unique constraint on "city" -- History treats
+    # every search as its own row now, not one row per city. Match
+    # majorretail.py's save_run_to_cache: plain insert, not upsert.
     run = (sb.table("city_runs")
-             .upsert({
+             .insert({
                  "city": label, "display": label,
-                 "lat": lat, "lng": lng, "radius_km": radius_km
-             }, on_conflict = "city")
+                 "lat": lat, "lng": lng, "radius_km": radius_km,
+                 "ran_at": datetime.now(timezone.utc).isoformat(),
+             })
              .execute())
     run_id = run.data[0]["id"]
  
@@ -85,11 +89,20 @@ def push_anchor_results(sb, plazas: list, label:str, lat: float, lng: float,
             existing_plazas += 1
         if not plaza_id:
             continue
-
+ 
         if getattr(p,"freshly_scraped", False):
             sb.table("plazas").update({
                 "last_scraped_at": datetime.now(timezone.utc).isoformat()
             }).eq("id", plaza_id).execute()
+ 
+        # A plaza can belong to many runs (e.g. the same plaza turns up
+        # whether you run this state's Fresno anchor or its Bakersfield
+        # anchor) -- record this run's membership in the join table, same
+        # as save_run_to_cache does for the web app's searches.
+        sb.table("run_plazas").upsert({
+            "city_run_id": run_id,
+            "plaza_id": plaza_id,
+        }, on_conflict="city_run_id,plaza_id").execute()
  
         touched = set()
         for record in getattr(p, "agents", []):

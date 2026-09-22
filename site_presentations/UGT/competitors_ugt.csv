@@ -1,0 +1,245 @@
+brand,address,city,state,zip,sales,lat,lon
+Molly Tea,67 Beach Street,Boston,CA,02111,--,42.3511724,-71.0600559
+Molly Tea,223 Grove St,Jersey City,NJ,07302,--,40.715677,-74.045102
+Molly Tea,1777 NJ-27 Suite 102,Edison,NJ,08817,--,40.5132152,-74.4059905
+Molly Tea,3720 Chestnut St,Philadelphia,PA,19104,--,39.9547506,-75.1975362
+Molly Tea,850 Festival St,Rockville,MD,20852,--,39.0631764,-77.1237219
+Molly Tea,2131 Pleasant Hill Rd #135,Duluth,GA,30096,--,33.9567235,-84.1350817
+Molly Tea,6035 Peachtree Rd Ste C-108,Doraville,GA,30341,--,33.908782,-84.2883931
+Molly Tea,2227 S Wentworth Ave,Chicago,IL,60616,--,41.8520588,-87.6317817
+Molly Tea,9889 Bellaire Blvd D226,Houston,TX,77036,--,29.7043428,-95.5535342
+Molly Tea,3420 State St,South Salt Lake,UT,84115,--,40.6973127,-111.8899976
+Molly Tea,3400 S Jones Blvd #20,Las Vegas,NV,89146,--,36.1266018,-115.2241926
+Molly Tea,1130 S Balwin Ave Suite A5,Arcadia,CA,91007,--,34.1267663,-118.0544228
+Molly Tea,103 Bellevue Way NE,Bellevue,WA,98004,--,47.6113814,-122.201958
+Molly Tea,3969 Rivermark Plz,Santa Clara,CA,95054,--,37.3953578,-121.9465656
+Molly Tea,19110 Stevens Creek Blvd Unit A,Cupertino,CA,95015,--,37.3227792,-122.0068662
+Molly Tea,605 E El Camiuno Real,Sunnyvale,CA,94087,--,37.3619851,-122.0244755
+Molly Tea,318 University Ave,Palo Alto,CA,94301,--,37.4461192,-122.1610784
+Molly Tea,153 S B St,San Mateo,CA,94401,--,37.5665861,-122.3232866
+CHAGEE,20 City Boulevard West Suite 916,Orange,CA,92868,--,33.7813624,-117.8912117
+CHAGEE,4301 La Jolla Village Dr Suite 2045,La Jolla,CA,92122,--,32.8722817,-117.2134911
+CHAGEE,755 Americana Way Space E-16,Glendale,CA,91210,--,34.1443526,-118.2574052
+CHAGEE,929 N Milliken Ave,Ontario,CA,91764,--,34.0727865,-117.5583668
+CHAGEE,555 The Shops At Mission Viejo Suite 218,Mission Viejo,CA,92691,--,33.5581546,-117.6696332
+CHAGEE,5246 E Second Street,Long Beach,CA,90803,--,33.7597349,-118.1341161
+CHAGEE,6000 Sepulveda Blvd Ste 1557,Culver City,CA,90230,--,33.9865035,-118.394099
+CHAGEE,14006 Riverside Dr Space 249A,San Fernando Valley,CA,91423,--,34.156619,-118.4364514
+CHAGEE,1065 Brea Mall,Brea,CA,92821,--,33.9153422,-117.8864509
+CHAGEE,3525 W Carson St,Torrance,CA,90503,--,33.8323541,-118.3505779
+CHAGEE,10250 Santa Monica Blvd,Los Angeles,CA,90067,--,34.0589312,-118.4191377
+HeyTea,1407 Broadway,New York,NY,10018,--,40.753246,-73.9878778
+HeyTea,35 Main St,Flushing,NY,11354,--,40.7454457,-73.8256694
+HeyTea,1293 Broadway,New York,NY,10001,--,40.7497992,-73.988341
+HeyTea,42-20 27th St,Long Island City,NY,11101,--,40.7498988,-73.941037
+HeyTea,2120 86th St,Brooklyn,NY,11214,--,40.6027914,-73.9956768
+HeyTea,2125 Shattuck Ave,Berkeley,CA,94704,--,37.8709151,-122.2679513
+HeyTea,500 Westlake Center,Daly City,CA,94015,--,37.6994208,-122.4826552
+HeyTea,1628 Hostetter Rd,San Jose,CA,95131,--,37.387232,-121.885334
+HeyTea,302 W El Camino Real,Sunnyvale,CA,94087,--,37.3682254,-122.0355835
+HeyTea,5414 Walnut Ave,Irvine,CA,92604,--,33.689276,-117.7704477
+HeyTea,500 N Atlantic Blvd,Monterey Park,CA,91754,--,34.0686929,-118.1336587
+HeyTea,479 N Rodeo Dr,Beverly Hills,CA,90210,--,34.0705102,-118.4047162
+HeyTea,223 Newbury St,Boston,MA,02116,--,42.3500725,-71.0816142
+HeyTea,162 Harvard Ave,Boston,MA,02134,--,42.3515562,-71.131425
+HeyTea,910 John St,Seattle,WA,98109,--,47.6199895,-122.339502
+HeyTea,700 110th Ave NE,Bellevue,WA,98004,--,47.6164697,-122.1925263
+HeyTea,12925 El Camino Real,San Diego,CA,92130,--,32.9516484,-117.2330717
+HeyTea,1731 NJ-27,Edison,NJ,08817,--,40.5125542,-74.4079745
+HeyTea,5015 Westheimer Rd,Houston,TX,77056,--,29.7394353,-95.4629964
+HeyTea,1 American Dream Way,East Rutherford,NJ,07073,--,40.8086222,-74.0689331
+HeyTea,372 Barber Ln,Milpitas,CA,95035,--,37.4224848,-121.9166693
+HeyTea,3251 20th Ave,San Francisco,CA,94132,--,37.7277303,-122.4769749
+HeyTea,302 W El Camino Real,Sunnyvale,CA,94087,--,37.3682254,-122.0355835
+HeyTea,2855 Stevens Creek Blvd,Santa Clara,CA,95050,--,37.3267237,-121.9433972
+HeyTea,165 4th St,San Francisco,CA,94103,--,37.7839649,-122.4031672
+HeyTea,19469 Stevens Creek Blvd,Cupertino,CA,95014,--,37.3238225,-122.0105082
+HeyTea,1065 Brea Mall,Brea,CA,92821,--,33.9153422,-117.8864509
+HeyTea,5414 Walnut Ave Ste e,Irvine,CA,92604,--,33.6893266,-117.77029
+HeyTea,4545 La Jolla Village Dr Ste E5,San Diego,CA,92122,--,32.8717142,-117.2101827
+HeyTea,479 N Rodeo Dr Ste d,Beverly Hills,CA,90210,--,34.0705377,-118.4047291
+HeyTea,3738 S Figueroa St,Los Angeles,CA,90007,--,34.0170811,-118.2825032
+HeyTea,1190 Galleria Way,Glendale,CA,91210,--,34.143381,-118.258521
+HeyTea,101 E Valley Blvd Ste e,San Gabriel,CA,91776,--,34.0799965,-118.0993371
+HeyTea,17595 Harvard Ave #E,Irvine,CA,92614,--,33.6775767,-117.8328989
+HeyTea,9889 Bellaire Blvd Ste E217,Houston,TX,77036,--,29.7042755,-95.5530255
+HeyTea,1565 Broadway,New York,NY,10036,--,40.7593173,-73.9853989
+HeyTea,891 F Rockville Pike,Rockville,MD,20852,--,39.0743479,-77.1369549
+HeyTea,1961 Chain Bridge Rd F13L,Tysons,VA,22102,--,38.9170135,-77.2227938
+HeyTea,1001 Arch St,Philadelphia,PA,19107,--,39.953687,-75.156403
+HeyTea,126 East 86th St,New York,NY,10028,--,40.7794854,-73.9561419
+HeyTea,1 Garden State Plaza Pkwy,Paramus,NJ,07652,--,40.9181658,-74.0762757
+HeyTea,128 2nd Ave,New York,NY,10003,--,40.728279,-73.9874921
+HeyTea,106 Lafayette St,New York,NY,10013,--,40.7181257,-74.0010882
+HeyTea,38-02 Prince St,Flushing,NY,11354,--,40.7600253,-73.8328005
+HeyTea,10 Waverly Pl,New York,NY,10003,--,40.7297829,-73.9943746
+HeyTea,240 Grand St,New York,NY,10002,--,40.7134739,-73.9592154
+HeyTea,52 Willoughby St,Brooklyn,NY,11201,--,40.6920149,-73.9868132
+HeyTea,705 59th St,Brooklyn,NY,11220,--,40.6373891,-74.0108879
+HeyTea,2815 Broadway,New York,NY,10025,--,40.8034456,-73.9677257
+HeyTea,1245 Worcester St,Natick,MA,01760,--,42.301146,-71.384664
+HeyTea,180 Pleasant St,Malden,MA,02148,--,42.4270208,-71.0720814
+HeyTea,2234 S Wentworth Ave,Chicago,IL,60616,--,41.851875,-87.6322746
+Chi Cha San Chen,950 W Peachtree St NW Unit 265,Atlanta,GA,30309,--,33.7805594,-84.3880611
+Chi Cha San Chen,2709 Stoneridge Dr #102,Pleasanton,CA,94588,--,37.6962208,-121.8486553
+Chi Cha San Chen,3305 W Chandler Blvd Ste 1,Chandler,AZ,85226,--,33.3049749,-111.8984668
+Chi Cha San Chen,12715 Shoppes Ln,Fairfax,VA,22033,--,38.8606541,-77.386416
+Chi Cha San Chen,14644 Orchard Pkwy #1300,Westminster,CO,80023,--,39.9618133,-104.993418
+Chi Cha San Chen,1701 Lundy Ave #170,San Jose,CA,95131,--,37.3871087,-121.8876167
+Chi Cha San Chen,625 S Ardmore Ave,Los Angeles,CA,90005,--,34.0625085,-118.3016014
+Chi Cha San Chen,11301 W Olympic Blvd #119,Los Angeles,CA,90064,--,34.0383929,-118.4421933
+Chi Cha San Chen,4110 Edison Ave Ste 101,Chino,CA,91710,--,33.997789,-117.7139844
+Chi Cha San Chen,2150A S Archer Ave,Chicago,IL,60616,--,41.8536553,-87.6341257
+Chi Cha San Chen,43731 Boscell Rd,Fremont,CA,94538,--,37.5006094,-121.9745142
+Chi Cha San Chen,629 W Duarte Rd,Arcadia,CA,91007,--,34.126738,-118.0528276
+Chi Cha San Chen,309 Gellert Blvd D,Daly City,CA,94015,--,37.6680461,-122.4681515
+Chi Cha San Chen,2329 Cottman Ave Unit 72,Philadelphia,PA,19149,--,40.0472272,-75.0574879
+Chi Cha San Chen,400 Newbury St #300,Boston,MA,02215,--,42.3474857,-71.0880957
+Chi Cha San Chen,9750 Bellaire Blvd,Houston,TX,77036,--,29.7053152,-95.5525968
+Chi Cha San Chen,5410 W Spring Mountain Rd Ste 102,Las Vegas,NV,89146,--,36.1263544,-115.2149915
+Chi Cha San Chen,2400A Bancroft Way,Berkeley,CA,94704,--,37.8683082,-122.2612332
+Chi Cha San Chen,2225 Old Denton Rd Ste 135,Carrollton,TX,75006,--,32.9768745,-96.9110411
+Chi Cha San Chen,17480 Southcenter Pkwy,Tukwila,WA,98188,--,47.4458061,-122.2601586
+Chi Cha San Chen,30 W Main St,Alhambra,CA,91801,--,34.0945818,-118.1273368
+Chi Cha San Chen,3205 SW Cedar Hills Blvd #8,Beaverton,OR,97005,--,45.4960398,-122.8115298
+Chi Cha San Chen,1442 W 9000 S Hmart Unit # 102,West Jordan,UT,84088,--,40.5891827,-111.9327673
+Chi Cha San Chen,2174 Pleasant Hill Rd #105,Duluth,GA,30096,--,33.9600224,-84.1346725
+Chi Cha San Chen,20688 Stevens Creek Blvd,Cupertino,CA,95014,--,37.3225683,-122.0348057
+Chi Cha San Chen,932 Race Street,Philadelphia,PA,19107,--,39.9551912,-75.1555641
+Chi Cha San Chen,18912A E Gale Ave,Rowland Heights,CA,91748,--,33.9953748,-117.8901966
+Chi Cha San Chen,6501 Airport Blvd Ste 100,Austin,TX,78752,--,30.3259363,-97.7127865
+Chi Cha San Chen,308 105th Ave NE,Bellevue,WA,98004,--,47.6130361,-122.1998122
+Chi Cha San Chen,301 W Valley Blvd Suite #116,San Gabriel,CA,91776,--,34.0797363,-118.1039423
+ShareTea,468 Azalea Rd,Mobile,AL,36609,--,30.6623622,-88.1514903
+ShareTea,21001 N Tatum Blvd,Phoenix,AZ,85050,--,33.6766428,-111.9746059
+ShareTea,3700 San Pablo Ave Suite 2,Hercules,CA,94547,--,38.0121733,-122.2740508
+ShareTea,1151 Galleria Blvd No.1222,Roseville,CA,95678,--,38.7734303,-121.269432
+ShareTea,890 Renz Ln,Gilroy,CA,95020,--,37.0054963,-121.5520405
+ShareTea,2441 San Ramon Valley Blvd,San Ramon,CA,94583,--,37.774771,-121.9776591
+ShareTea,1850 Mount Diablo Street,Concord,CA,94520,--,37.9760519,-122.0334098
+ShareTea,3381 Cleveland Ave,Santa Rosa,CA,95403,--,38.4742549,-122.7322191
+ShareTea,699 Lewelling Blvd #264,San Leandro,CA,94579,--,37.6875111,-122.1361472
+ShareTea,3948 Washington Blvd,Fremont,CA,94538,--,37.5319259,-121.9579538
+ShareTea,967 Grand Ave,San Rafael,CA,94901,--,37.9716327,-122.519009
+ShareTea,135 4th St,San Francisco,CA,94103,--,37.7843318,-122.4033663
+ShareTea,461 Skymaster Dr,Fairfield,CA,94535,--,38.2706294,-121.9494374
+ShareTea,2855 Stevens Creek Blvd,Santa Clara,CA,95050,--,37.3267237,-121.9433972
+ShareTea,4705 Century Blvd,Pittsburg,CA,94565,--,38.0062542,-121.8355757
+ShareTea,2328 Telegraph Ave,Berkeley,CA,94704,--,37.8681962,-122.2591906
+ShareTea,153 Plaza Dr Ste 103,Vallejo,CA,94591,--,38.1348335,-122.2191354
+ShareTea,220 Main St,San Mateo,CA,94401,--,37.5663029,-122.3226355
+ShareTea,208 F St,Davis,CA,95616,--,38.5439189,-121.7398876
+ShareTea,1728 Hostetter Rd,San Jose,CA,95131,--,37.3875874,-121.8828547
+ShareTea,2401 Waterman Blvd Ste 1,Fairfield,CA,94534,--,38.2720448,-122.0528487
+ShareTea,10318 Trinity Pkwy,Stockton,CA,95219,--,38.0489793,-121.3733732
+ShareTea,78 Hillsdale Shopping Ctr,San Mateo,CA,94403,--,37.5378764,-122.300907
+ShareTea,11900 South Street #106,Cerritos,CA,90703,--,33.8579324,-118.0803959
+ShareTea,2445 E Chapman Ave,Fullerton,CA,92831,--,33.8755955,-117.8882133
+ShareTea,9827 Mira Mesa Blvd,San Diego,CA,92131,--,32.9165792,-117.1140796
+ShareTea,2210 Glendale Galleria Space S006,Glendale,CA,91210,--,34.1458697,-118.2576416
+ShareTea,6237 Pats Ranch Rd Suite C,Jurupa Valley,CA,91752,--,33.9746133,-117.544148
+ShareTea,7873 Monticello Ave,Rancho Cucamonga,CA,91739,--,34.1105131,-117.5355613
+ShareTea,27774 Newport Rd Ste 100,Menifee,CA,92584,--,33.6855831,-117.176679
+ShareTea,1702 N Bristol St Ste F,Santa Ana,CA,92706,--,33.7608,-117.8854323
+ShareTea,24305 Town Center Dr Suite#100,Valencia,CA,91355,--,34.4178209,-118.5610354
+ShareTea,55 E Duarte Rd Unit 104,Arcadia,CA,91006,--,34.1299914,-118.0289194
+ShareTea,27110 Eucalyptus Ave Ste E,Moreno Valley,CA,92555,--,33.9361239,-117.1883626
+ShareTea,1541 E 2nd St Ste 300,Beaumont,CA,92223,--,33.922563,-116.953061
+ShareTea,24208 Crenshaw Blvd,Lomita,CA,90505,--,33.8052766,-118.3275427
+ShareTea,4199 Campus Dr,Irvine,CA,92612,--,33.6506982,-117.8383359
+ShareTea,1055 Broxton Ave,Los Angeles,CA,90024,--,34.0613848,-118.4465431
+ShareTea,16051 Brookhurst St Ste F,Fountain Valley,CA,92708,--,33.7295831,-117.9550757
+ShareTea,15840 Soquel Canyon Pkwy Ste E,Chino Hills,CA,91708,--,33.9645946,-117.6927539
+ShareTea,27471 San Bernardino Ave Suite 100,Redlands,CA,92374,--,34.0742906,-117.20629
+ShareTea,2010 S Mooney Blvd Suite 103,Visalia,CA,93277,--,36.3126851,-119.3135538
+ShareTea,10920 Magnolia Ave Ste 103,Riverside,CA,92505,--,33.9050521,-117.4725646
+ShareTea,31837 Temecula Pkwy Suite 3,Temecula,CA,92592,--,33.4792838,-117.1014213
+ShareTea,9301 Tampa Ave #146,Northridge,CA,91324,--,34.2401139,-118.556578
+ShareTea,3940 Bristol St Unit 113,Santa Ana,CA,92704,--,33.6945647,-117.886188
+ShareTea,1707 Columbus St,Bakersfield,CA,93305,--,35.3966241,-118.9722832
+ShareTea,23572 El Toro Rd Ste C,Lake Forest,CA,92630,--,33.6200066,-117.7006643
+ShareTea,1301 West Rancho Vista Blvd Unit J,Palmdale,CA,93551,--,34.6035432,-118.1537134
+ShareTea,1508 S Riverside Ave Suite 103,Rialto,CA,92376,--,34.0739782,-117.3709594
+ShareTea,510 Woollomes Ave Ste #101,Delano,CA,93215,--,35.746002,-119.2492851
+ShareTea,8834 N Union Blvd,Colorado Springs,CO,80920,--,38.9596337,-104.7660523
+ShareTea,424 S Teller St,Lakewood,CO,80226,--,39.7087303,-105.0767708
+ShareTea,5684 W 88th Ave,Westminster,CO,80031,--,39.855167,-105.0601024
+ShareTea,5975 Roswell Rd Suite B-209,Sandy Springs,GA,30328,--,33.918603,-84.3784566
+ShareTea,350 N Milwaukee St Space 2035,Boise,ID,83704,--,43.6082543,-116.2787346
+ShareTea,3689 E Main St,St Charles,IL,60174,--,41.9205179,-88.2716225
+ShareTea,7166 Dempster St,Morton Grove,IL,60053,--,42.0414651,-87.8053489
+ShareTea,3333 Bardstown Rd,Louisville,KY,40218,--,38.206607,-85.6666752
+ShareTea,2860 Richmond Rd Suite 180,Lexington,KY,40509,--,38.0068703,-84.4535211
+ShareTea,3325 Severn Ave,Metairie,LA,70002,--,30.0096135,-90.1581485
+ShareTea,2434 Manhattan Blvd Suite 200,Harvey,LA,70058,--,29.8773948,-90.0503062
+ShareTea,310 S State St,Ann Arbor,MI,48104,--,42.2789329,-83.741135
+ShareTea,1900K Street Suite 6,Lincoln,NE,68510,--,40.8136634,-96.7025764
+ShareTea,4258 Spring Mountain Rd A105,Las Vegas,NV,89102,--,36.1267239,-115.1971695
+ShareTea,10300 W Charleston Blvd #11,Las Vegas,NV,89135,--,36.1605691,-115.3208852
+ShareTea,10420 S Decatur Blvd Suite 150,Las Vegas,NV,89141,--,36.0002054,-115.2065125
+ShareTea,5515 Camino Al Norte,North Las Vegas,NV,89031,--,36.2600196,-115.1560756
+ShareTea,55 S Valle Verde Dr Apt 225,Henderson,NV,89012,--,36.0253682,-115.0637434
+ShareTea,3250 N Tenaya Way Suite 106,Las Vegas,NV,89129,--,36.2198184,-115.2506061
+ShareTea,9606 Bailey Rd Suite C,Cornelius,NC,28031,--,35.45802,-80.86809
+ShareTea,4922 Trojan Dr Suite 170,Charlotte,NC,28278,--,35.1661114,-80.9684959
+ShareTea,2752 Festival Ln,Dublin,OH,43017,--,40.0933686,-83.0898515
+ShareTea,2723 N Classen Blvd Unit D,Oklahoma City,OK,73106,--,35.4972357,-97.5346097
+ShareTea,937 SW 25th St Suite B,Moore,OK,73160,--,35.3167621,-97.4936968
+ShareTea,119 Landings Dr #502,Mooresville,NC,28117,--,35.5271,-80.86749
+ShareTea,2725 SW Cedar Hills Blvd Unit 110,Beaverton,OR,97005,--,45.5004145,-122.8090479
+ShareTea,12000 SE 82nd Ave,Happy Valley,OR,97086,--,45.4379159,-122.5785567
+ShareTea,933 NE Orenco Station Pkwy,Hillsboro,OR,97124,--,45.530752,-122.915806
+ShareTea,16885 SW 65th Ave,Lake Oswego,OR,97035,--,45.397944,-122.7449641
+ShareTea,681 NW Division St,Gresham,OR,97030,--,45.5046484,-122.4388664
+ShareTea,600 Washington Ave Unit 5,Philadelphia,PA,19147,--,39.9345557,-75.1547403
+ShareTea,501 Limekiln Pike,Maple Glen,PA,19002,--,40.1788374,-75.1835148
+ShareTea,8949 Tehama Ridge Parkway,Fort Worth,TX,76177,--,32.9029121,-97.3235585
+ShareTea,3810 S Cooper St # 148,Arlington,TX,76015,--,32.6826416,-97.134267
+ShareTea,3141 E Broad St,Mansfield,TX,76063,--,32.5757514,-97.0887318
+ShareTea,1015 W University Ave,Georgetown,TX,78628,--,30.6300044,-97.6961914
+ShareTea,2200 W University Dr Ste 120,Denton,TX,76201,--,33.2302012,-97.1582779
+ShareTea,13350 Dallas Pkwy,Dallas,TX,75240,--,32.9302793,-96.8196922
+ShareTea,9351 Warren Parkway,Frisco,TX,75035,--,33.1084798,-96.8020181
+ShareTea,2601 Old Denton Road,Carrollton,TX,75007,--,32.9845616,-96.9105265
+ShareTea,1200 Chisholm Trail Suite 600,Euless,TX,76039,--,32.8751023,-97.1015794
+ShareTea,2675 Market Center Dr,Rockwall,TX,75032,--,32.8977596,-96.4643511
+ShareTea,3227 Hwy 6 Ste A,Sugar Land,TX,77478,--,29.5929338,-95.6050612
+ShareTea,3933 N Central Expy,Plano,TX,75023,--,33.0486694,-96.6995928
+ShareTea,3107 S I-35 Frontage Rd Ste 770,Round Rock,TX,78664,--,30.4775716,-97.6714354
+ShareTea,8880 Metropark Dr Suite 100,Shenandoah,TX,77385,--,30.1946961,-95.4507318
+ShareTea,3651 Weslayan St #100,Houston,TX,77046,--,29.7338556,-95.4409856
+ShareTea,13343 N Hwy 183 Suite 275,Austin,TX,78750,--,30.4446321,-97.7866318
+ShareTea,2416 Rice Blvd,Houston,TX,77005,--,29.7177032,-95.4157288
+ShareTea,1025 University Dr Suite 105,College Station,TX,77840,--,30.6240713,-96.3396662
+ShareTea,500 Baybrook Mall #8,Friendswood,TX,77546,--,29.5419439,-95.1486293
+ShareTea,17375 Tomball Pkwy #2B1,Houston,TX,77064,--,29.9546027,-95.5432107
+ShareTea,9742 Katy Fwy Ste 400,Houston,TX,77055,--,29.7862704,-95.5343438
+ShareTea,713 Meyerland Plz,Houston,TX,77096,--,29.6887457,-95.462075
+ShareTea,101 S Coit Rd Ste 403,Richardson,TX,75080,--,32.9501721,-96.7684922
+ShareTea,3460 S Redwood Rd #8,West Valley City,UT,84119,--,40.6976964,-111.9402789
+ShareTea,1770 Red Cliffs Dr 1165,St George,UT,84790,--,37.1165923,-113.5453213
+ShareTea,11211 Lee Highway F,Fairfax,VA,22030,--,38.8507413,-77.3334296
+ShareTea,13043 Worldgate Dr,Herndon,VA,20170,--,38.9575112,-77.4012282
+ShareTea,23609 Pacific Hwy S,Des Moines,WA,98198,--,47.3900598,-122.2962456
+ShareTea,7902 NE 6th Ave,Vancouver,WA,98665,--,45.6796653,-122.6674
+ShareTea,4502 S Steele St,Tacoma,WA,98409,--,47.2175722,-122.4673521
+ShareTea,1130 SE Everett Mall Way Suite B,Everett,WA,98208,--,47.9095799,-122.2169406
+ShareTea,18505 Alderwood Mall Pkwy Suite G,Lynnwood,WA,98037,--,47.8308021,-122.2679801
+ShareTea,17039 SE 272nd St Suite 118,Covington,WA,98042,--,47.3568455,-122.1139632
+ShareTea,8825 34th Ave NE Suite H,Tulalip,WA,98271,--,48.076991,-122.1863098
+ShareTea,7325 166th Ave NE F130,Redmond,WA,98052,--,47.6699603,-122.1189951
+ShareTea,23330 Grand Cir Blvd,Katy,TX,77450,--,29.78896,-95.7729808
+ShareTea,4740 42nd Ave SW Suite 27,Seattle,WA,98116,--,47.5600815,-122.3844764
+ShareTea,128 S Ely St,Kennewick,WA,99336,--,46.208054,-119.159512
+ShareTea,322 36th St Suite 322,Bellingham,WA,98225,--,48.7313466,-122.4730392
+ShareTea,519 H St NW,Washington,DC,20001,--,38.8999792,-77.0196175
+ShareTea,2401 W Main St Ste 100,Norman,OK,73069,--,35.21897,-97.4771462
+ShareTea,2612 Wolflin Ave,Amarillo,TX,79109,--,35.193524,-101.8645997
+ShareTea,123 Westerville Plaza,Westerville,OH,43081,--,40.1090748,-82.9279704
+ShareTea,4018 Pacific Ave SE Suite A,Lacey,WA,98503,--,47.0402767,-122.8348805
+ShareTea,911 North 10th Pl # B,Renton,WA,98057,--,47.4982957,-122.2031076
+ShareTea,4808 Waterview Town Center Dr Ste 400,Richmond,TX,77407,--,29.6599772,-95.7165079
+ShareTea,651 S King St,Seattle,WA,98104,--,47.5981871,-122.3247354
+ShareTea,8027 E Peachtree Ln,Wichita,KS,67207,--,37.6803462,-97.2436495
+ShareTea,18931 Bothell Way NE #1,Bothell,WA,98011,--,47.7657441,-122.2113002
+ShareTea,8960 J.M. Keynes Dr Suite 600,Charlotte,NC,28262,--,35.3104425,-80.7477586

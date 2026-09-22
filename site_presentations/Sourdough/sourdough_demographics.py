@@ -2,14 +2,14 @@ import os
 import math
 import requests
 import pandas as pd
-from functools import lru_cache
+from io import BytesIO
 from geopy.distance import geodesic
-
+ 
 CENSUS_KEY = "0be3a0e2fd8c0e5bce91c7ecc632787c6d5449e5"
 ACS_YEAR = 2024
 LODES_YEAR = 2022
 LODES_FALLBACK_YEAR = 2019
-
+ 
 def geocode_address(address:str):
     url = "https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress"
     params = {
@@ -36,14 +36,31 @@ def geocode_address(address:str):
         "tract": geos["TRACT"],
         "matched_address": m["matchedAddress"]
     }
-
+ 
+def reverse_geocode_coords(lat: float, lon: float):
+    url = "https://geocoding.geo.census.gov/geocoder/geographies/coordinates"
+    params = {
+        "x": lon,
+        "y": lat,
+        "benchmark": "Public_AR_Current",
+        "vintage": "Current_Current",
+        "format": "json",
+    }
+    response = requests.get(url, params=params, timeout=30)
+    r = response.json()
+    geos = r["result"]["geographies"]["2020 Census Blocks"][0]
+    return {
+        "state_fips": geos["STATE"],
+        "county_fips": geos["COUNTY"],
+    }
+ 
 def _bbox(lat,lon,radius_miles):
     #bounding box for a radius in miles around lat/lon
     #69 miles per degree of latitude/longitude
     dlat = radius_miles / 69.0
     dlon = radius_miles / (69.0 * math.cos(math.radians(lat)))
     return lon - dlon, lat - dlat, lon + dlon, lat + dlat
-
+ 
 def block_groups_in_radius(lat,lon,radius_miles):
     #query through Tigerweb, this helps in the creation of the 5 mi rings
     minx,miny,maxx,maxy = _bbox(lat,lon,radius_miles)
@@ -80,7 +97,7 @@ def block_groups_in_radius(lat,lon,radius_miles):
                 "dist_mi": dist,
             })
     return pd.DataFrame(rows)
-
+ 
 def fetch_wfh_pct(state_fips, county_fips):
     base = f"https://api.census.gov/data/{ACS_YEAR}/acs/acs5"
     params = {"get": "B08301_001E,B08301_021E,NAME", "for": f"county:{county_fips}", "in": f"state:{state_fips}", "key": CENSUS_KEY}
@@ -94,7 +111,7 @@ def fetch_wfh_pct(state_fips, county_fips):
     if total <= 0:
         return None
     return round((wfh/total)*100,1)
-
+ 
 #pull data from ACS
 ACS_VARS = {
     #pop
@@ -126,11 +143,11 @@ ACS_VARS = {
     "C24010_066E": "occ_natres_female",
     "C24010_034E": "occ_prod_male",
     "C24010_070E": "occ_prod_female",
-
+ 
     "B25003_001E": "occupied_units",
     "B25003_003E": "renter_units"
 }
-
+ 
 def fetch_acs_for_state(state_fips,county_fips_list):
     #pulls acs data for all block groups in counties of a state. One API call per state.
     if not CENSUS_KEY:
@@ -155,7 +172,8 @@ def fetch_acs_for_state(state_fips,county_fips_list):
     for col in ACS_VARS.values():
         df[col] = pd.to_numeric(df[col],errors="coerce")
     return df
-
+ 
+ 
 def fetch_renter_pct(state_fips, county_fips):
     base = f"https://api.census.gov/data/{ACS_YEAR}/acs/acs5"
     params = {
@@ -174,17 +192,51 @@ def fetch_renter_pct(state_fips, county_fips):
     if total <= 0:
         return None
     return round((renter/total)*100,1)
-
+ 
 #Employment data
-@lru_cache(maxsize=8)
-def fetch_lodes_wac(state_abbr:str):
+#
+# NOTE: this used to be decorated with @lru_cache(maxsize=8). lru_cache
+# memoizes whatever the function returns, with no idea whether that return
+# value is a real result or a "gave up, here's an empty frame" fallback --
+# so the first time a LODES download for a given state hiccuped (slow
+# response, transient network blip, momentary Census-server issue), the
+# empty DataFrame got cached in memory *forever*, for the rest of the
+# server process's life. Every request after that, for any address in that
+# state, silently got 0 jobs/employment data -- which is why the long-running
+# API server could get consistently wrong numbers for a state while a
+# one-off `python hb_site_report.py ...` run (fresh process, empty cache
+# every time) usually looked fine. Caching is still valuable (LODES files
+# are large and slow to refetch), so we keep a manual cache below, but it
+# only stores *successful* fetches -- a failed fetch is retried on the next
+# call instead of being locked in.
+_LODES_CACHE: dict[str, pd.DataFrame] = {}
+_LODES_CACHE_ORDER: list[str] = []
+_LODES_CACHE_MAXSIZE = 8
+ 
+ 
+def fetch_lodes_wac(state_abbr: str):
     state_abbr = state_abbr.lower()
+    if state_abbr in _LODES_CACHE:
+        return _LODES_CACHE[state_abbr]
+ 
     blue_cols = ["CNS01","CNS02","CNS04","CNS05"]
     white_cols = ["CNS03","CNS06","CNS07","CNS08","CNS09","CNS10","CNS11","CNS12","CNS13","CNS14","CNS15","CNS16","CNS17","CNS18","CNS19","CNS20"]
+    result = None
     for year in (LODES_YEAR, LODES_FALLBACK_YEAR):
         url = f"https://lehd.ces.census.gov/data/lodes/LODES8/{state_abbr}/wac/{state_abbr}_wac_S000_JT00_{year}.csv.gz"
         try:
-            df = pd.read_csv(url, compression="gzip", dtype={"w_geocode": str})
+            # Fetched via requests (like every other call in this file) rather
+            # than handing the bare URL to pd.read_csv. requests bundles its
+            # own trusted CA certificates (certifi) and doesn't depend on the
+            # host machine's certificate store; pd.read_csv on a plain URL
+            # falls back to urllib, which DOES depend on that store -- so on
+            # a machine where it's misconfigured (a fresh venv, a reinstalled
+            # Python, an unconfigured macOS Python), this was the only call
+            # in the whole module that could fail with a CERTIFICATE_VERIFY_
+            # FAILED error while every other Census call kept working fine.
+            resp = requests.get(url, timeout=60)
+            resp.raise_for_status()
+            df = pd.read_csv(BytesIO(resp.content), compression="gzip", dtype={"w_geocode": str})
             if year != LODES_YEAR:
                 print(f"  Note: {state_abbr.upper()} LODES not available for {LODES_YEAR}, using {year} instead")
             df["bg_geoid"] = df["w_geocode"].str[:12]
@@ -192,26 +244,39 @@ def fetch_lodes_wac(state_abbr:str):
             df["white_jobs"] = df[white_cols].sum(axis=1)
             agg = df.groupby("bg_geoid", as_index=False)[["C000", "blue_jobs", "white_jobs"]].sum()
             agg = agg.rename(columns={"C000": "jobs", "bg_geoid": "geoid"})
-            return agg
+            result = agg
+            break
         except Exception as e:
+            print(f"  Note: LODES fetch for {state_abbr.upper()} {year} failed ({e})")
             if year == LODES_FALLBACK_YEAR:
-                print(f"  WARNING: No LODES data available for {state_abbr.upper()} in any year. Returning empty employment data.")
+                print(f"  WARNING: No LODES data available for {state_abbr.upper()} in any year this call. "
+                      f"Returning empty employment data for THIS request -- will retry on the next one "
+                      f"instead of caching this failure.")
                 return pd.DataFrame(columns=["geoid", "jobs", "blue_jobs", "white_jobs"])
-            continue  # try fallback year
-
+            continue
+ 
+    # Only successful fetches get cached, and forever-poisoning is avoided
+    # with a simple bounded FIFO eviction (mirrors lru_cache's maxsize).
+    _LODES_CACHE[state_abbr] = result
+    _LODES_CACHE_ORDER.append(state_abbr)
+    if len(_LODES_CACHE_ORDER) > _LODES_CACHE_MAXSIZE:
+        oldest = _LODES_CACHE_ORDER.pop(0)
+        _LODES_CACHE.pop(oldest, None)
+    return result
+ 
 STATE_FIPS_TO_ABBR = {"01": "al", "02": "ak", "04":"az", "05": "ar", "06": "ca", "08": "co", "09": "ct", "10": "de", "11": "dc", "12": "fl", "13": "ga", "15": "hi",
                       "16": "id", "17": "il", "18": "in", "19": "ia", "20": "ks", "21": "ky", "22": "la", "23": "me", "24": "md", "25": "ma", "26": "mi",
                       "27": "mn", "28": "ms", "29": "mo", "30": "mt", "31": "ne", "32": "nv", "33": "nh", "34": "nj", "35": "nm", "36": "ny",
                       "37": "nc", "38": "nd", "39": "oh", "40": "ok", "41": "or", "42": "pa", "44": "ri", "45": "sc", "46": "sd", "47": "tn", "48": "tx", "49": "ut",
                       "50": "vt", "51": "va", "53": "wa", "54": "wv", "55": "wi", "56": "wy"}
-
-
+ 
+ 
 #calculate spending amounts from income
 DINING_A = 5.6083
 DINING_B = 0.5764
 DISC_A = 2.7516
 DISC_B = 0.7225
-
+ 
 STATE_RPP_2023 = {
     "AL": 88.5, "AK": 105.4, "AZ": 102.0, "AR": 86.5, "CA": 112.6, "CO": 103.0,
     "CT": 107.4, "DE": 100.7, "DC": 110.8, "FL": 100.7, "GA": 95.5, "HI": 108.6,
@@ -239,7 +304,7 @@ def state_rpp_multiplier(state_fips):
     abbr = FIPS_TO_STATE_ABBR.get(state_fips)
     rpp = STATE_RPP_2023.get(abbr,100.0)
     return (rpp/ 100.0) ** RPP_ELASTICITY
-
+ 
 def estimate_dining_spending(median_hh_income, state_fips=None):
     if pd.isna(median_hh_income) or median_hh_income <= 0 or pd.isna(median_hh_income):
         return None
@@ -248,8 +313,8 @@ def estimate_dining_spending(median_hh_income, state_fips=None):
     if state_fips:
         base *= state_rpp_multiplier(state_fips)
     return round(base,0)
-
-
+ 
+ 
 def estimate_discretionary_spending(median_hh_income, state_fips=None):
     #(entertainment+apparell+dining+personal care)
     if pd.isna(median_hh_income) or median_hh_income <= 0 or pd.isna(median_hh_income):
@@ -258,45 +323,45 @@ def estimate_discretionary_spending(median_hh_income, state_fips=None):
     if state_fips:
         base *= state_rpp_multiplier(state_fips)
     return round(base,0)
-
+ 
 def aggregate_ring(bg_df,acs_df,lodes_df,state_fips=None, radius = 3):
     df=bg_df.merge(acs_df,on="geoid",how="left")
     df=df.merge(lodes_df,on="geoid",how="left")
-    df["jobs"] = df["jobs"].fillna(0).infer_objects(copy=False)
+    df["jobs"] = df["jobs"].fillna(0)
     
     pop =df["pop_total"].sum()
     households = df["households_total"].sum()
     jobs = df["jobs"].sum()
-
+ 
     valid_age = df[(df["median_age"] > 0) & (df["median_age"] < 120)]
     age_pop = valid_age["pop_total"].sum()
     w_age = float((valid_age["median_age"] * valid_age["pop_total"]).sum() / age_pop) if age_pop else None
     valid_inc = df[(df["median_hh_income"] >0 )& (df["median_hh_income"] < 1_000_000)]
     inc_hh = valid_inc["households_total"].sum()
     w_inc = float((valid_inc["median_hh_income"] * valid_inc["households_total"]).sum() / inc_hh) * 0.89 if inc_hh else None
-
+ 
     pct = lambda col: (df[col].sum()/pop * 100 if pop else None)
     white_pct = pct("race_white")
     black_pct = pct("race_black")
     asian_pct = pct("race_asian")
     hispanic_pct = pct("hispanic")
-
+ 
     
-    df["white_jobs"] = df["white_jobs"].fillna(0).infer_objects(copy=False)
-    df["blue_jobs"] = df["blue_jobs"].fillna(0).infer_objects(copy=False)
+    df["white_jobs"] = df["white_jobs"].fillna(0)
+    df["blue_jobs"] = df["blue_jobs"].fillna(0)
     white_jobs_total = df["white_jobs"].sum()
     blue_jobs_total = df["blue_jobs"].sum()
     wb_total = white_jobs_total + blue_jobs_total
     wc_pct = (white_jobs_total / wb_total * 100) if wb_total else None
     bc_pct = (blue_jobs_total / wb_total * 100) if wb_total else None
-
+ 
     workers_per_job = 0.88
     daytime_workers = jobs * workers_per_job
     daytime_pop = int(daytime_workers + max(pop-wb_total,0))
-
+ 
     dining = estimate_dining_spending(w_inc,state_fips = state_fips)
     disc = estimate_discretionary_spending(w_inc,state_fips = state_fips)
-
+ 
     return {
         "population": int(pop) if pop else 0,
         "daytime_population": daytime_pop,
@@ -313,22 +378,7 @@ def aggregate_ring(bg_df,acs_df,lodes_df,state_fips=None, radius = 3):
         "hh_dining_spend": int(dining) if dining else None,
         "n_block_groups": len(df),
     }
-def reverse_geocode_coords(lat: float, lon: float):
-    url = "https://geocoding.geo.census.gov/geocoder/geographies/coordinates"
-    params = {
-        "x": lon,
-        "y": lat,
-        "benchmark": "Public_AR_Current",
-        "vintage": "Current_Current",
-        "format": "json",
-    }
-    response = requests.get(url, params=params, timeout=30)
-    r = response.json()
-    geos = r["result"]["geographies"]["2020 Census Blocks"][0]
-    return {
-        "state_fips": geos["STATE"],
-        "county_fips": geos["COUNTY"],
-    }
+ 
 #now for 1/3/5 mi rings, we can pull the block groups in the radius, then aggregate for block groups
 def profile_address(address:str):
     geo = geocode_address(address)
@@ -337,10 +387,11 @@ def profile_address(address:str):
     renter_pct = fetch_renter_pct(geo["state_fips"],geo["county_fips"])
     bg5 = block_groups_in_radius(lat,lon,5)
     bg3 = bg5[bg5["dist_mi"] <= 3].copy()
+    bg2 = bg5[bg5["dist_mi"] <= 2].copy()
     bg1 = bg5[bg5["dist_mi"] <= 1].copy()
-
+ 
     state_county = bg5.groupby("state")["county"].unique().to_dict()
-
+ 
     acs_frames = []
     lodes_frames = []
     for state, counties in state_county.items():
@@ -350,7 +401,7 @@ def profile_address(address:str):
             lodes_frames.append(fetch_lodes_wac(abbr))
     acs_df = pd.concat(acs_frames,ignore_index=True)
     lodes_df = pd.concat(lodes_frames,ignore_index=True) if lodes_frames else pd.DataFrame(columns=["geoid","jobs"])
-
+ 
     return {
         "address": geo["matched_address"],
         "lat": lat,
@@ -358,46 +409,50 @@ def profile_address(address:str):
         "renter_pct": renter_pct,
         "wfh_pct": wfh_pct,
         "ring_1mi": aggregate_ring(bg1,acs_df,lodes_df,state_fips=geo["state_fips"], radius = 1),
+        "ring_2mi": aggregate_ring(bg2,acs_df,lodes_df,state_fips=geo["state_fips"], radius = 2),
         "ring_3mi": aggregate_ring(bg3,acs_df,lodes_df,state_fips=geo["state_fips"], radius = 3),
         "ring_5mi": aggregate_ring(bg5,acs_df,lodes_df,state_fips=geo["state_fips"], radius = 5),
     }
-def profile_from_coords(lat:float,lon:float, state_fips:str,county_fips: str) -> dict:
-    wfh_pct = fetch_wfh_pct(state_fips,county_fips)
-    renter_pct = fetch_renter_pct(state_fips,county_fips)
-
-    bg5 = block_groups_in_radius(lat,lon,5)
+ 
+def profile_from_coords(lat: float, lon: float, state_fips: str, county_fips: str) -> dict:
+    wfh_pct = fetch_wfh_pct(state_fips, county_fips)
+    renter_pct = fetch_renter_pct(state_fips, county_fips)
+ 
+    bg5 = block_groups_in_radius(lat, lon, 5)
     bg3 = bg5[bg5["dist_mi"] <= 3].copy()
+    bg2 = bg5[bg5["dist_mi"] <= 2].copy()
     bg1 = bg5[bg5["dist_mi"] <= 1].copy()
-
+ 
     state_county = bg5.groupby("state")["county"].unique().to_dict()
-
+ 
     acs_frames = []
     lodes_frames = []
-    for state,counties in state_county.items():
-        acs_frames.append(fetch_acs_for_state(state,list(counties)))
+    for state, counties in state_county.items():
+        acs_frames.append(fetch_acs_for_state(state, list(counties)))
         abbr = STATE_FIPS_TO_ABBR.get(state)
         if abbr:
             lodes_frames.append(fetch_lodes_wac(abbr))
-    acs_df = pd.concat(acs_frames,ignore_index=True)
+    acs_df = pd.concat(acs_frames, ignore_index=True)
     lodes_df = (pd.concat(lodes_frames, ignore_index=True)
                 if lodes_frames
-                else pd.DataFrame(columns=["geoid","jobs","blue_jobs","white_jobs"]))
+                else pd.DataFrame(columns=["geoid", "jobs", "blue_jobs", "white_jobs"]))
+ 
     return {
-        "address": f"{lat:.4f}, {lon:.4f}",
+        "address": f"{lat:.6f}, {lon:.6f}",
         "lat": lat,
         "lon": lon,
         "renter_pct": renter_pct,
         "wfh_pct": wfh_pct,
-        "ring_1mi": aggregate_ring(bg1,acs_df,lodes_df,state_fips=state_fips,radius=1),
-        "ring_3mi": aggregate_ring(bg3,acs_df,lodes_df,state_fips=state_fips,radius=3),
-        "ring_5mi": aggregate_ring(bg5,acs_df,lodes_df,state_fips=state_fips,radius=5)
+        "ring_1mi": aggregate_ring(bg1, acs_df, lodes_df, state_fips=state_fips, radius=1),
+        "ring_2mi": aggregate_ring(bg2, acs_df, lodes_df, state_fips=state_fips, radius=2),
+        "ring_3mi": aggregate_ring(bg3, acs_df, lodes_df, state_fips=state_fips, radius=3),
+        "ring_5mi": aggregate_ring(bg5, acs_df, lodes_df, state_fips=state_fips, radius=5),
     }
-
-
+ 
 if __name__ == "__main__":
     import json, sys
     arg = sys.argv[1] if len(sys.argv) > 1 else "1600 Pennsylvania Ave NW, Washington, DC 20500"
-
+ 
     parts = [p.strip() for p in arg.split(",")]
     is_coords = False
     if len(parts) == 2:
@@ -406,11 +461,11 @@ if __name__ == "__main__":
             is_coords = True
         except ValueError:
             is_coords = False
-
+ 
     if is_coords:
         geo = reverse_geocode_coords(lat, lon)
         result = profile_from_coords(lat, lon, geo["state_fips"], geo["county_fips"])
     else:
         result = profile_address(arg)
-
+ 
     print(json.dumps(result, indent=2))

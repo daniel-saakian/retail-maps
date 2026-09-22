@@ -1,0 +1,456 @@
+brand,address,city,state,zip,sales,lat,lon
+nekter,1131 S Plaza Way,Flagstaff,AZ,86001,"$1,439,367.79",35.1898146,-111.6633011
+nekter,27511 San Bernardino Ave Ste 220,Redlands,CA,92374,"$1,435,256.27",34.0753874,-117.2052181
+nekter,2730 W Dove Valley Rd Ste 110,Phoenix,AZ,85085,"$1,415,787.22",33.7843141,-112.1182982
+nekter,10798 Foothill Blvd,Rancho Cucamonga,CA,91730,"$1,257,150.32",34.1068928,-117.5690818
+nekter,1040 Fowler Ave,Bozeman,MT,59718,"$1,201,160.63",45.6689689,-111.0823031
+nekter,324 Southdale Ctr,Edina,MN,55435,"$1,194,160.63",44.880298,-93.3240084
+nekter,5225 Canyon Crest Dr Ste 7B,Riverside,CA,92507,"$1,186,095.85",33.9556844,-117.3303264
+nekter,24870 N Lake Pleasant Pkwy Ste C-104,Peoria,AZ,85383,"$1,140,515.39",33.7096021,-112.272944
+nekter,116 E University Dr,Tempe,AZ,85281,"$1,121,251.53",33.4221833,-111.9368907
+nekter,3454 Arlington Ave,Riverside,CA,92506,"$1,107,558.20",33.946071,-117.3869939
+nekter,113 Los Altos Pkwy Ste 101,Sparks,NV,89436,"$1,063,842.89",39.582563,-119.7409526
+nekter,12648 Limonite Ave,Eastvale,CA,92880,"$1,061,126.50",33.9740725,-117.5596417
+nekter,44360 W Edison Rd Ste 140,Maricopa,AZ,85138,"$1,051,300.73",33.0657042,-112.0454316
+nekter,2937 El Camino Real # B,Tustin,CA,92782,"$1,038,625.11",33.7246679,-117.7932462
+nekter,100 E Camelback Rd Ste 196,Phoenix,AZ,85012,"$1,023,812.47",33.5097277,-112.0721045
+nekter,19763 W Rinaldi St,Los Angeles,CA,91326,"$985,777.33",34.2751411,-118.5644552
+nekter,1410 E Roseville Pkwy Ste 110,Roseville,CA,95661,"$950,397.89",38.7613178,-121.2500657
+nekter,32371 Golden Lantern,Laguna Niguel,CA,92677,"$948,799.61",33.492467,-117.6976518
+nekter,3260 S College Ave Ste 130,Fort Collins,CO,80525,"$942,346.97",40.5428526,-105.0765007
+nekter,133 S Las Posas Rd,San Marcos,CA,92078,"$902,944.22",33.1420656,-117.1910843
+nekter,305 SE Chkalov Dr,Vancouver,WA,98683,"$894,476.83",45.6197404,-122.5544601
+nekter,1709 N Dysart Rd,Avondale,AZ,85392,"$893,960.12",33.4665577,-112.3399665
+nekter,3900 Bel Aire Plz,Napa,CA,94558,"$891,437.02",38.323836,-122.307568
+nekter,24371 Magic Mountain Pkwy,Valencia,CA,91355,"$889,578.57",34.4196053,-118.5608644
+nekter,7710 NE 5th Ave Ste 118,Vancouver,WA,98665,"$888,675.54",45.678234,-122.6674744
+nekter,22361 Antonio Pkwy Ste E120,Rancho Santa Margarita,CA,92688,"$884,205.98",33.6381563,-117.5905798
+nekter,7450 Elk Grove Blvd Ste 120,Elk Grove,CA,95757,"$877,885.80",38.4070927,-121.4170286
+nekter,23612 Rockfield Blvd Ste B,Lake Forest,CA,92630,"$864,440.80",33.6302134,-117.7183716
+nekter,2500 E Orchard Rd,Greenwood Village,CO,80121,"$862,550.84",39.6094785,-104.9582794
+nekter,5800 Nave Dr,Novato,CA,94949,"$852,971.03",38.0635948,-122.5333084
+nekter,7601 N MacArthur Blvd,Irving,TX,95063,"$849,308.80",32.9098892,-96.9594781
+nekter,2045 E Camelback Rd,Phoenix,AZ,85016,"$846,337.65",33.5081909,-112.0371251
+nekter,5866 S Wadsworth Blvd,Littleton,CO,80123,"$846,062.90",39.6101686,-105.090294
+nekter,5694 Mission Center Rd Ste 604,San Diego,CA,92108,"$827,240.58",32.7761701,-117.1549696
+nekter,2004 Ximeno Ave,Long Beach,CA,90815,"$826,549.34",33.7919484,-118.1385319
+nekter,15855 Soquel Canyon Pkwy,Chino Hills,CA,91709,"$816,281.48",33.9639176,-117.6920665
+nekter,17923 MacArthur Blvd,Irvine,CA,92614,"$803,493.94",33.686995,-117.8558
+nekter,27726 Santa Margarita Pkwy,Mission Viejo,CA,92691,"$789,365.02",33.6518458,-117.647139
+nekter,25672 Crown Valley Pkwy,Ladera Ranch,CA,92694,"$781,995.13",33.5651639,-117.6316105
+nekter,127 N El Camino Real,Encinitas,CA,92024,"$766,682.86",33.048154,-117.2575534
+nekter,25426 Crenshaw Blvd,Torrance,CA,90505,"$764,510.11",33.7921701,-118.3322116
+nekter,1085 W Queen Creek Rd Ste 8,Chandler,AZ,85248,"$742,922.77",33.2610857,-111.8603286
+nekter,1508 S Riverside Ave Ste 105,Rialto,CA,92376,"$726,858.37",34.0738995,-117.3709442
+nekter,3959 Portola Pkwy,Irvine,CA,92602,"$724,308.17",33.7334262,-117.7596569
+nekter,5355 E Carefree Hwy,Cave Creek,AZ,85331,"$720,969.31",33.7981845,-111.9660358
+nekter,26731 Aliso Creek Rd,Aliso Viejo,CA,92656,"$720,056.59",33.5751783,-117.7264123
+nekter,2832 N Power Rd,Mesa,AZ,85215,"$716,948.86",33.4671636,-111.684521
+nekter,15425 N Scottsdale Rd,Scottsdale,AZ,85254,"$705,577.95",33.626388,-111.9245581
+nekter,40695 Winchester Rd,Temecula,CA,92591,"$704,599.10",33.5288016,-117.1554764
+nekter,3013 W Agua Fria Fwy,Phoenix,AZ,85027,"$698,351.81",33.6711241,-112.1218108
+nekter,1360 S Beach Blvd Ste C,La Habra,CA,90631,"$696,341.05",33.9154045,-117.9685805
+nekter,305 W FM 1382 Ste 611,Cedar Hill,TX,75104,"$691,784.27",32.6025345,-96.9424264
+nekter,441 Highway 96 W,Shoreview,MN,55126,"$691,783.69",45.0811402,-93.1195503
+nekter,700 Colorado Blvd,Denver,CO,80206,"$682,964.26",39.727673,-104.9409771
+nekter,5005 W 119th St # 28,Overland Park,KS,66209,"$681,134.73",38.9117558,-94.6428758
+nekter,42250 Jackson St,Indio,CA,92203,"$680,677.20",33.7403295,-116.2160646
+nekter,3480 Marron Rd Ste 3B-102,Oceanside,CA,92056,"$680,417.09",33.1792868,-117.2950897
+nekter,410 W Southlake Blvd,Southlake,TX,76092,"$679,050.25",32.9416378,-97.1558939
+nekter,6137 N Scottsdale Rd,Scottsdale,AZ,85250,"$672,458.21",33.5266614,-111.9246289
+nekter,824 Shiloh Crossing Blvd Ste 2,Billings,MT,59102,"$670,842.41",45.754793,-108.616075
+nekter,5810 Long Prairie Rd Ste 800,Flower Mount,TX,75028,"$670,764.53",33.0656486,-97.0794039
+nekter,403 N Pacific Coast Hwy Ste 100,Redondo Beach,CA,90277,"$653,184.12",33.8470113,-118.3889651
+nekter,9915 Barker Cypress Rd Ste 165,Cypress,TX,77433,"$651,001.36",29.9214262,-95.6884741
+nekter,6793 Quail Hill Pkwy,Irvine,CA,92603,"$649,775.57",33.6541504,-117.7782228
+nekter,4747 Research Forest Dr Ste 185,The Woodlands,TX,77381,"$647,840.58",30.1859067,-95.4904389
+nekter,35 W Warner Rd,Gilbert,AZ,85296,"$635,563.58",33.3352051,-111.7904945
+nekter,900 E Bidwell St Ste A400,Folsom,CA,95630,"$627,316.85",38.670864,-121.156747
+nekter,3505 E Chapman Ave Ste J,Orange,CA,92869,"$625,665.92",33.788775,-117.8162214
+nekter,3440 E Baseline Rd,Mesa,AZ,85204,"$622,601.98",33.3796488,-111.7559061
+nekter,1050 20th St Ste 120,Sacramento,CA,95811,"$613,313.18",38.5760933,-121.4804547
+nekter,4859 Meadows Rd,Lake Oswego,OR,97035,"$607,234.87",45.41753,-122.7257265
+nekter,7212 S Lyncrest Pl,Sioux Falls,SD,57108,"$602,827.27",43.4790226,-96.7278138
+nekter,3076 E Chandler Heights Rd,Gilbert,AZ,85298,"$597,450.48",33.2343405,-111.7231686
+nekter,6450 N Desert Blvd Ste B105,El Paso,TX,79912,"$596,806.48",31.8854428,-106.5799238
+nekter,1804 S Signal Butte Rd Ste 104,Mesa,AZ,85209,"$585,181.41",33.382531,-111.6003524
+nekter,8934 S Broadway Ave Ste 402,Tyler,TX,75703,"$585,099.90",32.2496881,-95.3064962
+nekter,21001 N Tatum Blvd,Phoenix,AZ,85050,"$582,558.44",33.6766428,-111.9746059
+nekter,20553 N Hayden Rd,Scottsdale,AZ,85255,"$571,684.25",33.6722298,-111.9056168
+nekter,33946 Yuacpia Blvd Ste A,Yucapia,CA,92399,"$570,156.52",34.0343627,-117.0634757
+nekter,1034 W Gladstone St,San Dimas,CA,91773,"$568,602.47",34.1133412,-117.8264033
+nekter,11604 Amargosa Rd Ste 2,Victorville,CA,92392,"$564,728.71",34.4627169,-117.3531962
+nekter,2647 Gateway Rd,Carlsbad,CA,92009,"$557,209.22",33.126622,-117.2538073
+nekter,9920 Gaston Rd,Katy,TX,77494,"$556,819.74",29.7365856,-95.8131525
+nekter,73120 Dinah Shore Dr,Palm Desert,CA,92211,"$553,775.91",33.8024744,-116.3876114
+nekter,5130 W Baseline Rd Ste 112,Laveen,AZ,85339,"$548,308.83",33.3793059,-112.1692215
+nekter,125 S Hough St,Barrington,IL,60010,"$544,516.28",42.1534652,-88.13583
+nekter,18165 US Highway 18 Ste 2,Apple Valley,CA,92307,"$544,135.70",34.5238079,-117.2170619
+nekter,1338 S Halsted St Spc 12,Chicago,IL,60607,"$533,347.74",41.8644148,-87.6470727
+nekter,118 W Foothill Blvd Ste C,Azusa,CA,91702,"$528,724.43",34.1331675,-117.9079423
+nekter,8403 Pickwick Ln,Dallas,TX,75225,"$527,450.40",32.8647733,-96.802206
+nekter,5362 Kingston Pike,Knoxville,TN,37919,"$522,268.60",35.9364645,-83.990788
+nekter,1907 E Williams Field Rd,Gilbert,AZ,85295,"$518,498.52",33.3061417,-111.7489628
+nekter,19116 W Catawba Ave,Cornelius,NC,28031,"$518,303.49",35.4739424,-80.8910785
+nekter,2001 McHenry Ave Ste N,Modesto,CA,95350,"$502,857.52",37.6710028,-120.9957308
+nekter,771 Town Cetner Dr,Oxnard,CA,93036,"$502,125.15",34.2419472,-119.1817115
+nekter,20355 Yorba Linda Blvd,Yorba Linda,CA,92886,"$501,284.51",33.8912269,-117.7762073
+nekter,6258 Irvine Blvd,Irvine,CA,92860,"$499,376.62",33.6974563,-117.7432783
+nekter,6712 Snider Plz,Dallas,TX,75205,"$498,105.36",32.8479657,-96.7875671
+nekter,11836 Whittier Blvd Ste E,Whittier,CA,90601,"$485,139.49",33.9782758,-118.0496777
+nekter,1775 N 99th Ave Ste 150,Phoenix,AZ,85037,"$481,537.22",33.4661928,-112.2706997
+nekter,7101 Yorktown Ave Ste 105,Huntington Beach,CA,92648,"$477,400.23",33.6807248,-118.0046681
+nekter,8162 E Santa Ana Canyon Rd Ste 102,Anaheim,CA,92808,"$476,001.92",33.867551,-117.7494455
+nekter,35 Railroad Ave,Danville,CA,94526,"$473,321.01",37.823122,-122.0040347
+nekter,46573 Mission Blvd #400,Fremont,CA,94539,"$467,383.17",37.4920572,-121.9299921
+nekter,8001 Wyoming Blvd NE Ste B1,Albuquerque,NM,87113,"$462,598.32",35.1749311,-106.5609057
+nekter,4340 E Indian School Rd,Phoenix,AZ,85018,"$462,087.20",33.4957817,-111.9881761
+nekter,5442 Hazel Ave Ste 502,Fair Oaks,CA,95628,"$453,312.97",38.6646862,-121.2252248
+nekter,4800 Main St Ste 104,Kansas City,MO,64112,"$451,523.04",39.0389474,-94.5875135
+nekter,7631 Edinger Ave Ste 1528,Huntington Beach,CA,92647,"$441,991.16",33.7313786,-117.9959591
+nekter,73555 Highway 111,Palm Desert,CA,92260,"$435,330.50",33.7210664,-116.3816318
+nekter,8255 Preston Rd,Plano,TX,75024,"$425,332.37",33.090766,-96.8066022
+nekter,1620 San Miguel Dr,Newport Beach,CA,92660,"$412,138.75",33.6112844,-117.8636642
+nekter,1441 S Randall Rd Ste B,Geneva,IL,60134,"$411,956.70",41.8748858,-88.3396437
+nekter,1408 Lake Tapps Pkwy SE,Auburn,WA,98092,"$408,085.15",47.2447232,-122.2096566
+nekter,2445 Truxtun Rd Ste 109,San Diego,CA,92106,"$403,033.67",32.7366346,-117.2167298
+nekter,609 S Highline Pl,Sioux Falls,SD,57110,"$401,352.18",43.5424249,-96.6555996
+nekter,1310 Pomerelle Ave,Burley,ID,83318,"$398,919.67",42.5365103,-113.7781293
+nekter,14345 W Bell Rd,Surprise,AZ,85374,"$391,101.36",33.6381116,-112.3693531
+nekter,17171 Bothell Way NE,Lake Forest Park,WA,98155,"$388,866.99",47.754216,-122.2797979
+nekter,940 NW Pryor Rd Ste G,Lees Summit,MO,64081,"$387,159.21",38.9305884,-94.4138761
+nekter,469 Magnolia Ave,Corona,CA,92879,"$383,251.12",33.8548409,-117.5626316
+nekter,304 Gray St,Houston,TX,77002,"$382,486.56",29.7520899,-95.3772995
+nekter,1990 Village Center Cir,Las Vegas,NV,89134,"$382,318.00",36.1918354,-115.305358
+nekter,26435 Kuykendahl Rd Ste 850,The Woodlands,TX,77375,"$378,173.07",30.1442089,-95.5519866
+nekter,2260 N Zaragoza Rd Ste B201,El Paso,TX,77938,"$375,875.90",31.7746841,-106.2532237
+nekter,21172 S Ellsworth Loop Rd,Queen Creek,AZ,85142,"$373,392.39",33.2561489,-111.6391467
+nekter,127 S Broadway Ave,Boise,ID,83702,"$369,879.69",43.6099393,-116.1939646
+nekter,742 Arneill Rd,Camarillo,CA,93010,"$369,554.32",34.2243671,-119.0386557
+nekter,3290 Main St Ste 201,Frisco,TX,75033,"$368,505.17",33.153807,-96.8611556
+nekter,2501 E Grant Rd,Tucson,AZ,85716,"$368,044.47",32.2506865,-110.9350628
+nekter,15307 Whittier Blvd,Whittier,CA,90603,--,33.9471223,-118.0002534
+nekter,305 E FM 544 Unit 903,Murphy,TX,75094,"$302,596.77",33.0118509,-96.6036271
+nekter,11400 NE 124th St,Kirkland,WA,98034,--,47.7116556,-122.1890312
+nekter,638 Camino de los Mares,San Clemente,CA,92673,--,33.4574406,-117.6515364
+nekter,1640 Oakhurst Commons Dr Ste 103,Charlotte,NC,28205,"$222,004.09",35.1942963,-80.7823427
+nekter,3529 Heritage Trace Pkwy Ste 123,Fort Worth,TX,76244,"$215,097.11",32.914597,-97.305174
+nekter,345 S Lake Ave,Pasadena,CA,91101,--,34.1399735,-118.1328177
+nekter,32068 Temecula Pkwy,Temecula,CA,92592,--,33.4814877,-117.0983088
+nekter,8020 161st Ave NE,Redmond,WA,98052,--,47.6753471,-122.1251998
+nekter,4449 Lyons Rd Ste 101B,Coconut Creek,FL,33073,--,26.284557,-80.1870438
+nekter,6720 Alma Rd Ste 250,McKinney,TX,75070,--,33.1363925,-96.707517
+nekter,3800 Southwest Fwy,Houston,TX,77027,--,29.7295439,-95.4380438
+nekter,4420 Coffee Rd,Bakersfield,CA,93308,--,35.3993097,-119.0917434
+nekter,970 DeKalb Pike Ste 240,Blue Bell,PA,19422,--,40.1648132,-75.2904664
+nekter,11625 Custer Rd Ste 120,Frisco,TX,75035,--,33.1725619,-96.7330111
+nekter,222 West Ave,Austin,TX,78701,--,30.2671786,-97.7521108
+nekter,14024 Stockdale Hwy,Bakersfield,CA,93311,--,35.3545073,-119.1568118
+nekter,112 Brooklawn St Ste A,Farragut,TN,37934,--,35.8826773,-84.1565862
+nekter,8884 Whittier Blvd,Pico Rivera,CA,90660,--,34.001237,-118.0844909
+nekter,2261 W Leland Rd # B01,Pittsburg,CA,94565,--,38.0193364,-121.9649066
+nekter,8505 Valley Creek Rd,Woodbury,MN,55125,--,44.9179853,-92.9327883
+nekter,6513 NW Barry Rd,Kansas City,MO,64154,--,39.2456491,-94.6541771
+nekter,18047 W Grant Line Rd,Mountain House,CA,95351,--,37.7578646,-121.5327163
+nekter,1600 N Lemon St Unit 110,Anaheim,CA,92801,--,33.8583233,-117.9187671
+nekter,727 E Huntington Dr Ste 727,Monrovia,CA,91016,--,34.1412417,-117.9893499
+nekter,200 W Combs Rd Ste 109,Queen Creek,AZ,85140,--,33.2208715,-111.5653085
+nekter,15270 Summit Ave,Fontana,CA,92336,--,34.1505897,-117.4726951
+nekter,185 Indian Lake Blvd,Hendersonville,TN,37075,--,36.3162903,-86.6035781
+nekter,7723 N Blackstone Ave Ste 108,Fresno,CA,93720,--,36.8482999,-119.7912314
+nekter,7769 W 159th St,Overland Park,KS,66221,--,38.8393319,-94.6782198
+nekter,1306 Westlawn Blvd Ste B4,Murfreesboro,TN,37128,--,35.8609885,-86.5104596
+nekter,9301 E Shea Blvd,Scottsdale,AZ,85260,--,33.5809088,-111.8803842
+nekter,5713 Eastern Ave,Baltimore,MD,21224,--,39.2862799,-76.5480178
+nekter,2205 W 136th Ae # C-118,Broomfield,CO,80023,--,39.9439659,-105.0129605
+nekter,5655 E La Palma Ave Ste 135,Anaheim,CA,92807,--,33.8617271,-117.7913569
+nekter,3309 Dallas Pkwy,Plano,TX,75093,--,33.0469511,-96.8306556
+nekter,3840 S Rochester Rd,Rochester Hills,MI,48307,--,42.624829,-83.132158
+nekter,629 Stayton St Ste 153,Fort Worth,TX,76107,--,32.7521969,-97.3504478
+nekter,1118 S Diamond Bar Blvd,Diamond Bar,CA,91765,--,34.0024891,-117.8091408
+nekter,3890 W Happy Valley Rd,Glendale,AZ,85310,--,33.7138713,-112.143068
+nekter,101 W Imperial Hwy Ste B,Brea,CA,92821,--,33.917128,-117.9009619
+nekter,20022 N 67th Ave,Glendale,AZ,85308,--,33.6659242,-112.2046373
+nekter,969 Market St Unit 150,San Diego,CA,92101,--,32.7112019,-117.1558694
+nekter,1071 E 19th St,Upland,CA,91784,--,34.13215,-117.6363359
+nekter,6467 E Pacific Coast Hwy,Long Beach,CA,90803,--,33.7576784,-118.1084658
+nekter,315 Oakway Rd,Eugene,OR,97401,--,44.0663489,-123.0776496
+nekter,1541 E Second St,Beaumont,CA,92223,--,33.922563,-116.953061
+nekter,8048 Cleveland Gibbs Rd,Northlake,TX,76247,--,33.0995815,-97.2355188
+nekter,1921 Nashville Pike,Gallatin,TN,37066,--,36.3469387,-86.5190798
+nekter,14637 SW Teal Blvd,Beaverton,OR,97007,--,45.4421881,-122.8279213
+nekter,520 W 1st St,Claremont,CA,91711,--,34.0944311,-117.7212512
+nekter,4061 W 83rd St,Prairie Village,KS,66208,--,38.9776049,-94.6323822
+nekter,7829 Kenwood Rd,Cincinatti,OH,45236,--,39.2028135,-84.3807322
+nekter,30051 Haun Rd,Menifee,CA,92584,--,33.6846356,-117.1763689
+nekter,6700 Ferris St,Bellaire,TX,77401,--,29.7070438,-95.4729278
+nekter,1405 S 204th St,Elkhorn,NE,68022,--,41.2453892,-96.2334466
+nekter,1151 State Route 3 N,Gambrills,MD,21054,--,39.0209698,-76.6933254
+nekter,16421 Sierra Lakes Pkwy,Fontana,CA,92336,--,34.1376964,-117.4477607
+nekter,2014 W University Dr,McKinney,TX,75071,--,33.2180594,-96.637992
+nekter,2141 International Pkwy B - 2 - 033C - A01,Grapevine,TX,76051,--,32.9038208,-97.0370715
+nekter,4041 S Gilbert Rd,Chandler,AZ,85249,--,33.2476517,-111.7881255
+nekter,9210 E Via de Ventura Ste 103,Scottsdale,AZ,85258,--,33.5540472,-111.8817616
+nekter,2886 E Shepherd Ave Ste 107,Fresno,CA,93720,--,36.8675648,-119.7311637
+nekter,3505 E Monarch Sky Ln,Meridian,ID,83646,--,43.620952,-116.3508708
+nekter,4142 3rd St S # 4142,Jacksonville Beach,FL,32250,--,30.2569334,-81.3905069
+nekter,5920 Broadway,San Antonio,TX,78209,--,29.4809399,-98.4647525
+nekter,3415 Stoneman Rd,Dubuque,IA,52002,--,42.4973803,-90.722287
+nekter,14676 N Frank Lloyd Wright Blvd Ste 131,Scottsdale,AZ,85260,--,33.6191348,-111.8767097
+nekter,1515 N 7th Ave,Phoenix,AZ,85007,--,33.465497,-112.0819395
+nekter,1977 W 1600 S,Riverton,UT,84065,--,40.521893,-111.9391023
+nekter,2435 E Imperial Hwy,Brea,CA,92821,--,33.9115291,-117.8682304
+nekter,30893 Gateway Pl Ste F-3,Rancho Mission Viejo,CA,92694,--,33.5218554,-117.6174426
+nekter,3204 Vandercar Way,Cincinatti,OH,45209,--,39.1585348,-84.4275446
+nekter,4714 E Cactus Rd,Phoenix,AZ,85032,--,33.598607,-111.978577
+nekter,6467 E Pacific Coast Hwy Ste E-1A,Long Beach,CA,90803,--,33.7576762,-118.1086399
+nekter,2502 Calumet Ave Ste 2,Valparaiso,IN,46383,--,41.4911819,-87.0470074
+nekter,2970 N Eagle Rd,Meridian,ID,83646,--,43.6318321,-116.3538529
+nekter,434 Fair Oaks Ave,South Pasadena,CA,91030,--,34.1205099,-118.1498393
+nekter,7131 W Ray Rd,Chander,AZ,85226,--,33.3181459,-111.9657564
+nekter,4901 W Park Blvd,Plano,TX,75093,--,33.0275406,-96.7926056
+nekter,3700 Crocker Dr Ste 160,Sacramento,CA,95818,--,38.5404213,-121.4822061
+nekter,200 Cbl Dr Ste 103,St Augustine,FL,32086,--,29.86544,-81.3293709
+nekter,3355 W Chandler Blvd,Chandler,AZ,85226,--,33.3047436,-111.8999933
+nekter,8855 Villa La Jolla Dr Ste 402,La Jolla,CA,92037,--,32.8691659,-117.2321645
+nekter,211 Lincoln Center,Stockton,CA,95207,--,38.0110136,-121.3228438
+nekter,1432 N Rochester Rd,Rochester Hills,MI,48307,--,42.6942332,-83.1322655
+nekter,13641 N Prasada Pkwy,Surprise,AZ,85388,--,33.6082138,-112.413314
+nekter,2000 E Rio Salado Pkwy,Tempe,AZ,85288,--,33.4315592,-111.9030636
+nekter,3620 E Highlands Ranch Pkwy,Highlands Ranch,CO,80126,--,39.5428561,-104.946926
+nekter,1053 E I30 Ste 111,Rockwall,TX,75087,--,32.9057055,-96.450583
+Vitality Bowls,2959 N Swan Rd,Tucson,AZ,85712,--,32.2610826,-110.8931977
+Vitality Bowls,7090 N Oracle Rd Suite 120,Tucson,AZ,85704,--,32.3354367,-110.9760981
+Vitality Bowls,7155 E Tanque Verde Rd Suite C112,Tucson,AZ,85715,--,32.2523388,-110.8394128
+Vitality Bowls,2375 Sandcreek Rd Ste 102,Brentwood,CA,94513,--,37.9442386,-121.7393262
+Vitality Bowls,20668 Rustic Dr,Castro Valley,CA,94546,--,37.695968,-122.0776619
+Vitality Bowls,19700 Vallco Parkway Ste 160,Cupertino,CA,95014,--,37.3250726,-122.012529
+Vitality Bowls,190 Hartz Ave Suite 150,Danville,CA,94526,--,37.8235644,-122.0016791
+Vitality Bowls,5271 Martinelli Way Unit P3C,Dublin,CA,94568,--,37.7049755,-121.8912361
+Vitality Bowls,39258 Paseo Padre Pkwy,Fremont,CA,94538,--,37.5533052,-121.9786044
+Vitality Bowls,3454 Mount Diablo Blvd Ste A-1,Lafayette,CA,94549,--,37.8929253,-122.113412
+Vitality Bowls,2175 1st St,Livermore,CA,94550,--,37.6812951,-121.7690866
+Vitality Bowls,13 N Santa Cruz Ave,Los Gatos,CA,95030,--,37.2230874,-121.9837835
+Vitality Bowls,882 Lifestyle St,Manteca,CA,95337,--,37.7808471,-121.2283852
+Vitality Bowls,765 East Blithedale Ave,Mill Valley,CA,94941,--,37.9029161,-122.5250903
+Vitality Bowls,3401 Oakdale Rd Suite 620,Modesto,CA,95355,--,37.6869067,-120.9583922
+Vitality Bowls,1053 Cochrane Rd Ste 180,Morgan Hill,CA,95037,--,37.1565046,-121.6523893
+Vitality Bowls,650 Castro St Ste 140,Mountain View,CA,94041,--,37.3879416,-122.0830744
+Vitality Bowls,35111 Newark Blvd Ste G,Newark,CA,94560,--,37.5496688,-122.0487198
+Vitality Bowls,209 California Ave,Palo Alto,CA,94306,--,37.4281034,-122.143092
+Vitality Bowls,100 Crescent Drive Ste 7C,Pleasant Hill,CA,94523,--,37.944972,-122.0615187
+Vitality Bowls,1401 Hilltop Dr Unit E4,Redding,CA,96003,--,40.5883203,-122.3573077
+Vitality Bowls,835 Middlefield Rd Ste C,Redwood City,CA,94063,--,37.4857889,-122.2286353
+Vitality Bowls,3988 Douglas Blvd Ste 130,Roseville,CA,95661,--,38.7430755,-121.2274256
+Vitality Bowls,8935 Towne Centre Dr Ste 107,San Diego,CA,92122,--,32.8678244,-117.2061905
+Vitality Bowls,1088 East Brokaw Rd Ste 25,San Jose,CA,95131,--,37.3820984,-121.8960753
+Vitality Bowls,5110 Cherry Ave # 20,San Jose,CA,95118,--,37.2588611,-121.8752743
+Vitality Bowls,5660 Cottle Rd Ste 30,San Jose,CA,95123,--,37.2486603,-121.8024808
+Vitality Bowls,1167 Lincoln Ave,San Jose,CA,95125,--,37.3072279,-121.9004566
+Vitality Bowls,211 Market Place,San Ramon,CA,94583,--,37.7637314,-121.952437
+Vitality Bowls,3555 Monroe St Ste 70,Santa Clara,CA,95051,--,37.3676034,-121.9938402
+Vitality Bowls,1880 Mendocino Ave Ste G,Santa Rosa,CA,95401,--,38.458346,-122.7167137
+Vitality Bowls,115 South Frances St,Sunnyvale,CA,94086,--,37.377412,-122.031538
+Vitality Bowls,2585 Geer Rd,Turlock,CA,95382,--,37.5158294,-120.849341
+Vitality Bowls,1631 E Monte Vista Ave Ste 103,Vacaville,CA,95688,--,38.3680946,-121.9633567
+Vitality Bowls,2525 Arapahoe Ave unit A3,Boulder,CO,80302,--,40.015244,-105.2625951
+Vitality Bowls,13492 Bass Pro Drive Suite 102,Colorado Springs,CO,80921,--,39.0276834,-104.8252494
+Vitality Bowls,25 Climax Rd,Avon,CT,06001,--,41.8119723,-72.8393254
+Vitality Bowls,1125 High Ridge Rd,Stamford,CT,06905,--,41.108745,-73.546824
+Vitality Bowls,11810 Glass House Ln Ste 120,Orlando,FL,32836,--,28.4009436,-81.4910415
+Vitality Bowls,364 Commerce St,Alpharetta,GA,30009,--,34.0744577,-84.2932125
+Vitality Bowls,3120 Mathis Airport Pkwy Suite 105,Suwanee,GA,30024,--,34.1105037,-84.1538098
+Vitality Bowls,3320 Hamilton Mill Rd Suite 102,Buford,GA,30519,--,34.094531,-83.937775
+Vitality Bowls,113 Bond Square,Watertown,MA,02472,--,42.362507,-71.1591667
+Vitality Bowls,6385 Orchard Lake Rd,West Bloomfield,MI,48322,--,42.5450702,-83.3594765
+Vitality Bowls,330 S 21st St,Lincoln,NE,68510,--,40.8105229,-96.6900445
+Vitality Bowls,1922 S 67th St,Omaha,NE,68106,--,41.2408687,-96.014871
+Vitality Bowls,2835 South 170th Plaza Ste 208,Omaha,NE,68130,--,41.2324529,-96.1795137
+Vitality Bowls,50 Main St,Hackensack,NJ,07601,--,40.8796539,-74.0438716
+Vitality Bowls,434 Bergen St,Harrison,NJ,07029,--,40.7438012,-74.1545375
+Vitality Bowls,1591 Alphs Rd,Wayne,NJ,07470,--,40.9606369,-74.2473224
+Vitality Bowls,1839 South Rd,Wappingers Fall,NY,12590,--,41.6143601,-73.915361
+Vitality Bowls,107 West Bland St,Charlotte,NC,28203,--,35.2175518,-80.8550992
+Vitality Bowls,10032 University City Blvd,Charlotte,NC,28213,--,35.3097827,-80.715484
+Vitality Bowls,347 Front Street,Berea,OH,44017,--,41.3749324,-81.8533371
+Vitality Bowls,1510 Stonecreek Drive,Pickerington,OH,43147,--,39.9156407,-82.7831647
+Vitality Bowls,19511 Center Ridge Rd,Rocky River,OH,44116,--,41.4651744,-81.8390682
+Vitality Bowls,440 Coburg Rd Ste 102,Eugene,OR,97401,--,44.0673411,-123.0732061
+Vitality Bowls,7935 Southwest Nyberg St # 135,Tualatin,OR,97062,--,45.3830688,-122.7578156
+Vitality Bowls,230 Village Drive Ste 150,King of Prussia,PA,19406,--,40.0849757,-75.4059742
+Vitality Bowls,825 Hogestown Rd,Mechanicsburg,PA,17050,--,40.2447041,-77.0291816
+Vitality Bowls,3620 Ranch Rd 620 S #320,Bee Cave,TX,78738,--,30.319872,-97.9536397
+Vitality Bowls,1310 Cypress Creek Rd Ste 115,Cedar Park,TX,78613,--,30.4847019,-97.8305358
+Vitality Bowls,24120 Northwest Fwy Ste 250,Cypress,TX,77429,--,29.9533763,-95.6709392
+Vitality Bowls,110 Smirl Drive Suite 105,Heath,TX,75032,--,32.8376432,-96.4758025
+Vitality Bowls,2400 Glenna Goodacre Blvd Ste 106-D,Lubbock,TX,79401,--,33.5884529,-101.8693888
+Vitality Bowls,3610 W University Dr Ste 100,McKinney,TX,75071,--,33.2178827,-96.6583163
+Vitality Bowls,3030 E Broad St,Mansfield,TX,76063,--,32.5719194,-97.0885956
+Vitality Bowls,2100 Dallas Pkwy Ste 132,Plano,TX,75093,--,33.0288359,-96.8268711
+Vitality Bowls,201 W Frontier Pkwy Ste 40,Prosper,TX,75078,--,33.2619761,-96.7859155
+Vitality Bowls,2750 East Southlake Blvd Ste 110,Southlake,TX,76092,--,32.9392395,-97.1086578
+Vitality Bowls,51 South Main Street Space #140,Salt Lake City,UT,84102,--,40.7683659,-111.8903528
+Vitality Bowls,429 Fairview Ave N,Seattle,WA,98109,--,47.622998,-122.3346039
+Joe & The Juice,8 E Huron St,Chicago,IL,60611,--,41.895053,-87.6277711
+Joe & The Juice,412 N Wells St,Chicago,IL,60654,--,41.8896579,-87.6342181
+Joe & The Juice,980 N Michigan Ave,Chicago,IL,60611,--,41.9005255,-87.6246489
+Joe & The Juice,1801 Central St,Evanston,IL,60201,--,42.0646194,-87.6973609
+Joe & The Juice,233 S Wacker Dr,Chicago,IL,60606,--,41.8787971,-87.636496
+Joe & The Juice,10 E Delaware Pl,Chicago,IL,60611,--,41.8993009,-87.6279319
+Joe & The Juice,535 N McClurg Ct,Chicago,IL,60611,--,41.8921147,-87.6173526
+Joe & The Juice,525 Market St,San Francisco,CA,94105,--,37.7906639,-122.3991275
+Joe & The Juice,2000 Collins Ave,Miami Beach,FL,33139,--,25.7960113,-80.1291936
+Joe & The Juice,701 S Miami Ave,Miami,FL,33130,--,25.7669682,-80.1934346
+Joe & The Juice,508 University Ave,Palo Alto,CA,94301,--,37.4483685,-122.1587277
+Joe & The Juice,301 Howard St,San Francisco,CA,94105,--,37.7896321,-122.3944279
+Joe & The Juice,2213 Fillmore St,San Francisco,CA,94115,--,37.7900864,-122.4343235
+Joe & The Juice,1395 Burlingame Ave,Burlingame,CA,94010,--,37.5777928,-122.3478605
+Joe & The Juice,6000 Bollinger Canyon Rd,San Ramon,CA,94583,--,37.7633237,-121.9594759
+Joe & The Juice,240 Hamilton Ave,Palo Alto,CA,94301,--,37.4442775,-122.1607901
+Joe & The Juice,1155 4th St,San Francisco,CA,94158,--,37.7732793,-122.3910812
+Joe & The Juice,660 Stanford Shopping Center,Palo Alto,CA,94304,--,37.4418723,-122.1724763
+Joe & The Juice,235 Montgomery St,San Francisco,CA,94104,--,37.7910211,-122.4027778
+Joe & The Juice,50 California St,San Francisco,CA,94111,--,37.7940821,-122.39741
+Joe & The Juice,1451 Brickell Ave,Miami,FL,33131,--,25.7581059,-80.1924313
+Joe & The Juice,1100 17th St NW,Washington,DC,20036,--,38.9039889,-77.0388605
+Joe & The Juice,4300 Glumack Dr Space C-2020,St Paul,MN,55111,--,44.8806291,-93.1987982
+Joe & The Juice,2315 NW 2nd Ave,Miami,FL,33127,--,25.7995205,-80.1989095
+Joe & The Juice,7263 Woodmont Ave,Bethesda,MD,20814,--,38.9818254,-77.0957241
+Joe & The Juice,150 E 72nd St,New York,NY,10021,--,40.7701181,-73.962065
+Joe & The Juice,343 Amsterdam Ave,New York,NY,10024,--,40.781269,-73.9793904
+Joe & The Juice,549 Hudson St,New York,NY,10014,--,40.734984,-74.0064921
+Joe & The Juice,1758 Broadway,New York,NY,10019,--,40.7658054,-73.9815366
+Joe & The Juice,67 Wall St,New York,NY,10005,--,40.7057099,-74.0085244
+Joe & The Juice,67 Spring St,New York,NY,10012,--,40.7226266,-73.9973908
+Joe & The Juice,247 Columbus Ave,New York,NY,10023,--,40.7769036,-73.9789529
+Joe & The Juice,1320 3rd Ave,Brooklyn,NY,11232,--,40.6550605,-74.0073942
+Joe & The Juice,1215 West Ave,Miami Beach,FL,33139,--,25.7829465,-80.1418707
+Joe & The Juice,1600 Collins Ave #101,Miami Beach,FL,33139,--,25.7890189,-80.1305816
+Joe & The Juice,300 S Biscayne Blvd,Miami,FL,33131,--,25.77143,-80.1875094
+Joe & The Juice,17700 Collins Ave,Sunny Isles Beach,FL,33160,--,25.9398243,-80.1223697
+Joe & The Juice,1500 K St NW,Washington,DC,20005,--,38.9022593,-77.0348051
+Joe & The Juice,666 3rd Ave,New York,NY,10017,--,40.7513761,-73.9744448
+Joe & The Juice,116 University Pl,New York,NY,10003,--,40.7345151,-73.9925694
+Joe & The Juice,600 NW 1st Ave,Miami,FL,33136,--,25.7790162,-80.1957011
+Joe & The Juice,2460 Broadway,New York,NY,10025,--,40.7915301,-73.9737249
+Joe & The Juice,1400 Madison Ave,New York,NY,10029,--,40.7880391,-73.9537457
+Joe & The Juice,801 Lexington Ave,New York,NY,10065,--,40.7638803,-73.9666639
+Joe & The Juice,20 Hudson Yards,New York,NY,10001,--,40.7530322,-74.0005316
+Joe & The Juice,161 Prince St,New York,NY,10012,--,40.7261454,-74.001231
+Joe & The Juice,40 Broad St,New York,NY,10004,--,40.7059681,-74.0117888
+Joe & The Juice,1166 Lexington Ave,New York,NY,10028,--,40.775694,-73.958113
+Joe & The Juice,1350 6th Ave,New York,NY,10019,--,40.7625721,-73.9777976
+Joe & The Juice,8532 Melrose Ave,West Hollywood,CA,90069,--,34.081762,-118.3777629
+Joe & The Juice,2801 Ponce de Leon Blvd,Coral Gables,FL,33134,--,25.7457546,-80.2577184
+Joe & The Juice,19501 Biscayne Blvd,Miami,FL,33180,--,25.9570723,-80.1443412
+Joe & The Juice,357 Lafayette St,New York,NY,10012,--,40.7263156,-73.9941366
+Joe & The Juice,304 Bleecker St,New York,NY,10014,--,40.7325351,-74.0039426
+Joe & The Juice,2118 7th Ave,Seattle,WA,98121,--,47.6164576,-122.3387707
+Joe & The Juice,10301a Old Georgetown Rd,Bethesda,MD,20814,--,39.0246361,-77.1239516
+Joe & The Juice,185 Greenwich St,New York,NY,10007,--,40.7110759,-74.0120239
+Joe & The Juice,929 Broadway,Brooklyn,NY,11206,--,40.6974607,-73.9356078
+Joe & The Juice,300 Park Ave,New York,NY,10022,--,40.7569288,-73.9744844
+Joe & The Juice,1114 6th Ave,New York,NY,10036,--,40.7548076,-73.9826874
+Joe & The Juice,400 K St NW,Washington,DC,20001,--,38.9021245,-77.0169534
+Joe & The Juice,430 Park Ave,New York,NY,10022,--,40.7607986,-73.9717622
+Joe & The Juice,11906 San Vicente Blvd,Los Angeles,CA,90049,--,34.05238,-118.4705885
+Joe & The Juice,252 S Brand Blvd,Glendale,CA,91204,--,34.1430662,-118.2546895
+Joe & The Juice,1165 Broadway,New York,NY,10001,--,40.7448515,-73.9887296
+Joe & The Juice,296 Wythe Ave,Brooklyn,NY,11249,--,40.7159271,-73.9644536
+Joe & The Juice,535 N McClurg Ct,Chicago,IL,60611,--,41.8921147,-87.6173526
+Joe & The Juice,909 Brickell Ave,Miami,FL,33131,--,25.7651499,-80.190614
+Joe & The Juice,322 7th Ave,New York,NY,11215,--,40.7474448,-73.9935288
+Joe & The Juice,2620 NE University Village St,Seattle,WA,98105,--,47.66394,-122.29949
+Joe & The Juice,845 Newport Center Dr,Newpoprt Beach,CA,92660,--,33.6171425,-117.876143
+Joe & The Juice,1000 Airport Blvd,Pittsburgh,PA,15231,--,40.4982635,-80.2646033
+Joe & The Juice,4485 La Jolla Village Dr Ste F-12,San Diego,CA,92122,--,32.870157,-117.2115157
+Joe & The Juice,1202 Abbot Kinney Blvd,Venice,CA,90291,--,33.9912278,-118.4691012
+Joe & The Juice,9345 Culver Blvd,Culver City,CA,90232,--,34.0249476,-118.3939547
+Joe & The Juice,315 Hudson St,New York,NY,10013,--,40.7261772,-74.007669
+Joe & The Juice,925 Camino De La Reina,San Diego,CA,92108,--,32.7675092,-117.1551975
+Joe & The Juice,3435 Del Mar Heights #9,San Diego,CA,92130,--,32.9533118,-117.2327501
+Joe & The Juice,226 Bellevue Square #228,Bellevue,WA,98004,--,47.615714,-122.203615
+Joe & The Juice,1185 6th Ave,New York,NY,10036,--,40.7578085,-73.9822963
+Joe & The Juice,474 E 17th St,Costa Mesa,CA,92627,--,33.6293152,-117.9091986
+Joe & The Juice,12915 Ventura Blvd,Studio City,CA,91604,--,34.1454424,-118.4143096
+Joe & The Juice,2121 Cloverfield Blvd,Santa Monica,CA,90404,--,34.0222697,-118.4653871
+Joe & The Juice,3333 Bear St Ste 145,Costa Mesa,CA,92626,--,33.6914766,-117.8931641
+Joe & The Juice,1040 N Orlando Ave Suite 102,Winter Park,FL,32789,--,28.6072477,-81.3649382
+Joe & The Juice,114 10th Ave,New York,NY,10011,--,40.7440765,-74.0065507
+Joe & The Juice,1303 5th Ave,Seattle,WA,98101,--,47.6089818,-122.3342624
+Joe & The Juice,1579 Northern Blvd,Manhasset,NY,11030,--,40.7942588,-73.6884255
+Joe & The Juice,8025 J Jericho Tpke,Woodbury,NY,11797,--,40.8155703,-73.4752075
+Pressed,1560 S Lewis St,Anaheim,CA,92805,--,33.8094303,-117.8956694
+Pressed,3730 S Las Vegas Blvd,Las Vegas,NV,89158,--,36.1068929,-115.1767984
+Pressed,8600 W Pico Blvd,Los Angeles,CA,90035,--,34.0534352,-118.3787057
+Pressed,11711 Gorham Ave,Los Angeles,CA,90049,--,34.0538575,-118.4665168
+Pressed,354 Los Cerritos Center Suite C13,Cerritos,CA,90701,--,33.8614932,-118.0931548
+Pressed,6300 College Ave Suite 150,Oakland,CA,94618,--,37.8499574,-122.2521838
+Pressed,21540 Hawthorne Blvd Suite 428B,Torrance,CA,90503,--,33.8301097,-118.3493075
+Pressed,12853 El Camino Real Suite 110,San Diego,CA,92130,--,33.9665838,-118.0381473
+Pressed,1411 W Sunset Blvd,Los Angeles,CA,90026,--,34.0741955,-118.2519813
+Pressed,1181 Newport Center Dr,Newport Beach,CA,92660,--,33.614969,-117.876957
+Pressed,7007 Friars Rd Suite 356A,San Diego,CA,92108,--,32.76811,-117.16731
+Pressed,1182 Roseville Parkway 145,Roseville,CA,95678,--,38.768133,-121.268965
+Pressed,1025 A St,Hayward,CA,94541,--,37.6741053,-122.0831148
+Pressed,808 Spectrum Center Dr,Irvine,CA,92618,--,33.6497675,-117.7433114
+Pressed,329 Lafayette St,New York,NY,10012,--,40.7254368,-73.9948278
+Pressed,90 Charter Oak Avve,San Francisco,CA,94124,--,37.7368763,-122.4049373
+Pressed,1200 Market St,San Francisco,CA,94102,--,37.7786745,-122.4152914
+Pressed,2616 Blodgett St,Houston,TX,77004,--,29.7227416,-95.3704552
+Pressed,383 West 31st St Suite 040,New York,NY,10001,--,40.7513828,-73.9968952
+Pressed,949 Ruff Dr,San Jose,CA,95110,--,37.3495891,-121.9121918
+Pressed,4321 Live Oak St,Dallas,TX,75204,--,32.7987194,-96.7778637
+Pressed,660 Stanford Shopping Center Suite 230,Palo Alto,CA,94304,--,37.4422898,-122.1709299
+Pressed,1060 E Colorado Blvd,Pasadena,CA,91106,--,34.145635,-118.1285605
+Pressed,7014 E Camelback Rd Space 0588,Scottsdale,AZ,85251,--,33.5033535,-111.9303429
+Pressed,15147 N Scottsdale Rd Ste H1-100,Scottsdale,AZ,85254,--,33.6236765,-111.924435
+Pressed,3333 Bristol St Space 2070,Costa Mesa,CA,92626,--,33.6917138,-117.8874321
+Pressed,1026 W Evelyn Ave,Sunnyvale,CA,94086,--,37.3831224,-122.0460903
+Pressed,1900 E 5th St,Tempe,AZ,85281,--,33.4262191,-111.9039952
+Pressed,189 The Grove Drive K4,Los Angeles,CA,90036,--,34.0722398,-118.3571523
+Pressed,850 Pacific Coast Hwy,El Segundo,CA,90245,--,33.9025993,-118.3940372
+Pressed,245 W 46th St,New York,NY,10036,--,40.7597579,-73.9873571
+Pressed,410 S Rampart Blvd #135,Las Vegas,NV,89145,--,36.1672367,-115.2860042
+Pressed,12540 120th Ave NE #112,Kirkland,WA,98034,--,47.712711,-122.178658
+Pressed,6671 Las Vegas Blvd #A-124,Las Vegas,NV,89119,--,36.0677373,-115.1753448
+Pressed,2348 Park Ave,Tustin,CA,92782,--,33.700199,-117.828235
+Pressed,24201 West Valencia Blvd Suite 3552,Valencia,CA,91355,--,34.4152603,-118.5583343
+Pressed,14435 Victory Blvd,Van Nuys,CA,91401,--,34.1869358,-118.4476796
+Pressed,12544 N Mainstreet,Rancho Cucamonga,CA,91739,--,34.1123378,-117.5315834
+Pressed,7973 N Blackstone Ave,Fresno,CA,93720,--,36.8514592,-119.7922165
+Pressed,1653 River Run Suite 151,Fort Worth,TX,76107,--,32.727273,-97.3602982
+Pressed,1116 Irvine Ave,Newport Beach,CA,92660,--,33.6290544,-117.9062601
+Smoothie King,5025 Blue Diamond Rd Ste 110,Las Vegas,NV,89139,"$535,654.00",36.0305953,-115.2098531
+Smoothie King,8000 W Sahara Ave Ste 190,Las Vegas,NV,89117,"$931,419.00",36.1442631,-115.265874
+Smoothie King,9120 S Eastern Ave #105,Las Vegas,NV,89123,--,36.0239019,-115.1182028
+Smoothie King,249 N Stephanie St Ste 140,Henderson,NV,89074,"$134,529.00",36.0446247,-115.0472471
+Smoothie King,6530 N Buffalo Dr 150,Las Vegas,NV,89131,"$843,397.00",36.2807229,-115.2653063
+Smoothie King,883 E Lake Mead Pkwy Ste 100,Henderson,NV,89015,"$350,633.00",36.0553306,-114.9705041
+Smoothie King,6480 N Losee Rd Suite 105,Las Vegas,NV,89086,"$825,632.00",36.2781727,-115.1154003
+Smoothie King,740 W Telegraph St #3,Washington,UT,84780,"$268,232.00",37.1283967,-113.5220447
+Smoothie King,16427 Cactus Rd Ste 127,Surprise,AZ,85388,"$435,052.00",33.593609,-112.4126659
+Smoothie King,15557 W Bell Rd Suite 403,Surprise,AZ,85374,--,33.636983,-112.3959909
+Smoothie King,2833 North Central Ave,Phoenix,AZ,85004,"$643,876.00",33.4797501,-112.0733698
+Smoothie King,21001 N Tatum Ste 78,Phoenix,AZ,85050,--,33.6766428,-111.9746059
+Smoothie King,4757 Greenway Rd Suite 105,Phoenix,AZ,85032,--,33.6240722,-111.9783387
+Smoothie King,5549 E Indian School Rd Suite 101,Phoenix,AZ,85018,--,33.488625,-111.96144
+Smoothie King,1940 S Val Vista Drive Suite 102,Mesa,AZ,85204,--,33.3800146,-111.7545932
+Smoothie King,3568 S Power Rd #104,Gilbert,AZ,85234,"$534,003.00",33.3510781,-111.6890924
+Smoothie King,5482 S Power Rd Suite 102,Gilbert,AZ,85295,"$627,181.00",33.3168308,-111.6876606
+Smoothie King,1815 Crimson Rd,Mesa,AZ,85209,"$842,575.00",33.3816451,-111.6171956
+Smoothie King,20008 S Ellsworth Rd #104,Queen Creek,AZ,85142,"$1,129,431.00",33.2669521,-111.6353041
+Smoothie King,1728 W Hunt Hwy #102,San Tan Valley,AZ,85143,--,33.1902072,-111.5992516
+Smoothie King,3820 W River Rd,Tucson,AZ,85741,--,32.3212286,-111.0451938
+Smoothie King,1070 E Tucson Marketplace Blvd Suite 100,Tucson,AZ,85713,"$1,139,223.00",32.1867885,-110.9547926
+Smoothie King,5720 E Broadway Blvd,Tucson,AZ,85711,"$1,055,790.00",32.2211857,-110.8703064
+Smoothie King,3554 E Main St #G,Farmington,NM,87402,--,36.75172,-108.15839
+Smoothie King,7456 Cimarron Market Ave Suite E-1,El Paso,TX,79912,"$669,862.00",31.8869415,-106.5689072
+Smoothie King,1613 Pleasanton Road Ste B-131,Fort Bliss,TX,79906,--,31.817507,-106.428986
+Smoothie King,13471 Seargant Major Blvd,Fort Bliss,TX,79916,--,31.836793,-106.3655477
+Smoothie King,501 N Zaragoza,El Paso,TX,79907,"$561,315.00",31.703794,-106.3219337
+Smoothie King,2720 John Hayes St Suite D,El Paso,TX,79938,"$720,147.00",31.7804677,-106.2162448
+Smoothie King,13649 Eastlake Blvd,Horizon City,TX,79928,"$738,620.00",31.6999483,-106.2168767
+Smoothie King,2300 Georgia St Suite 400,Amarillo,TX,79109,"$621,433.00",35.1901631,-101.8668231
+Smoothie King,3130 S Soncy Ste 400,Amarillo,TX,79124,"$495,459.00",35.1791407,-101.9388559
+Smoothie King,3723 19th St,Lubbock,TX,79410,--,33.5775052,-101.8961334

@@ -1,0 +1,114 @@
+name,address,city,state,zip,lat,lon
+01 El Dorado Hills,4390 Town Center Blvd #140,El Dorado Hills,CA,95762,38.6492671,-121.0658231
+02 Auburn,2176 Grass Valley Hwy,Auburn,CA,95603,38.933284,-121.091467
+03 Lincoln,73 Lincoln Blvd,Lincoln,CA,95648,38.879181,-121.294296
+04 Foothills,5005 Foothills Blvd # 1A,Roseville,CA,95747,38.759747,-121.308283
+05 Howe Ave.,1229 Howe Ave,Sacramento,CA,95825,38.5880759,-121.4184574
+06 Sunrise,5437 Sunrise Blvd,Citrus Heights,CA,95610,38.6645895,-121.2751927
+07 Grass Valley,121 Neal St,Grass Valley,CA,95945,39.2167995,-121.0653737
+09 Rocklin,4875 Granite Dr,Rocklin,CA,95677,38.7888147,-121.2267146
+12 Travis Blvd.,1320 Travis Blvd Ste. B,Fairfield,CA,94533,38.2597663,-122.0530361
+13 North Texas,"3336 N Texas St, STE K",Fairfield,CA,94533,38.2897419,-122.0348105
+14 Zinfandel,2823 Zinfandel Drive,Rancho Cordova,CA,95670,38.5956802,-121.2894662
+15 Walnut Creek,2361 Oak Grove Rd Bldg. H,Walnut Creek,CA,94598,37.9277985,-122.0182099
+16 Livermore,2150 Portola Ave Suite B,Livermore,CA,94551,37.6931856,-121.7763017
+18 Brentwood,2375 Sand Creek Rd #106,Brentwood,CA,94513,37.9442386,-121.7419011
+19 Commerce,190 Commerce Ave Suite 103,Manteca,CA,95336,37.7958311,-121.1961113
+20 San Marcos,1620 San Elijo Rd Suite 105,San Marcos,CA,92078,33.0973365,-117.2026739
+21 SIerra College,8690 Sierra College Blvd #150,Roseville,CA,95661,38.7405936,-121.2291433
+22 Woodland,2051 Bronze Star Dr #200,Woodland,CA,95776,38.6706891,-121.7283995
+23 Delta Shores,8166 Delta Shores Cir S #110,Sacramento,CA,95832,38.4632724,-121.4951871
+24 Placerville,385 Main St,Placerville,CA,95667,38.7289161,-120.8039804
+25 Monte Vista,1203 W Monte Vista Ave,Turlock,CA,95382,37.5221544,-120.8661092
+26 Novato Nave,5800 Nave Dr,Novato,CA,94949,38.0635948,-122.5358833
+27 Showers,"530 Showers Drive, STE 1",Mountain View,CA,94040,37.4020935,-122.1101178
+28 Sunnyvale,304 W El Camino Real,Sunnyvale,CA,94087,37.3682053,-122.038197
+29 McDowell,441 N McDowell Blvd,Petaluma,CA,94954,38.2542542,-122.6392029
+30 Santa Rosa,2064 Santa Rosa Ave,Santa Rosa,CA,95404,38.4180676,-122.7146902
+31 Telegraph,2509 Haste St,Berkeley,CA,94704,37.8662839,-122.2606857
+32 Del Paso,2731 Del Paso Rd Ste. 100,Sacramento,CA,95835,38.6563875,-121.525217
+33 Atwater,1809 Bellevue Rd,Atwater,CA,95301,37.3619389,-120.6156203
+34 Bridge,1250 Bridge St. Suite 100.,Yuba City,CA,95991,39.1322344,-121.636599
+35 Rohnert Park,6356 Commerce Blvd,Rohnert Park,CA,94928,38.3470378,-122.7109841
+36 Coach,3317 Coach Ln. STE 100,Cameron Park,CA,95682,38.6583233,-120.9751943
+37 March Lane,2829 W March Ln c4,Stockton,CA,95219,37.9847105,-121.3497987
+38 Patterson,1015 Sperry Ave STE F,Patterson,CA,95363,37.4654686,-121.1438561
+39 Mt. Diablo,1975 Mt. Diablo St,Concord,CA,94520,37.977201,-122.0372903
+40 Green Valley,381 Green Valley Rd,El Dorado Hills,CA,95762,38.7034906,-121.1060757
+41 Tracy Blvd,959 S Tracy Blvd,Tracy,CA,95376,37.7235128,-121.4383058
+42 Pacifica,1320 Linda Mar Shopping Center,Pacifica,CA,94044,37.5941955,-122.5072502
+43 Oakdale,1570 E F St C,Oakdale,CA,95361,37.7744205,-120.832646
+44 Grant Line,3226 W Grant Line Rd,Tracy,CA,95304,37.752695,-121.4775629
+45 Ukiah,1238 Airport Park Blvd,Ukiah,CA,95482,39.1308114,-123.2013127
+46 Dale,4500 Dale Rd suite c,Modesto,CA,95356,37.7048548,-121.0521892
+47 H St.,"1801 H St., STE E2",Modesto,CA,95354,37.6451989,-120.9938101
+48 Hembree,"6560 Hembree Lane, Suite 190",Windsor,CA,95492,38.5274967,-122.7914078
+49 Mountain House,19673 Mountain House Pkwy,Mountain House,CA,95391,37.7816518,-121.5354861
+50 Bernal,"6774 Bernal Ave, STE 320",Pleasanton,CA,94566,37.6574776,-121.9010563
+51 Laguna,"7440 Laguna Blvd, Ste 110",Elk Grove,CA,95758,38.4225211,-121.418584
+52 Eureka,"2626 Broadway Street, Unit B",Eureka,CA,95501,40.7843142,-124.1866653
+53 SR Valley,"2415 San Ramon Valley Blvd, STE 11",San Ramon,CA,94583,37.774711,-121.9818683
+54 Iron Point,2405 Iron Point Rd. Ste 110. ,Folsom,CA,95630,38.6450847,-121.1244907
+55 Pleasant Hill,1924 Contra Costa Blvd,Pleasant Hill,CA,94523,37.9483837,-122.0617997
+56 Katy Fwy,2799 Katy Fwy STE 120,Houston,TX,77007,29.7749963,-95.3908707
+57 Chandler,2915 S Alma School Rd Suite 5,Chandler,AZ,85286,33.264245,-111.8587814
+58 Avondale,10220 W McDowell Rd Unit 120,Avondale,AZ,85392,33.4664097,-112.2826341
+59 Via Linda,8902 E Via Linda. Ste 110.,Scottsdale,AZ,85258,33.569619,-111.8918632
+60 Hayden Peak,20553 Hayden Rd Suite 110,Scottsdale,AZ,85255,33.6722451,-111.9081614
+61 Ashler Hills,32421 N Scottsdale Rd Suite 117,Scottsdale,AZ,85266,33.7799777,-111.9261863
+62 Vintage Oaks,104 Vintage Way,Novato,CA,94945,38.0922201,-122.556951
+64 Sonoma,201 W Napa St # 8,Sonoma,CA,95476,38.291422,-122.4651589
+65 Danville,241 Hartz Avenue,Danville,CA,94526,37.8227595,-122.0039557
+66 Dixon,1450 Ary Ln A,Dixon,CA,95620,38.4571181,-121.8458397
+67 Martinez,1043 Arnold Dr.,Martinez,CA,94553,37.9949762,-122.1090887
+68 San Rafael,496 Las Gallinas Ave Suite 2,San Rafael,CA,94903,38.0039701,-122.5440201
+69 Daly City,514 Westlake Center,Daly City,CA,94015,37.6991734,-122.4851048
+70 San Mateo,119 De Anza Blvd,San Mateo,CA,94402,37.5212273,-122.3390232
+71 Galleria,1151 Galleria Cir Unit FC-1,Roseville,CA,95678,38.7729182,-121.2729234
+72 Twelve Bridges,"640 Twelve Bridges Dr, Suite #105",Lincoln,CA,95648,38.85156,-121.2919849
+73 Centennial,3264 Centennial Blvd,Colorado Springs,CO,80904,38.8778903,-104.8511607
+74 Medford,65 Rossanley Dr,Medford,OR,97501,42.3433091,-122.8854407
+75 S. Last Vegas,8164 S Las Vegas Blvd. Ste 101.,Las Vegas,NV,89123,36.1152385,-115.2828511
+76 Clayton,4305 Clayton Road | STE E,Concord,CA,94521,37.9654976,-121.9935867
+77 Blosson Valley Plaza,"809 Cuesta Drive, Suite A",Mountain View,CA,94040,37.3731296,-122.0905358
+78 Los Banos,1451 W Pacheco Blvd Ste D,Los Banos,CA,93635,37.0555148,-120.8795157
+79 Salinas,1506 Constitution Blvd,Salinas,CA,93905,36.7000206,-121.6226746
+80 Huntington Beach,7821 Edinger Ave STE 122,Huntington Beach,CA,92647,33.7326429,-117.9948357
+81 Porter Ranch,19753 Rinaldi St STE B,Porter Ranch,CA,91326,34.2752096,-118.5660916
+83 Rancho Cucamonga,6331 Haven Ave STE 2,Rancho Cucamonga,CA,91737,34.1388473,-117.576831
+84 Hayward,22341 Foothill Blvd,Hayward,CA,94541,37.6776506,-122.0864177
+87 Upland,1902 N Campus Ave #D ,Upland,CA,91782,34.1310748,-117.6410628
+88 Eastern Ave,10575 S Eastern Ave Suite #170,Henderson,NV,89052,35.9991534,-115.1110079
+89 Flying Horse,13590 Roller Coaster Rd STE 150,Colorado Springs,CO,80921,39.0288737,-104.7850842
+90 S San Francisco,26 Chestnut Ave,South San Francisco,CA,94080,37.6558487,-122.4347229
+91 Soscol Ave,308 Soscol Ave Suite B,Napa,CA,94559,38.2856902,-122.275992
+92 Fremont,39370 Civic Center Dr suit b,Fremont,CA,94538,37.5533463,-121.9764083
+93 Irvine,14001 Jeffrey Rd,Irvine,CA,92620,33.6965248,-117.7654524
+94 Belmont,1250 El Camino Real,Belmont,CA,94002,37.6088494,-122.4021725
+98 Millbrae,101 N Rollins Rd,Millbrae,CA,94030,37.6007871,-122.3866329
+100 Morgan Hill,622 Tennant Station Way,Morgan Hill,CA,95037,37.1134068,-121.6410878
+101 Fountain,6235 Sawcut Point STE 120,Fountain,CO,80817,38.7192232,-104.7155942
+108 Grand Canal Shoppes,3377 Las Vegas Blvd S STE 2190,Las Vegas,NV,89109,36.1226252,-115.1707579
+109 Carlsbad,2588 El Camino Real,Carlsbad,CA,92008,33.1781628,-117.3278119
+11 Dublin,2696 Dublin Blvd,Dublin,CA,94568,37.7061926,-121.8543515
+112 Cirby Way,1200 Cirby Way Ste. D,Roseville,CA,95661,38.7290993,-121.273594
+115 E Chaparral Scottsdale,7908 E Chaparral Rd STE 104,Scottsdale,AZ,85250,33.5105593,-111.9138827
+119 Sunrise - Rancho Cordova,"4040 Sunrise BLVD, STE 120",Rancho Cordova,CA,95670,38.5569376,-121.2460057
+120 Los Altos Pkwy,150 Los Altos Pkwy Suite 105,Sparks,NV,89436,39.5828264,-119.7431459
+121 Trinity Pkwy,10318 Trinity Pkwy,Stockton,CA,95219,38.0489793,-121.3759481
+132 Wausau,601 Forest St,Wausau,WI,54403,44.9566219,44.9566219
+Santa Cruz,849 Almar Ave STE B,Santa Cruz,CA,95060,36.9611372,-122.0467962
+Oakley,986 Laurel Rd. Suite C,Oakley,CA,94561,37.9837393,-121.7152984
+Danville - Black Hawk,3454 Camino Tassajara Rd,Danville,CA,94506,37.7977636,-121.9220854
+Folsom,510 Natoma Station STE 500,Folsom,CA,95630,38.6555087,-121.181428
+Sacramento-Bicentennial Circle,390 Bicentennial Circle Suite,Sacramento,CA,95826,38.5496896,-121.4104915
+Sacramento Valley Station,401 I Street #110,Sacramento,CA,95814,38.5843132,-121.5053607
+Pinole,1588 Fitzgerald Dr,Pinole,CA,94564,37.9906121,-122.3027074
+Vacaville,134 Browns Valley Parkway,Vacaville,CA,95688,38.3653899,-121.9718825
+Northridge,18456 Dearborn Street,Northridge,CA,91324,34.2370971,-118.5379324
+Monrovia,144 W Foothill Blvd Suite E2,Monrovia,CA,91016,34.1511832,-118.0016549
+Orange,1500 East Village Way STE 2204,Orange,CA,92865,33.8270888,-117.8413404
+Rancho Santa Margarita,22312 El Paseo STE E,Rancho Santa Margarita,CA,92688,33.6389071,-117.5957745
+Ladera Ranch,27642 Antonio Pkwy,Ladera Ranch,CA,92694,33.5616908,-117.6308289
+E. Lake Mead Pkwy Henderson,883 E. Lake Mead Parkway Suite 135,Henderson,NV,89015,36.0553306,-114.973079
+Avondale (Dysart Rd),1729 N Dysart Rd B104,Avondale,AZ,85392,33.4671846,-112.3418543

@@ -11,6 +11,7 @@ const TABS = [
     { href: "/", label: "Search" },
     { href: "/history", label: "History" },
     { href: "/demographics", label: "Demographics"},
+    { href: "/site-presentations", label: "Site Presentations" }
 ];
 
 export default function NavBar() {
@@ -81,6 +82,8 @@ function ProfileMenu() {
     const [open, setOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
     
+
+
     useEffect(() => {
         if (!open) return;
         function handleClick(e:MouseEvent) {
@@ -102,6 +105,7 @@ function ProfileMenu() {
                 aria-label="Account menu"
             >
                 {me.avatar_url ? (
+                    
                     <img src={me.avatar_url} alt="" className="h-full w-full object-cover" />
                 ) : (
                     initials(me.first_name, me.last_name)
