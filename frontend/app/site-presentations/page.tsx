@@ -26,11 +26,11 @@ export default function SitePresentationsPage() {
     const [downloading, setDownloading] = useState(false);
     const [downloaded, setDownloaded] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
+    const [cancelled, setCancelled] = useState(false);
  
     const editorRef = useRef<LuckysheetEditorHandle>(null);
+    const abortRef = useRef<AbortController | null>(null);
  
-    // Lock page scroll only while the editor is actually fullscreen -- in
-    // the embedded layout the page scrolls normally.
     useEffect(() => {
         if (!isFullscreen) return;
         const prevOverflow = document.body.style.overflow;
@@ -40,7 +40,6 @@ export default function SitePresentationsPage() {
         };
     }, [isFullscreen]);
  
-    // Esc exits fullscreen, same as any other fullscreen surface on the web.
     useEffect(() => {
         if (!isFullscreen) return;
         function onKey(e: KeyboardEvent) {
@@ -63,20 +62,32 @@ export default function SitePresentationsPage() {
     async function handleGenerate(e: React.FormEvent) {
         e.preventDefault();
         if (!brand || !address.trim()) return;
+        const controller = new AbortController();
+        abortRef.current = controller;
         setGenerating(true);
+        setCancelled(false);
         setError(null);
         setDownloaded(false);
         setEditorReady(false);
         setPreviewFile(null);
         try {
-            const { blob, filename } = await api.previewSitePresentation(brand, address.trim());
+            const { blob, filename } = await api.previewSitePresentation(brand, address.trim(), controller.signal);
             setPreviewFile(blob);
             setPreviewFilename(filename);
         } catch (e) {
-            setError((e as Error).message);
+            if ((e as Error).name === "AbortError") {
+                setCancelled(true);
+            } else {
+                setError((e as Error).message);
+            }
         } finally {
             setGenerating(false);
+            abortRef.current = null;
         }
+    }
+
+    function handleCancel() {
+        abortRef.current?.abort();
     }
  
     async function handleDownload() {
@@ -139,17 +150,52 @@ export default function SitePresentationsPage() {
                     </label>
                 </div>
  
-                <button
-                    type="submit"
-                    disabled={generating || !brand || !address.trim()}
-                    className="mt-5 rounded-lg bg-ink px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-ink-2 disabled:opacity-40"
-                >
-                    {generating ? "Generating..." : "Generate"}
-                </button>
+                <div className="mt-5 flex items-center gap-3">
+                    <button
+                        type="submit"
+                        disabled={generating || !brand || !address.trim()}
+                        className="rounded-lg bg-ink px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-ink-2 disabled:opacity-40"
+                    >
+                        {generating ? "Generating..." : "Generate"}
+                    </button>
+                    {generating && (
+                        <button
+                            type="button"
+                            onClick={handleCancel}
+                            className="rounded-lg border border-line px-4 py-2.5 text-sm font-semibold text-charcoal transition hover:bg-paper"
+                        >
+                            Cancel
+                        </button>
+                    )}
+                </div>
+ 
                 {generating && (
-                    <p className="mt-2 text-xs text-charcoal/70">
-                        Pulling demographics, competitors, and traffic data, then building the
-                        site summary -- can take a moment.
+                    <div className="mt-4">
+                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-paper">
+                            <div className="loading-bar-fill h-full w-1/3 rounded-full bg-sky" />
+                        </div>
+                        <p className="mt-2 text-xs text-charcoal/70">
+                            Pulling demographics, competitors, and traffic data, then building
+                            the site summary -- can take a moment.
+                        </p>
+                        <style jsx>{`
+                            .loading-bar-fill {
+                                animation: loading-bar-slide 1.2s ease-in-out infinite;
+                            }
+                            @keyframes loading-bar-slide {
+                                0% {
+                                    transform: translateX(-100%);
+                                }
+                                100% {
+                                    transform: translateX(300%);
+                                }
+                            }
+                        `}</style>
+                    </div>
+                )}
+                {cancelled && !generating && (
+                    <p className="mt-3 rounded-lg bg-paper p-3 text-sm text-charcoal">
+                        Generation cancelled.
                     </p>
                 )}
                 {brandsError && (

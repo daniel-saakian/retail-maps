@@ -175,12 +175,14 @@ async function _readBlob(res: Response, fallbackName: string): Promise<SitePrese
 async function fetchBlobPost(
     path: string,
     body: unknown,
-    fallbackName: string
+    fallbackName: string,
+    signal?: AbortSignal,
 ): Promise<SitePresentationPreview> {
     const res = await apiFetch(path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
+        signal,
     });
     return _readBlob(res, fallbackName);
 }
@@ -207,7 +209,6 @@ export const api = {
  
     cancelSearch: (id: string) => apiFetch(`/api/searches/${id}/cancel`, { method: "POST" }),
  
-    // Fetched as text and rendered via <iframe srcDoc=...> in the caller.
     getMapHtml: (id: string) => apiFetch(`/api/searches/${id}/map`).then((r) => r.text()),
  
     downloadExcel: (id: string, cityLabel: string) =>
@@ -232,8 +233,6 @@ export const api = {
     uploadAvatar: (file: File) => {
         const formData = new FormData();
         formData.append("file", file);
-        // No Content-Type header here -- letting fetch set the multipart
-        // boundary itself. Setting it manually breaks the upload.
         return apiJson<UserProfile>("/api/me/avatar", {
             method: "POST",
             body: formData,
@@ -271,12 +270,13 @@ export const api = {
         apiJson<SitePresentationBrand[]>("/api/site-presentations/brands"),
  
 
-    
-    previewSitePresentation: (brand: string, address: string) =>
+
+    previewSitePresentation: (brand: string, address: string, signal?:AbortSignal) =>
         fetchBlobPost(
             "/api/site-presentations/generate",
             { brand, address },
-            `${brand}_site_summary.xlsx`
+            `${brand}_site_summary.xlsx`,
+            signal
         ),
 
 
