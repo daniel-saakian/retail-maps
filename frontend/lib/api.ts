@@ -64,7 +64,7 @@ export interface UserProfile {
     last_name?: string | null;
     avatar_url?: string | null;
 }
-
+ 
 export interface RingProfile {
     population: number;
     daytime_population: number;
@@ -81,7 +81,7 @@ export interface RingProfile {
     hh_dining_spend: number | null;
     n_block_groups: number;
 }
-
+ 
 export interface DemographicsResponse {
     address: string;
     lat: number;
@@ -90,17 +90,17 @@ export interface DemographicsResponse {
     wfh_pct: number | null;
     rings: Record<string, RingProfile>;
 }
-
+ 
 export interface SitePresentationBrand {
     code: string;
     label: string;
 }
-
+ 
 export interface SitePresentationPreview {
     blob: Blob;
     filename: string;
 }
-
+ 
 async function authHeaders(): Promise<HeadersInit> {
     const supabase = createClient();
     const {
@@ -117,7 +117,7 @@ async function apiFetch(path: string, init: RequestInit = {}): Promise<Response>
     const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
  
     if (res.status === 401) {
-
+        // Session expired/invalid server-side -- send back through the login gate.
         window.location.href = "/login";
         throw new Error("Session expired");
     }
@@ -133,9 +133,9 @@ async function apiJson<T>(path: string, init: RequestInit = {}): Promise<T> {
     return res.json() as Promise<T>;
 }
  
-
-
-
+// Downloads happen through an authenticated fetch + blob rather than a plain
+// <a href>, since a raw link can't carry an Authorization header and every
+// API route requires one.
 async function downloadFile(path: string, fallbackName: string): Promise<void> {
     const res = await apiFetch(path);
     await _saveBlob(res, fallbackName);
@@ -176,7 +176,7 @@ async function fetchBlobPost(
     path: string,
     body: unknown,
     fallbackName: string,
-    signal?: AbortSignal,
+    signal?: AbortSignal
 ): Promise<SitePresentationPreview> {
     const res = await apiFetch(path, {
         method: "POST",
@@ -209,6 +209,7 @@ export const api = {
  
     cancelSearch: (id: string) => apiFetch(`/api/searches/${id}/cancel`, { method: "POST" }),
  
+    // Fetched as text and rendered via <iframe srcDoc=...> in the caller.
     getMapHtml: (id: string) => apiFetch(`/api/searches/${id}/map`).then((r) => r.text()),
  
     downloadExcel: (id: string, cityLabel: string) =>
@@ -233,6 +234,8 @@ export const api = {
     uploadAvatar: (file: File) => {
         const formData = new FormData();
         formData.append("file", file);
+        // No Content-Type header here -- letting fetch set the multipart
+        // boundary itself. Setting it manually breaks the upload.
         return apiJson<UserProfile>("/api/me/avatar", {
             method: "POST",
             body: formData,
@@ -269,17 +272,18 @@ export const api = {
     listSitePresentationBrands: () =>
         apiJson<SitePresentationBrand[]>("/api/site-presentations/brands"),
  
-
-
-    previewSitePresentation: (brand: string, address: string, signal?:AbortSignal) =>
+    // Returns the generated .xlsx as a blob (no auto-download) so it can be
+    // loaded into the in-page Luckysheet editor for review/edits first.
+    previewSitePresentation: (brand: string, address: string, signal?: AbortSignal) =>
         fetchBlobPost(
             "/api/site-presentations/generate",
             { brand, address },
             `${brand}_site_summary.xlsx`,
             signal
         ),
-
-
+ 
+    // Takes the edited grid (luckysheet.getAllSheets() output) and triggers
+    // a browser download of the rebuilt .xlsx.
     exportSitePresentation: (filename: string, sheets: unknown[]) =>
         downloadFilePost(
             "/api/site-presentations/export",
@@ -287,3 +291,4 @@ export const api = {
             filename
         ),
 };
+ 
