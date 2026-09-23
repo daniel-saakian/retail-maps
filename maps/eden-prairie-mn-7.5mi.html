@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8' />
+  <title>Retail Centers – Eden Prairie, MN</title>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' />
+  <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
+  <style>
+    body { margin: 0; font-family: sans-serif; }
+    #map { height: 100vh; width: 100%; }
+    .legend {
+      background: white; padding: 10px 14px; border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); line-height: 1.8;
+      font-size: 13px;
+    }
+    .legend-dot { display: inline-block; width: 12px; height: 12px;
+                   border-radius: 50%; margin-right: 6px; }
+    .tenant-filter { font-size: 13px; }
+    .tenant-toggle-btn {
+      background: white; border: 2px solid rgba(0,0,0,0.2); border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); padding: 8px 12px; font-size: 13px;
+      font-family: sans-serif; cursor: pointer; min-width: 180px; text-align: left;
+    }
+    .tenant-toggle-btn:hover { background: #f4f4f4; }
+    .tenant-panel {
+      background: white; border-radius: 6px; box-shadow: 0 1px 5px rgba(0,0,0,0.3);
+      margin-top: 4px; padding: 10px; width: 260px; max-height: 380px;
+      display: flex; flex-direction: column;
+    }
+    .tenant-search {
+      width: 100%; box-sizing: border-box; padding: 6px 8px; margin-bottom: 8px;
+      border: 1px solid #ccc; border-radius: 4px; font-size: 13px;
+    }
+    .tenant-actions { display: flex; gap: 6px; margin-bottom: 8px; }
+    .tenant-actions button {
+      flex: 1; padding: 5px 6px; font-size: 12px; border: 1px solid #ccc;
+      border-radius: 4px; background: #f7f7f7; cursor: pointer;
+    }
+    .tenant-actions button:hover { background: #eaeaea; }
+    .tenant-list { overflow-y: auto; max-height: 260px; border-top: 1px solid #eee; padding-top: 6px; }
+    .tenant-item {
+      display: block; font-size: 12.5px; padding: 3px 2px; cursor: pointer;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .tenant-item:hover { background: #f4f4f4; }
+    .tenant-item input { margin-right: 6px; }
+  </style>
+</head>
+<body>
+<div id='map'></div>
+<script>
+  var map = L.map('map').setView([44.861892153779195, -93.4299021008938], 12);
+ 
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(map);
+ 
+  var plazasData = [];
+  var storesData = [];
+ 
+  var layerMultiAnchor = L.layerGroup().addTo(map);
+  var layerSingleAnchor = L.layerGroup().addTo(map);
+  var layerPlazaCenters = L.layerGroup().addTo(map);
+  var layerAnchors = L.layerGroup().addTo(map);
+  var layerTenants = L.layerGroup().addTo(map);
+  var layerStandalone = L.layerGroup().addTo(map);
+  var layerHighDensity = L.layerGroup().addTo(map);
+  var layerLowDensity = L.layerGroup().addTo(map);
+  var countyLayers = {};
+ 
+  function getOrCreateCountyLayer(county) {
+    if (!county || county === '-') county = 'Unknown';
+    if (!countyLayers[county]) {
+        countyLayers[county] = L.layerGroup().addTo(map);
+    }
+    return countyLayers[county];
+  }
+ 
+  function addPlaza(lat, lng, radius_m, plazaId, name, address, county, city, numAnchors, anchors, numTenants, tenants, color, leasingHtml) {
+    var popup = '<b>' + name + '</b><br>'
+      + (address !== '-' ? address + '<br>' : '')
+      + city + (county !== '-' ? ', ' + county + ' County' : '') + '<br>'
+      + leasingHtml
+      + '<br><b>' + numAnchors + ' anchor(s): </b><br>'
+      + anchors.split(', ').join('<br>')
+      + '<br><br><b>' + numTenants + ' other tenant(s):</b><br>'
+      + tenants.split(', ').join('<br>');
+    
+    var circle = L.circle([lat, lng], {
+      radius: radius_m,
+      color: color,
+      fillColor: color,
+      fillOpacity: 0.08,
+      weight: 2
+    });
+    if (numAnchors > 1) {
+      layerMultiAnchor.addLayer(circle);
+    } else {
+      layerSingleAnchor.addLayer(circle);
+    }
+ 
+    var center = L.circleMarker([lat,lng], {
+        radius: 9,
+        color: '#fff',
+        fillColor: '#8e44ad',
+        fillOpacity: 1,
+        weight: 2
+    }).bindPopup(popup, {maxHeight: 320, autoPanPadding: [20, 20]}).bindTooltip(name, {permanent: false, direction: 'top'});
+ 
+    var cleanCounty = (!county || county === '-') ? 'Unknown' : county;
+    getOrCreateCountyLayer(cleanCounty);
+ 
+    plazasData.push({
+        circle: circle,
+        center: center,
+        id: plazaId,
+        name: name,
+        county: cleanCounty,
+        numAnchors: numAnchors,
+        numTenants: numTenants
+    });
+  }
+ 
+  function addStore(lat, lng, name, address, color, plazaId, plaza, isAnchor) {
+    var size = isAnchor ? 11 : 9;
+    var icon = L.divIcon({
+      className: '',
+      html: '<div style="position:absolute;width:' + size + 'px;height:' + size + 'px;'
+          + 'border-radius:50%;background:' + color + ';border:2px solid white;'
+          + 'box-shadow:0 1px 3px rgba(0,0,0,0.4);top:50%;left:50%;'
+          + 'transform:translate(-50%,-50%)'
+          + (isAnchor ? ';outline:2px solid rgba(0,0,0,0.25)' : '')
+          + '"></div>',
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2]
+    });
+    var marker = L.marker([lat, lng], {icon: icon})
+      .bindPopup('<b>' + name + '</b>' + (isAnchor ? '⚓' : '')+ '<br>' 
+        + '<i>' + plaza + '</i><br>'
+        + address)
+      .bindTooltip(name, {direction: 'top'})
+    
+    storesData.push({
+      marker: marker,
+      plazaId: plazaId,
+      plazaLabel: plaza,
+      isAnchor: isAnchor,
+      name: name
+    });
+  }
+ 
+  function tenantFilterMatchesPlaza(plazaId) {
+    // Fast path: nothing deselected, every plaza passes.
+    if (selectedNames.size >= allTenantNames.length) return true;
+    var names = plazaNameIndex[plazaId];
+    if (!names) return false;
+    for (var n of names) {
+      if (selectedNames.has(n)) return true;
+    }
+    return false;
+  }
+ 
+  function updateVisibility() {
+    plazasData.forEach(function(p) {
+      var anchorMatch = (p.numAnchors > 1) ? map.hasLayer(layerMultiAnchor): map.hasLayer(layerSingleAnchor);
+      var densityMatch = (p.numTenants >= 10) ? map.hasLayer(layerHighDensity) : map.hasLayer(layerLowDensity);
+      var countyLayer = countyLayers[p.county];
+      var countyMatch = countyLayer ? map.hasLayer(countyLayer) : true;
+      var tenantMatch = tenantFilterMatchesPlaza(p.id);
+ 
+      var plazaVisible = anchorMatch && densityMatch && countyMatch && tenantMatch;
+      p.isActive = plazaVisible;
+ 
+      if (plazaVisible) {
+        // FIX 2: Changed map.has() to map.hasLayer()
+        if (!map.hasLayer(p.circle)) p.circle.addTo(map);
+      } else {
+        if (map.hasLayer(p.circle)) map.removeLayer(p.circle);
+      }
+ 
+      if (plazaVisible && map.hasLayer(layerPlazaCenters)) {
+        if (!map.hasLayer(p.center)) p.center.addTo(map);
+      } else {
+        if (map.hasLayer(p.center)) map.removeLayer(p.center);
+      }
+    });
+      
+    storesData.forEach(function(s) {
+        var storeVisible = false;
+        var nameMatch = selectedNames.has(s.name);
+ 
+        if (s.plazaId === -1) {
+            // Standalone store
+            storeVisible = map.hasLayer(layerStandalone) && nameMatch;
+ 
+        } else {
+            var parentPlaza = plazasData.find(function(p) {
+                return p.id === s.plazaId;
+            });
+ 
+            if (parentPlaza && parentPlaza.isActive) {
+                storeVisible = (s.isAnchor
+                    ? map.hasLayer(layerAnchors)
+                    : map.hasLayer(layerTenants)) && nameMatch;
+            }
+        }
+ 
+        if (storeVisible) {
+            if (!map.hasLayer(s.marker))
+                s.marker.addTo(map);
+        } else {
+            if (map.hasLayer(s.marker))
+                map.removeLayer(s.marker);
+        }
+    });
+  }
+ 
+  addPlaza(44.93694268055556, -93.38549195, 309.0, 0, 'Unnamed Retail Center', '8340 Minnesota State Highway 7 Saint Louis Park', 'Hennepin County', 'Saint Louis Park', 3, 'Kohl\'s, Nordstrom Rack, TJ Maxx', 33, 'AT&T, America\'s Best Contacts & Eyeglasses, Applebee\'s, Banana Republic, Blaze Pizza, Burger King, Caribou Coffee, Chipotle, Cub Foods, DSW, Firestone, GNC, Great Clips, J.Crew, Jimmy John\'s, Knollwood Mall, Le Monde Tailors, Mattress Firm, Noodles & Company, Nothing Bundt Cakes, Old Navy, Panera Bread, Pearle Vision, Regis, Restwell Mattress Factory, Sport Clips, T-Mobile, Torrid, Total Wine, Ulta Beauty, Uniform Advantage, Verizon, Wells Fargo', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.85984990882353, -93.30772922647058, 289.7, 1, 'Unnamed Retail Center', '7940 Penn Avenue S Bloomington', 'Hennepin County', 'Bloomington', 3, 'Kohl\'s, TJ Maxx, Walgreens', 31, 'Allure Nails & Spa, Applebee\'s, Bloomington Chrysler Jeep, Bruegger\'s Bagels, Caribou Coffee, Dero, Famous Footwear, Fresh Thyme Market, GNC, GameStop, Great Clips, Huntington Bank, Jiffy Lube, Jimmy John\'s, McDonald\'s, My Salon Suites, Panda Express, Sally Beauty, Salon Oriana, Schuler Shoes, Sonic, Southtown Nails, Sport Clips, Starbucks, Subway, T-Mobile, The Mane Aptistry, The UPS Store, Top Ten Liquors, Verizon, Wedding Day Diamonds', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.88089841666667, -93.32511203666667, 415.5, 2, 'Unnamed Retail Center', '2294 Southdale Center Edina', 'Hennepin County', 'Edina', 1, 'Macy\'s', 29, 'AMC Southdale 16, Abercrombie Kids, Apple Store, Arc\'teryx, Athleta, Camp, Freshii, Games by James, Garage, J.Crew, Janie & Jack, Kendra Scott, Kowalski\'s Markets, Life Time, Mango, P.F. Chang\'s, PXG Minneapolis, Panda Express, Pandora, Qdoba, Ruby Tuesday, Rustica, Sephora, Shake Shack, Southdale Shopping Center, Subway, Swarovski, The Cheesecake Factory, Victoria\'s Secret', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.91121483076923, -93.35427691153846, 298.4, 3, 'Unnamed Retail Center', '5033 Vernon Avenue Edina', 'Hennepin County', 'Edina', 1, 'Walgreens', 25, 'ArtFrame of Edina, Banfield Pet Hospital, Caribou Coffee, ChargePoint, Davanni\'s, Edina Liquor, FedEx, Grandview Tire & Auto - Vernon, Great Clips, Hallmark Cleaners & Launderers, Holiday, Interlachen Barber Shop, Jerry\'s Do it Best Hardware, Jerry\'s Foods, Jerry\'s Printing, Mulberrys Dry Cleaners and Laundry, Redbox, Shoppe 5101 Salon & Spa, Speedway, Starbucks, The UPS Store, UPS, USPS, Washburn-McReavy Edina Chapel, Wells Fargo', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.86211688695652, -93.54205067826088, 366.4, 4, 'Unnamed Retail Center', '851 West 78th Street Chanhassen', 'Carver County', 'Chanhassen', 1, 'Target', 22, 'ABC Toy Zone, BMO Harris Bank, Best Cleaners, Chanhassen Floral, Cub Foods, FedEx Office, Furnishare, GNC, Great Clips, Huntington Bank, Jersey Mike\'s Subs, Lunds & Byerlys, MGM Liquor Warehouse, Noodles & Company, Papa Murphy\'s, Party City, Starbucks, Subway, Sweet Salon & Barber Shoppe, Taco Bell, Travel Advisors International;Pilgrim Dry Cleaners, Wells Fargo', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.7810875652174, -93.50662910434782, 322.4, 5, 'Unnamed Retail Center', '1291 Tasha Boulevard Shakopee', 'Scott County', 'Shakopee', 1, 'Walgreens', 22, '$5 Tan, AT&T, Applebee\'s, Arby\'s, Chipotle, Chuck & Don\'s, Cost Cutters, Country Inn & Suites, Cub Liquor, DQ Grill & Chill, Home Choice, Jimmy John\'s, Kwik Trip, Papa Murphy\'s, Pizza Ranch, Snap Fitness, Speedway, Speedy Wash, Taco Bell, Taco John\'s, Von Hansons Meats, Wells Fargo', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.854672666666666, -93.4309567, 379.9, 6, 'Unnamed Retail Center', '12195 Singletree Lane Eden Prairie', 'Hennepin County', 'Eden Prairie', 2, 'Walgreens, Walmart Supercenter', 19, 'Becklund Jewelers, Bobby & Steve\'s Auto World, Car-X, Cleaners, Cold Stone Creamery, Dick\'s Sports Barbers, FedEx Office, Flagship Salon, Huntington Bank, Jiffy Lube, Kona Grill, Massage Retreat & Spa, Mattress Firm, McDonald\'s, Sherwin-Williams, Solana Nail Spa, Starbucks, WW Studio, Wedding Day Diamonds', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.81137580952381, -93.33153497619048, 289.7, 7, 'Unnamed Retail Center', '10600 France Avenue South Bloomington', 'Hennepin County', 'Bloomington', 3, 'Dollar Tree, Planet Fitness, Walgreens', 18, '1st Sewing Center, AutoZone, Banfield Pet Hospital, Barbers & Stylists, Caribou Coffee, Chipotle, Cub Foods, Enchanted Formals, Fashion Nails, Freewheel Bike, Jerry\'s Do It Best Hardware, Jimmy John\'s, Kids Empire, McDonald\'s, Richfield Tailors, Subway, Valley West Shopping Center, Value Village', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.875253989473684, -93.32536587894737, 414.3, 8, 'Unnamed Retail Center', '7000 York Avenue South Edina', 'Hennepin County', 'Edina', 1, 'Target', 18, 'A&BÉ, Brandon Square Mall, Calico, Ethan Allen, Flock Safety, Galleria Shopping Center, Hirshfields, InVision Distinctive Eyewear, Kohler, Orangetheory Fitness, Panera Bread, Rue De France, Sola Salons, Starbucks, The Drip Bar, The Original Pancake House, Warners\' Stellian, Yorktown Mall', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.92483877058823, -93.41107935882353, 289.7, 9, 'Unnamed Retail Center', '5 9th Avenue South Hopkins', 'Hennepin County', 'Hopkins', 1, 'Hance Ace Hardware', 16, 'Amy\'s Cupcake Shoppe, Bongo\'s & Bud\'s, Center Drug, Chipotle, Cold Stone Creamery, Driskill\'s Food, Duff\'s Barber Shop, European Massage Therapy, Little Blind Spot, Mainstreet Nails, Mill City Sound, Richards Liquor, The Liquor Store & More, The Vine Room, U.S. Bank, Vaping Studio', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.915482870588235, -93.50451835882353, 328.7, 10, 'Unnamed Retail Center', '4848 County Road 101 Minnetonka', 'Carver County', 'Minnetonka', 3, 'Planet Fitness, Target, Walgreens', 14, 'Caribou Coffee, Chase, Club Pilates, Discount Tire, Jimmy John\'s, KT Nails, Mister Car Wash, Noodles & Company, Speedy Wash, Starbucks, T-Mobile, The Original Pancake House, U.S. Bank, Wendy\'s', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.860748586666666, -93.53567953333332, 324.7, 11, 'Unnamed Retail Center', '600 West 79th Street Chanhassen', 'Carver County', 'Chanhassen', 2, 'Aldi, Walgreens', 13, 'Buffalo Wild Wings, Chipotle, Chuck & Don\'s Pet Food & Supplies, Country Inn & Suites, Greenleaf Vape & Tobacco, Hour Glass Cleaners, Jimmy John\'s, Palm Beach Tan, Panera Bread, Salon Concepts, Tires Plus, Von Hanson\'s Meats, Wendy\'s', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.77482194, -93.5027733, 289.7, 12, 'Unnamed Retail Center', '1685 17th Avenue Shakopee', 'Scott County', 'Shakopee', 3, 'Kohl\'s, Planet Fitness, Target', 12, 'Allure Hair Salon & Spa, America\'s Best Contacts & Eyeglasses, AutoZone, Caribou Coffee, Clarkson Eyecare, Famous Footwear, Five Below, Liberty Oxygen, Nails Lovely, Salon Avalon, SouthSide Liquor, Verizon', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.86686312142857, -93.32699291428571, 289.7, 13, 'Unnamed Retail Center', '7535 France Avenue South Edina', 'Hennepin County', 'Edina', 3, 'HomeGoods, Office Depot, Whole Foods Market', 11, 'Envy Nails, Go Glow, Haute Dog Spa, Jamba, JoS. A. Bank, Juut Salonspa, La-Z-Boy, Mainstream Boutique, Starbucks, The UPS Store, Wells Fargo', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.854267461538456, -93.42485669999999, 289.7, 14, 'Unnamed Retail Center', '450 Prairie Center Drive Eden Prairie', 'Hennepin County', 'Eden Prairie', 3, 'JCPenney, Kohl\'s, Target', 10, 'AMC Eden Prairie Mall 18, Barnes & Noble, Buckle, Dairy Queen, Eden Prairie Center, Highscore Video Games, Potbelly, Scheels, Subway, Von Maur', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.85087686923077, -93.43448666153846, 324.8, 15, 'Unnamed Retail Center', '12589 Flying Cloud Drive Mineapolis', 'Hennepin County', 'Mineapolis', 1, 'HomeGoods', 12, 'Chick-fil-A, Crumbl Cookies, Games Workshop, Michaels, Pei Wei, Safelite AutoGlass, Sierra, Taco Bell, The Hair District, Ulta Beauty, Wendy\'s, X Golf', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.77635578333334, -93.416931075, 289.7, 16, 'Unnamed Retail Center', '7845 Old Carriage Court North Shakopee', 'Scott County', 'Shakopee', 1, 'Aldi', 11, '1890 Meats, Chase, Holiday, Local Imports, Michaels, Once Upon a Child, Original Mattress Factory, Southbridge Liquor, The UPS Store, Tires Plus, Wendy\'s', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.83596116363636, -93.39993878181818, 289.7, 17, 'Unnamed Retail Center', '9607 Anderson Lakes Pkwy Eden Prairie', 'Scott County', 'Eden Prairie', 1, 'Niemann Ace Hardware', 10, 'Chipotle, Daisy Nails, Eden Tailors, GiVan\'s Salon & Spa, Jerry\'s Foods, McDonald\'s, Nean Tobacco, Preserve Barbers, Starbucks, Tide Cleaners', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.93739569090909, -93.39254537272727, 289.7, 18, 'Unnamed Retail Center', '8950 Minnesota State Highway 7 Saint Louis Park', 'Hennepin County', 'Saint Louis Park', 3, 'Aldi, Dollar Tree, Target', 8, 'Advance Auto Parts, Castle Lashes & Nails, Five Below, H&R Block, Huntington Bank, Primrose School of St. Louis Park West, Sally Beauty, UPS', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.892836663636366, -93.58071943636364, 289.7, 19, 'Unnamed Retail Center', '23610 Minnesota State Highway 7 Shorewood', 'Hennepin County', 'Shorewood', 1, 'Dollar Tree', 10, 'Cub Foods, Domino\'s, Great Clips, Hairazors Salon, Historic Tattoo, Milio\'s, Shorewood Smoke Shop Plus, Speedway, True Value, Verizon', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.86293357272727, -93.48603750000001, 321.4, 20, 'Unnamed Retail Center', '16340 Terry Pine Drive Eden Prairie', 'Carver County', 'Eden Prairie', 1, 'Walgreens', 10, 'Bruegger\'s Bagels, DQ Grill & Chill, Dave\'s Hot Chicken, Eden Prairie Liquor, Kowalski\'s, Patina, Speedway, Starbucks, Subway, The UPS Store', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.93479764, -93.38550651, 289.7, 21, 'Unnamed Retail Center', '540 Blake Road North', 'Hennepin County', 'Hopkins', 1, 'Walgreens', 9, 'Five Guys, Flooring Expo by Carpet King, Home Choice, Stilo Cuts, Taco Bell, Wendy\'s, White Castle, Wingstop, Yardbird', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.85824434, -93.42660147000001, 289.7, 22, 'Unnamed Retail Center', '8040 Glen Lane Eden Prairie', 'Hennepin County', 'Eden Prairie', 2, 'Dollar Tree, Petco', 8, 'Davanni\'s, Great Clips, Holiday, Popeyes, Salon Lofts, Sport Clips, Thomas Printworks, Verizon', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.952617399999994, -93.41861396, 289.7, 23, 'Unnamed Retail Center', '11100 Cedar Lake Road Minnetonka', 'Hennepin County', 'Minnetonka', 1, 'ALDI', 9, 'Anytime Fitness, BP, Cedar Nails, Domino\'s, Evolve Salon, Holiday, Lodestone Coffee and Games, Strong Liquors, Wings Financial Credit Union', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.86004573, -93.331827, 289.7, 24, 'Unnamed Retail Center', '4270 78th Street West Bloomington', 'Hennepin County', 'Bloomington', 2, 'Marshalls, Trader Joe\'s', 8, 'Bobby & Steve\'s Auto World, Holiday Inn Express & Suites, Michaels, Mobil, Perkins, Total Hockey, Total Wine, World Market', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.85970334444445, -93.42446181111112, 320.2, 25, 'Unnamed Retail Center', '11600 Leona Road Eden Prairie', 'Hennepin County', 'Eden Prairie', 1, 'Best Buy', 8, 'Caribou Coffee, Cell Phone Repair, Eden Prairie Liquor, Hampton Inn & Suites, Qdoba, Spark by Hilton, SpringHill Suites Minneapolis Eden Prairie, TownePlace Suites', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.83266978888889, -93.60049287777777, 351.3, 26, 'Unnamed Retail Center', '300 Pioneer Trail, East Chaska', 'Carver County', 'Chaska', 3, 'Aldi, Kohl\'s, The Home Depot', 6, 'CA Nails, Chipotle, McDonald\'s, Starbucks, T-Mobile, The UPS Store', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.933672425, -93.420575575, 289.7, 27, 'Unnamed Retail Center', '1511 Highway 7 Hopkins', 'Hennepin County', 'Hopkins', 1, 'Walgreens', 7, 'Caribou Coffee, MGM Liquor Warehouse, Perkins, Salon L\'Image, Speedway, Speedy Wash, Starbucks', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.8292278125, -93.6011772875, 289.7, 28, 'Unnamed Retail Center', '111 Pioneer Trail Chaska', 'Carver County', 'Chaska', 1, 'Target', 7, 'Caribou Coffee, Edward Jones, H&R Block, Jersey Mike\'s Subs, Kwik Trip, Nautical Bowls, Qdoba', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.890652228571426, -93.58236305714286, 289.7, 29, 'Unnamed Retail Center', '2499 Highway 7 Excelsior', 'Hennepin County', 'Excelsior', 1, 'Walgreens', 6, 'Caribou Coffee, Fido\'s Pantry, Pet Clips, Seidou Spa, Speedway, US Nails', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.82091318571429, -93.40085594285713, 289.7, 30, 'Unnamed Retail Center', '10180 Hennepin Town Road Eden Prairie', 'Scott County', 'Eden Prairie', 1, 'Walgreens', 6, 'Anytime Fitness, Bella Gina, Elements Massage, Fantastic Sams, Papa Murphy\'s, Smoke World Vape', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.86021768333333, -93.31222141666666, 289.7, 31, 'Unnamed Retail Center', '2555 West 79th Street Bloomington', 'Hennepin County', 'Bloomington', 1, 'Target', 5, 'Chick-fil-A, Hobby Lobby, Schneiderman\'s Furniture, Starbucks, Tesla Supercharger', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.87830268333334, -93.32117356666667, 289.7, 32, 'Unnamed Retail Center', '6975 York Avenue South Edina', 'Hennepin County', 'Edina', 1, 'Walgreens', 5, 'Caribou Coffee, Chipotle, Flock Safety, Key Cadillac, McCormick & Schmick\'s', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.86255852, -93.46468178, 289.7, 33, 'Unnamed Retail Center', '14711 Martin Drive Eden Prairie', 'Carver County', 'Eden Prairie', 1, 'Best Buy Outlet', 4, 'Anytime Fitness, Muska Lighting, NAPA Auto Parts, Seasons Golf', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.78059175, -93.415817425, 289.7, 34, 'Unnamed Retail Center', '8201 Old Carriage Court Shakopee', 'Scott County', 'Shakopee', 2, 'Sam\'s Club, Walmart Supercenter', 2, 'Discount Tire, Texas Roadhouse', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.77690306666667, -93.46781299999999, 289.7, 35, 'Unnamed Retail Center', '4270 Dean Lakes Boulevard Shakopee', 'Scott County', 'Shakopee', 2, 'Dollar Tree, Lowe\'s', 1, 'Slumberland', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.85899545, -93.4353641, 289.7, 36, 'Unnamed Retail Center', '12011 Technology Drive Eden Prairie', 'Hennepin County', 'Eden Prairie', 1, 'Costco', 1, 'Bachman\'s', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.7725269, -93.4120359, 289.7, 37, 'Unnamed Retail Center', '1701 County Road 18 Shakopee', 'Scott County', 'Shakopee', 1, 'The Home Depot', 1, 'Kwik Trip', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.9243588, -93.41889280000001, 289.7, 38, 'Unnamed Retail Center', '-', 'Hennepin County', 'Hopkins', 1, 'Dollar Tree', 1, 'Jeff’s Auto Service', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+  addStore(44.9371299, -93.3849872, 'GNC', '8316 Minnesota State Highway 7 Saint Louis Park', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.9372056, -93.384986, 'Regis', '8318 Minnesota State Highway 7 Saint Louis Park', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.9372835, -93.3849847, 'Sport Clips', '8320A Minnesota State Highway 7 Saint Louis Park', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.7819171, -93.5089805, 'Papa Murphy\'s', '1106 Vierling Drive East Shakopee', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.7818187, -93.5091018, '$5 Tan', '1102 Vierling Drive East Shakopee', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.7795665, -93.5060707, 'Snap Fitness', '1282 Vierling Drive East Shakopee', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.7795622, -93.5067811, 'Chuck & Don\'s', '1270 Vierling Drive East Shakopee', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.7716382, -93.4129328, 'Kwik Trip', '-', '#3498db', 37, 'Unnamed Retail Center', false);
+addStore(44.7767019, -93.4180313, 'Michaels', '8051 Old Carriage Court Shakopee', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(44.7775031, -93.4178352, 'Southbridge Liquor', '8071 Old Carriage Court Shakopee', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(44.7772114, -93.4178661, 'Once Upon a Child', '8075 Old Carriage Court Shakopee', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(44.7770655, -93.4178815, 'Local Imports', '8085 Old Carriage Court', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(44.7752651, -93.4159029, 'The UPS Store', '8032 Old Carriage Court', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(44.7753063, -93.4159571, '1890 Meats', '8030 Old Carriage Court Shakopee', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(44.775224, -93.4158487, 'Original Mattress Factory', '8034 Old Carriage Court', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(44.9242516, -93.4099374, 'Chipotle', '786 Mainstreet Hopkins', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(44.8624285, -93.4648097, 'Muska Lighting', '-', '#3498db', 33, 'Unnamed Retail Center', false);
+addStore(44.8123762, -93.3308295, 'Cub Foods', '10520 France Avenue South Bloomington', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(44.8930349, -93.5812281, 'Cub Foods', '23800 Minnesota State Highway 7 Shorewood', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(44.9517626, -93.4201134, 'Holiday', '-', '#3498db', 23, 'Unnamed Retail Center', false);
+addStore(44.9525826, -93.4204567, 'BP', '-', '#3498db', 23, 'Unnamed Retail Center', false);
+addStore(44.8623248, -93.4662285, 'NAPA Auto Parts', '14829', '#3498db', 33, 'Unnamed Retail Center', false);
+addStore(44.9361263, -93.3874239, 'Jimmy John\'s', '8500 Minnesota State Highway 7 Saint Louis Park', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.8506754, -93.4363619, 'Sierra', '-', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(44.9146848, -93.5054365, 'KT Nails', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.9256845, -93.4118136, 'Hance Ace Hardware', '-', '#f39c12', 9, 'Unnamed Retail Center', true);
+addStore(44.9256959, -93.4123929, 'Center Drug', '-', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(44.8554741, -93.4292085, 'Kona Grill', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.8586442, -93.4250009, 'Sport Clips', '8045 Flying Cloud Drive Eden Prairie', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(44.8587354, -93.4250009, 'Verizon', '8045 Flying Cloud Drive Eden Prairie', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(44.8364816, -93.4004898, 'Niemann Ace Hardware', '9607 Anderson Lakes Pkwy Eden Prairie', '#f39c12', 17, 'Unnamed Retail Center', true);
+addStore(44.8361673, -93.400401, 'Nean Tobacco', '9639 Anderson Lakes Parkway Eden Prairie', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(44.8354644, -93.4005705, 'Jerry\'s Foods', '9625 Anderson Lakes Parkway Eden Prairie', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(44.8361085, -93.4004259, 'Daisy Nails', '9637 Anderson Lakes Parkway Bloomington', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(44.8636462, -93.4864938, 'Kowalski\'s', '16500 West 78th Street', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(44.8635455, -93.4878649, 'Bruegger\'s Bagels', '-', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(44.8635455, -93.4877593, 'The UPS Store', '-', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(44.8627249, -93.53595, 'Von Hanson\'s Meats', '594 West 78th Street Chanhassen', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(44.9117708, -93.3541647, 'Edina Liquor', '5013 Vernon Avenue Edina', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.9116618, -93.3543598, 'Hallmark Cleaners & Launderers', '5017 Vernon Avenue Edina', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.9116417, -93.3543939, 'The UPS Store', '5021 Vernon Avenue Edina', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.9114116, -93.3547362, 'Walgreens', '5033 Vernon Avenue Edina', '#f39c12', 3, 'Unnamed Retail Center', true);
+addStore(44.9115174, -93.3531134, 'Starbucks', '5121 Gus Young Lane Vernon Shops', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.9109643, -93.3547984, 'Shoppe 5101 Salon & Spa', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.9105435, -93.3548029, 'Jerry\'s Do it Best Hardware', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.7760399, -93.4158787, 'Tires Plus', '8006 Old Carriage Court', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(44.953182, -93.419344, 'Anytime Fitness', '11104 Cedar Lake Road Minnetonka', '#3498db', 23, 'Unnamed Retail Center', false);
+addStore(44.9527375, -93.419319, 'ALDI', '11100 Cedar Lake Road Minnetonka', '#f39c12', 23, 'Unnamed Retail Center', true);
+addStore(44.8592018, -93.332432, 'Trader Joe\'s', '4270 78th Street West Bloomington', '#f39c12', 24, 'Unnamed Retail Center', true);
+addStore(44.9367685, -93.3830512, 'Blaze Pizza', '8126 Minnesota State Highway 7 Saint Louis Park', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.9368369, -93.3833528, 'Great Clips', '8136 Minnesota State Highway 7 Saint Louis Park', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.9368424, -93.3836672, 'Caribou Coffee', '8208 Minnesota State Highway 7 Saint Louis Park', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.9368451, -93.3837838, 'T-Mobile', '8224 Minnesota State Highway 7 Saint Louis Park', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.9368074, -93.3842581, 'DSW', '8236 Minnesota State Highway 7 Saint Louis Park', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.9368166, -93.384644, 'Old Navy', '8308 Minnesota State Highway 7 Saint Louis Park', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.9336583, -93.4202116, 'Caribou Coffee', '-', '#3498db', 27, 'Unnamed Retail Center', false);
+addStore(44.9338026, -93.4200828, 'Salon L\'Image', '-', '#3498db', 27, 'Unnamed Retail Center', false);
+addStore(44.8663187, -93.3265942, 'Jamba', '7511 France Avenue South Edina', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(44.8734742, -93.3222663, 'Panera Bread', '3345 Hazelton Road Edina', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.8758026, -93.3256775, 'The Original Pancake House', '3501 West 70th Street Edina', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.8793448, -93.3251636, 'The Cheesecake Factory', 'Southdale Center Edina', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.8804719, -93.3261185, 'Ruby Tuesday', 'Southdale Center Edina', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.8796546, -93.3248632, 'P.F. Chang\'s', 'Southdale Center Edina', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.8792764, -93.3205663, 'Caribou Coffee', '6805 York Avenue South Edina', '#3498db', 32, 'Unnamed Retail Center', false);
+addStore(44.8791415, -93.3205556, 'Chipotle', '6801 York Avenue South Edina', '#3498db', 32, 'Unnamed Retail Center', false);
+addStore(44.8772351, -93.3233411, 'Starbucks', '3510 Galleria Edina', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.877697, -93.3219023, 'McCormick & Schmick\'s', '3203 Edina', '#3498db', 32, 'Unnamed Retail Center', false);
+addStore(44.8609504, -93.3082527, 'Bruegger\'s Bagels', '7801 Southtown Center Bloomington', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.8609721, -93.3081594, 'Starbucks', '7805 Southtown Center Bloomington', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.860956, -93.3080698, 'Subway', '7807 Southtown Center Bloomington', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.8609618, -93.3075151, 'Panda Express', '7823 Southtown Center Bloomington', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.8605559, -93.3072463, 'Applebee\'s', '7901 Southtown Center Bloomington', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.8597405, -93.309352, 'Walgreens', '7940 Penn Avenue S Bloomington', '#f39c12', 1, 'Unnamed Retail Center', true);
+addStore(44.8594524, -93.3093522, 'Jimmy John\'s', '7942 Penn Avenue South Bloomington', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.8592686, -93.309359, 'Caribou Coffee', '7950 Penn Avenue S Bloomington', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.8606647, -93.3324261, 'Marshalls', '4220 78th Street West Bloomington', '#f39c12', 24, 'Unnamed Retail Center', true);
+addStore(44.8606236, -93.3333554, 'World Market', '4250 78th Street West Bloomington', '#3498db', 24, 'Unnamed Retail Center', false);
+addStore(44.8606273, -93.3329488, 'Michaels', '4240 78th Street West Bloomington', '#3498db', 24, 'Unnamed Retail Center', false);
+addStore(44.8605708, -93.3319074, 'Total Hockey', '4210 78th Street West Bloomington', '#3498db', 24, 'Unnamed Retail Center', false);
+addStore(44.8603319, -93.3315772, 'Total Wine', '4200 78th Street West Bloomington', '#3498db', 24, 'Unnamed Retail Center', false);
+addStore(44.8816949, -93.3246482, 'Qdoba', 'Southdale Center Edina', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.8810626, -93.3239102, 'Subway', 'Southdale Center Edina', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.8810446, -93.324009, 'Freshii', 'Southdale Center Edina', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.8811977, -93.3243592, 'Panda Express', '2294 Southdale Center Edina', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.9363468, -93.3855441, 'Panera Bread', '8452 Minnesota State Highway 7 Saint Louis Park', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.8658554, -93.3269209, 'Office Depot', '7535 France Avenue South Edina', '#f39c12', 13, 'Unnamed Retail Center', true);
+addStore(44.8542852, -93.4261985, 'Barnes & Noble', '-', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(44.8554331, -93.4235416, 'JCPenney', '-', '#f39c12', 14, 'Unnamed Retail Center', true);
+addStore(44.8535384, -93.4236752, 'Kohl\'s', '450 Prairie Center Drive Eden Prairie', '#f39c12', 14, 'Unnamed Retail Center', true);
+addStore(44.8533768, -93.4257033, 'Scheels', '8301 Flying Cloud Drive Eden Prairie', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(44.8554108, -93.4257662, 'Target', '8225 Flying Cloud Drive Eden Prairie', '#f39c12', 14, 'Unnamed Retail Center', true);
+addStore(44.8543186, -93.4233215, 'Von Maur', '-', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(44.9244955, -93.4102652, 'Mainstreet Nails', '801 Mainstreet Hopkins', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(44.9531116, -93.4179633, 'Cedar Nails', '11058 Cedar Lake Road', '#3498db', 23, 'Unnamed Retail Center', false);
+addStore(44.9534615, -93.4166095, 'Evolve Salon', '10992 Cedar Lake Road', '#3498db', 23, 'Unnamed Retail Center', false);
+addStore(44.9535145, -93.4164163, 'Lodestone Coffee and Games', '10982 Cedar Lake Road', '#3498db', 23, 'Unnamed Retail Center', false);
+addStore(44.8813113, -93.3248155, 'Games by James', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.8510471, -93.4350239, 'Crumbl Cookies', '12575 Castlemoor Drive Eden Prairie', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(44.8511763, -93.4341733, 'Games Workshop', '12557 Castlemoor Drive', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(44.8511142, -93.4350236, 'The Hair District', '12573 Castlemoor Drive Eden Prairie', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(44.8547726, -93.4340678, 'Cleaners', '8254 Commonwealth Drive', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.8547345, -93.4338249, 'Massage Retreat & Spa', '8248 Commonwealth Drive', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.8547398, -93.4334015, 'Sherwin-Williams', '8240 Commonwealth Drive', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.8547708, -93.4342127, 'Solana Nail Spa', '8258 Commonwealth Drive', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.8547745, -93.4339202, 'WW Studio', '8250 Commonwealth Drive', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.9377014, -93.3925504, 'Aldi', '8950 Minnesota State Highway 7 Saint Louis Park', '#f39c12', 18, 'Unnamed Retail Center', true);
+addStore(44.9370325, -93.3925989, 'Dollar Tree', '8928 Minnesota State Highway 7 Saint Louis Park', '#f39c12', 18, 'Unnamed Retail Center', true);
+addStore(44.9373349, -93.3927001, 'H&R Block', '8942 Minnesota State Highway 7 Saint Louis Park', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(44.9367717, -93.3925115, 'Five Below', '8912 Minnesota State Highway 7 Saint Louis Park', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(44.9372296, -93.3926649, 'Sally Beauty', '8938 Minnesota State Highway 7 Saint Louis Park', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(44.9371346, -93.392633, 'Castle Lashes & Nails', '8934 Minnesota State Highway 7 Saint Louis Park', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(44.9368249, -93.384992, 'Applebee\'s', '8312 Minnesota State Highway 7 Saint Louis Park', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.9377161, -93.3864862, 'America\'s Best Contacts & Eyeglasses', '8348 Minnesota State Highway 7 Saint Louis Park', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.9376973, -93.3851781, 'J.Crew', '8324 Minnesota State Highway 7 Saint Louis Park', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.9367635, -93.3827731, 'Noodles & Company', '8120 Minnesota State Highway 7 Saint Louis Park', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.9368364, -93.3832506, 'Nothing Bundt Cakes', '8132 Minnesota State Highway 7 Saint Louis Park', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.9376225, -93.386678, 'Torrid', '8364 Minnesota State Highway 7 Saint Louis Park', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.9375663, -93.3867504, 'Uniform Advantage', '8366 Minnesota State Highway 7 Saint Louis Park', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.9377039, -93.3856367, 'Ulta Beauty', '8338 Minnesota State Highway 7 Saint Louis Park', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.937049, -93.3849885, 'AT&T', '8314 Minnesota State Highway 7 Saint Louis Park', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.9377002, -93.3853843, 'Banana Republic', '8330 Minnesota State Highway 7 Saint Louis Park', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.9376742, -93.3866113, 'Le Monde Tailors', '8360 Minnesota State Highway 7 Saint Louis Park', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.9369759, -93.3827832, 'Total Wine', '8100 Minnesota State Highway 7 Saint Louis Park', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.8605923, -93.4847493, 'DQ Grill & Chill', '16340 Terry Pine Drive Eden Prairie', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(44.9377092, -93.3860098, 'Nordstrom Rack', '8344 Highway 7', '#f39c12', 0, 'Unnamed Retail Center', true);
+addStore(44.859033, -93.4248679, 'Caribou Coffee', '11611 Leona Road Eden Prairie', '#3498db', 25, 'Unnamed Retail Center', false);
+addStore(44.7795606, -93.5072566, 'Cub Liquor', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.7795615, -93.5069738, 'Pizza Ranch', '1266 Vierling Drive East Shakopee', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.782545, -93.5073935, 'Jimmy John\'s', '1329 Heather Street Shakopee', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.7825045, -93.5070145, 'Cost Cutters', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.8530258, -93.4291649, 'Becklund Jewelers', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.8530781, -93.4291863, 'Cold Stone Creamery', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.853256, -93.4292413, 'Starbucks', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.890814, -93.5815998, 'Speedway', '17516 Highway 7', '#3498db', 29, 'Unnamed Retail Center', false);
+addStore(44.8618862, -93.4863895, 'Speedway', '16425 West 78th Street Eden Prairie', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(44.8504757, -93.4319311, 'Safelite AutoGlass', '8453 Joiner Way Eden Prairie', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(44.8535744, -93.4327158, 'Flagship Salon', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.8814841, -93.3264521, 'Macy\'s', '-', '#f39c12', 2, 'Unnamed Retail Center', true);
+addStore(44.8578975, -93.3070687, 'Dero', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.9152464, -93.5026566, 'Noodles & Company', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.8642211, -93.4843084, 'Subway', '16384 Wagner Way Eden Prairie', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(44.8510657, -93.4342068, 'Pei Wei', '-', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(44.8506814, -93.4354574, 'HomeGoods', '12589 Flying Cloud Drive Mineapolis', '#f39c12', 15, 'Unnamed Retail Center', true);
+addStore(44.8615746, -93.5428937, 'Starbucks', '851 West 78th Street Chanhassen', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.8607041, -93.5400534, 'Papa Murphy\'s', '7878 Market Boulevard Chanhassen', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.8606316, -93.540062, 'Chanhassen Floral', '7880 Market Boulevard Chanhassen', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.8605174, -93.5400548, 'Best Cleaners', '7886 Market Boulevard Chanhassen', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.8603419, -93.5400117, 'Furnishare', '7890 Market Boulevard Chanhassen', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.8618997, -93.5386953, 'Chuck & Don\'s Pet Food & Supplies', '7818 Market Boulevard Chanhassen', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(44.8607499, -93.5370941, 'Greenleaf Vape & Tobacco', '600 Market Street Chanhassen', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(44.8627305, -93.5353295, 'Salon Concepts', '582 West 78th Street Chanhassen', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(44.8634894, -93.5431662, 'ABC Toy Zone', '860 West 78th Street Chanhassen', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.8635496, -93.5429143, 'GNC', '848 West 78th Street Chanhassen', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.8635353, -93.5425573, 'Great Clips', '832 West 78th Street Chanhassen', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.8635476, -93.5427848, 'Travel Advisors International;Pilgrim Dry Cleaners', '840;836 West 78th Street Chanhassen', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.8598862, -93.5335151, 'Palm Beach Tan', '530 West 79th Street Chanhassen', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(44.8600212, -93.5332056, 'Hour Glass Cleaners', '530 West 79th Street Chanhassen', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(44.8605615, -93.3066863, 'Sally Beauty', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.8605741, -93.3067632, 'Great Clips', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.8605846, -93.3068814, 'GameStop', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.8605887, -93.3070204, 'GNC', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.8609617, -93.3080077, 'The UPS Store', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.860968, -93.3078569, 'Verizon', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.860968, -93.3076648, 'Sport Clips', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.8609869, -93.3075879, 'Salon Oriana', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.8594449, -93.3075038, 'Schuler Shoes', '7997 Southtown Center Bloomington', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.8594425, -93.3072527, 'Southtown Nails', '7991 Southtown Center Bloomington', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.8594511, -93.3062314, 'TJ Maxx', '7982 Southtown Center Bloomington', '#f39c12', 1, 'Unnamed Retail Center', true);
+addStore(44.859365, -93.3093616, 'T-Mobile', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.9348774, -93.3852401, 'Five Guys', '525 Blake Road North Hopkins', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(44.937497, -93.3926586, 'Advance Auto Parts', '8950 Minnesota State Highway 7 Saint Louis Park', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(44.936359, -93.385914, 'Mattress Firm', '8456 Minnesota State Highway 7 Saint Louis Park', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.8549624, -93.4304539, 'Walgreens', '-', '#f39c12', 6, 'Unnamed Retail Center', true);
+addStore(44.8597564, -93.3113366, 'Starbucks', '2555 West 79th Street Bloomington', '#3498db', 31, 'Unnamed Retail Center', false);
+addStore(44.8117952, -93.3291561, 'Jimmy John\'s', '10609 France Avenue South Bloomington', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(44.8111285, -93.329161, 'Chipotle', '10629 France Avenue South Bloomington', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(44.8121653, -93.3318988, 'Jerry\'s Do It Best Hardware', '10530 France Avenue South Bloomington', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(44.9241189, -93.4113148, 'Duff\'s Barber Shop', '5 9th Avenue South Hopkins', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(44.9242998, -93.4111018, 'Bongo\'s & Bud\'s', '820 Mainstreet Hopkins', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(44.924302, -93.4107268, 'Mill City Sound', '812 Mainstreet Hopkins', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(44.9243042, -93.4105639, 'The Liquor Store & More', '808 Mainstreet Hopkins', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(44.780926, -93.5084634, 'Home Choice', '1136 Vierling Drive East Shakopee', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.7809269, -93.5086549, 'AT&T', '1140 Vierling Drive East Shakopee', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.7744048, -93.5008176, 'Clarkson Eyecare', '1731 17th Avenue East Shakopee', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(44.7742459, -93.5008268, 'Allure Hair Salon & Spa', '1751 17th Avenue East Shakopee', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(44.7740784, -93.5020881, 'SouthSide Liquor', '1667 17th Avenue East Shakopee', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(44.7741892, -93.5020919, 'Liberty Oxygen', '1667 17th Avenue East Shakopee', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(44.7743283, -93.5020872, 'Nails Lovely', '1667 17th Avenue East Shakopee', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(44.9335678, -93.4192751, 'Walgreens', '1511 Highway 7 Hopkins', '#f39c12', 27, 'Unnamed Retail Center', true);
+addStore(44.9335831, -93.421891, 'Speedway', '3864 Hopkins Crossroad Minnetonka', '#3498db', 27, 'Unnamed Retail Center', false);
+addStore(44.8816674, -93.3239021, 'Life Time', '250 Southdale', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.935344, -93.3841903, 'Restwell Mattress Factory', '8229 State Highway 7 Service Road Saint Louis Park', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.9353436, -93.3840374, 'Home Choice', '8225 State Highway 7 Service Road Saint Louis Park', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(44.9353429, -93.3837219, 'Flooring Expo by Carpet King', '8221 State Highway 7 Service Road Saint Louis Park', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(44.9360555, -93.3877606, 'Pearle Vision', '8510 Minnesota State Highway 7 Saint Louis Park', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.9361138, -93.3876195, 'Verizon', '8504 Minnesota State Highway 7 Saint Louis Park', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.9263774, -93.4121841, 'Vaping Studio', '907 1st Street North Hopkins', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(44.8577011, -93.4283626, 'Dollar Tree', '8040 Glen Lane Eden Prairie', '#f39c12', 22, 'Unnamed Retail Center', true);
+addStore(44.892726, -93.5798478, 'Domino\'s', '23500 Minnesota State Highway 7 Shorewood', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(44.858541, -93.4283852, 'Petco', '8020 Glen Lane Eden Prairie', '#f39c12', 22, 'Unnamed Retail Center', true);
+addStore(44.8579081, -93.4283698, 'Salon Lofts', '8030 Glen Lane Eden Prairie', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(44.8584488, -93.4267503, 'Great Clips', '-', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(44.8583058, -93.4267226, 'Thomas Printworks', '-', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(44.8535254, -93.4332524, 'Dick\'s Sports Barbers', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.8506786, -93.4361125, 'Ulta Beauty', '12591 Castlemoor Drive Eden Prairie', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(44.8818801, -93.3247757, 'Rustica', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.8599427, -93.3294733, 'Mobil', '-', '#3498db', 24, 'Unnamed Retail Center', false);
+addStore(44.9178689, -93.5039389, 'Caribou Coffee', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.9180205, -93.5039365, 'T-Mobile', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.9145607, -93.5055605, 'Jimmy John\'s', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.914635, -93.5054959, 'Club Pilates', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.8909187, -93.5827791, 'Walgreens', '2499 Highway 7 Excelsior', '#f39c12', 29, 'Unnamed Retail Center', true);
+addStore(44.8909921, -93.5816258, 'Speedway', '17516 Highway 7', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(44.8900828, -93.5821461, 'Pet Clips', '2445 Minnesota State Highway 7 Chanhassen', '#3498db', 29, 'Unnamed Retail Center', false);
+addStore(44.892735, -93.5799458, 'Verizon', '23510 Minnesota State Highway 7 Shorewood', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(44.8902105, -93.5824349, 'Fido\'s Pantry', '2473 Minnesota State Highway 7 Chanhassen', '#3498db', 29, 'Unnamed Retail Center', false);
+addStore(44.8901545, -93.5822583, 'US Nails', '2449 Minnesota State Highway 7 Chanhassen', '#3498db', 29, 'Unnamed Retail Center', false);
+addStore(44.8929564, -93.5800686, 'True Value', '23540 Minnesota State Highway 7 Shorewood', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(44.8932586, -93.580075, 'Dollar Tree', '23610 Minnesota State Highway 7 Shorewood', '#f39c12', 19, 'Unnamed Retail Center', true);
+addStore(44.8920519, -93.583718, 'Seidou Spa', '24000 Minnesota State Highway 7 Shorewood', '#3498db', 29, 'Unnamed Retail Center', false);
+addStore(44.8924751, -93.5835362, 'Historic Tattoo', '6140 Lake Linden Drive Shorewood', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(44.892732, -93.5797023, 'Milio\'s', '23480 Minnesota State Highway 7 Shorewood', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(44.8934311, -93.5803681, 'Hairazors Salon', '23690 Minnesota State Highway 7 Shorewood', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(44.893428, -93.5806051, 'Shorewood Smoke Shop Plus', '23710 Minnesota State Highway 7 Shorewood', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(44.8934341, -93.580911, 'Great Clips', '23760 Minnesota State Highway 7 Shorewood', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(44.9513221, -93.4179817, 'Domino\'s', '10904 Greenbrier Road Minnetonka', '#3498db', 23, 'Unnamed Retail Center', false);
+addStore(44.9531837, -93.4177002, 'Strong Liquors', '11048 Cedar Lake Road Minnetonka', '#3498db', 23, 'Unnamed Retail Center', false);
+addStore(44.8661684, -93.3266813, 'Envy Nails', '-', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(44.8665998, -93.3264691, 'Juut Salonspa', '-', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(44.8660944, -93.3267269, 'Mainstream Boutique', '-', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(44.8661146, -93.3279202, 'La-Z-Boy', '-', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(44.8678668, -93.3268196, 'JoS. A. Bank', '-', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(44.8680012, -93.3269767, 'HomeGoods', '7435 France Avenue South Edina', '#f39c12', 13, 'Unnamed Retail Center', true);
+addStore(44.8675052, -93.3266174, 'The UPS Store', '-', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(44.8674074, -93.3265616, 'Haute Dog Spa', '-', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(44.9245589, -93.4089497, 'Amy\'s Cupcake Shoppe', '-', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(44.8356678, -93.3993327, 'Starbucks', '9250 Hennepin Town Road Eden Prairie', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(44.8355988, -93.3993308, 'Tide Cleaners', '9254 Hennepin Town Road Eden Prairie', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(44.821059, -93.4010721, 'Papa Murphy\'s', '10165 Hennepin Town Road Eden Prairie', '#3498db', 30, 'Unnamed Retail Center', false);
+addStore(44.8210597, -93.4011514, 'Elements Massage', '10165 Hennepin Town Road Eden Prairie', '#3498db', 30, 'Unnamed Retail Center', false);
+addStore(44.821059, -93.4013024, 'Fantastic Sams', '10165 Hennepin Town Road Eden Prairie', '#3498db', 30, 'Unnamed Retail Center', false);
+addStore(44.8210593, -93.4013807, 'Bella Gina', '10165 Hennepin Town Road Eden Prairie', '#3498db', 30, 'Unnamed Retail Center', false);
+addStore(44.821059, -93.4015023, 'Anytime Fitness', '10165 Hennepin Town Road Eden Prairie', '#3498db', 30, 'Unnamed Retail Center', false);
+addStore(44.880624, -93.3251065, 'PXG Minneapolis', '10 Southdale Center Edina', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.8634856, -93.5442229, 'Huntington Bank', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.7825171, -93.5071626, 'Von Hansons Meats', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.7755624, -93.4163183, 'Holiday', '-', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(44.7811589, -93.4138587, 'Texas Roadhouse', 'Old Carriage Court North', '#3498db', 34, 'Unnamed Retail Center', false);
+addStore(44.8625506, -93.4640371, 'Anytime Fitness', '14711 Martin Drive Eden Prairie', '#3498db', 33, 'Unnamed Retail Center', false);
+addStore(44.8624213, -93.465102, 'Seasons Golf', '-', '#3498db', 33, 'Unnamed Retail Center', false);
+addStore(44.8508761, -93.435017, 'X Golf', '12577 Castlemoor Drive Eden Prairie', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(44.8584731, -93.4237069, 'Eden Prairie Liquor', '8018 Den Road Eden Prairie', '#3498db', 25, 'Unnamed Retail Center', false);
+addStore(44.8591261, -93.4248777, 'Cell Phone Repair', '11611 Leona Road Eden Prairie', '#3498db', 25, 'Unnamed Retail Center', false);
+addStore(44.8592317, -93.4248972, 'Qdoba', '11611 Leona Road Eden Prairie', '#3498db', 25, 'Unnamed Retail Center', false);
+addStore(44.9262621, -93.4117807, 'European Massage Therapy', '901 1st Street North Hopkins', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(44.9235413, -93.4099875, 'Little Blind Spot', '-', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(44.9241166, -93.409543, 'The Vine Room', '-', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(44.9116408, -93.353776, 'ChargePoint', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.8359387, -93.4007932, 'GiVan\'s Salon & Spa', '-', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(44.8360437, -93.4007913, 'Eden Tailors', '-', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(44.8361215, -93.4007913, 'Preserve Barbers', '-', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(44.9115192, -93.3532656, 'Mulberrys Dry Cleaners and Laundry', '5127 Gus Young Lane Edina', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.9115183, -93.3531893, 'Great Clips', '5125 Gus Young Lane Edina', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.9115157, -93.3529751, 'ArtFrame of Edina', '5111 Gus Young Lane Edina', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.9115144, -93.3528654, 'Banfield Pet Hospital', '5103 Gus Young Lane Edina', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.9103373, -93.3548864, 'USPS', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.9101333, -93.354917, 'Jerry\'s Foods', '5125 Vernon Avenue Edina', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.9104006, -93.3548862, 'UPS', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.9104662, -93.354886, 'FedEx', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.9104202, -93.3548278, 'Redbox', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.9109732, -93.3545367, 'Interlachen Barber Shop', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.9109091, -93.3548068, 'Jerry\'s Printing', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.7807258, -93.5058733, 'Speedway', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.7807758, -93.505719, 'Speedy Wash', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.8804631, -93.3238746, 'Kowalski\'s Markets', '324 Southdale Ctr Edina', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.8119306, -93.3324294, 'Value Village', '10546 France Avenue South Bloomington', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(44.860447, -93.3146052, 'Schneiderman\'s Furniture', '-', '#3498db', 31, 'Unnamed Retail Center', false);
+addStore(44.8630674, -93.4632316, 'Best Buy Outlet', '-', '#f39c12', 33, 'Unnamed Retail Center', true);
+addStore(44.9241166, -93.4096891, 'Cold Stone Creamery', '-', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(44.8769446, -93.3246446, 'InVision Distinctive Eyewear', '3340 Galleria', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.8673501, -93.3265436, 'Go Glow', '-', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(44.8664176, -93.3265556, 'Wells Fargo', '-', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(44.8754344, -93.3264003, 'Warners\' Stellian', '3533 West 70th Street Edina', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.8754366, -93.3258777, 'Orangetheory Fitness', '3523 West 70th Street Edina', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.8754729, -93.3256818, 'Sola Salons', '3519 West 70th Street Edina', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.8755785, -93.3256824, 'The Drip Bar', '3515 West 70th Street Edina', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.8744815, -93.3276059, 'Kohler', '7101 France Avenue South', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.8744796, -93.3271791, 'Calico', '7101 France Avenue South Edina', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.8743504, -93.3271537, 'Ethan Allen', '7101 France Avenue South Edina', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.8744918, -93.3272672, 'A&BÉ', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.8779923, -93.3232746, 'Flock Safety', '-', '#3498db', 32, 'Unnamed Retail Center', false);
+addStore(44.8770475, -93.3215584, 'Flock Safety', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.8300825, -93.6006318, 'T-Mobile', '164 Pioneer Trail Chaska', '#3498db', 26, 'Unnamed Retail Center', false);
+addStore(44.8299242, -93.6003582, 'CA Nails', '140 Pioneer Trail Chaska', '#3498db', 26, 'Unnamed Retail Center', false);
+addStore(44.8297873, -93.6001962, 'H&R Block', '146 Pioneer Trail Chaska', '#3498db', 28, 'Unnamed Retail Center', false);
+addStore(44.861, -93.3124, 'Tesla Supercharger', '2555 West 79th Street Bloomington', '#3498db', 31, 'Unnamed Retail Center', false);
+addStore(44.829252, -93.6016069, 'Qdoba', '194 Pioneer Trail Chaska', '#3498db', 28, 'Unnamed Retail Center', false);
+addStore(44.8301431, -93.6008437, 'The UPS Store', '168 Pioneer Trail Chaska', '#3498db', 26, 'Unnamed Retail Center', false);
+addStore(44.8293106, -93.6016874, 'Jersey Mike\'s Subs', '-', '#3498db', 28, 'Unnamed Retail Center', false);
+addStore(44.8297401, -93.6000569, 'Caribou Coffee', '142 Pioneer Trail Chaska', '#3498db', 28, 'Unnamed Retail Center', false);
+addStore(44.8297517, -93.6001444, 'Nautical Bowls', '144 Pioneer Trail Chaska', '#3498db', 28, 'Unnamed Retail Center', false);
+addStore(44.829877, -93.6003042, 'Edward Jones', '148 State Highway 41 Chaska', '#3498db', 28, 'Unnamed Retail Center', false);
+addStore(44.8543429, -93.4251304, 'Highscore Video Games', '-', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(44.8543266, -93.4245884, 'Buckle', '-', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(44.8594408, -93.3067562, 'My Salon Suites', '7991 Southtown Center Bloomington', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.8734953, -93.3245969, 'Hirshfields', '3511 Hazelton Road', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.8213825, -93.3992737, 'Smoke World Vape', '10140 Hennepin Town Road Eden Prairie', '#3498db', 30, 'Unnamed Retail Center', false);
+addStore(44.8594791, -93.3065742, 'Famous Footwear', '7985 Southtown Drive Bloomington', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.8594489, -93.3076803, 'Top Ten Liquors', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.8121594, -93.3322128, 'Banfield Pet Hospital', '10538 France Avenue South Bloomington', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(44.8118066, -93.3324182, 'Barbers & Stylists', '10580 France Avenue South Bloomington', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(44.8117389, -93.3324226, 'Richfield Tailors', '10582 France Avenue South Bloomington', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(44.8116073, -93.332439, 'AutoZone', '10588 France Avenue South Bloomington', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(44.8113289, -93.3324554, 'Fashion Nails', '10590.5 France Avenue South Bloomington', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(44.8121585, -93.3321269, 'Enchanted Formals', '10536 France Avenue South Bloomington', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(44.8111751, -93.3324563, '1st Sewing Center', '10592 France Avenue South Bloomington', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(44.8106179, -93.3324835, 'Subway', '10604 France Avenue South Bloomington', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(44.810975, -93.332437, 'Dollar Tree', '10600 France Avenue South Bloomington', '#f39c12', 7, 'Unnamed Retail Center', true);
+addStore(44.8114592, -93.3324482, 'Planet Fitness', 'France Avenue South Bloomington', '#f39c12', 7, 'Unnamed Retail Center', true);
+addStore(44.8105437, -93.3324701, 'Kids Empire', '10606 France Avenue South Bloomington', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(44.9377686, -93.3913953, 'UPS', '-', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(44.880725, -93.324683, 'Apple Store', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.8808392, -93.3248461, 'Sephora', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.88095, -93.3249669, 'Kendra Scott', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.8807876, -93.3254827, 'Garage', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.880641, -93.3252758, 'Swarovski', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.8805878, -93.3252032, 'Abercrombie Kids', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.8807152, -93.3253873, 'Athleta', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.8812835, -93.3254793, 'Victoria\'s Secret', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.8814344, -93.3256567, 'Mango', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.881151, -93.3253245, 'J.Crew', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.8803198, -93.3248469, 'Pandora', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.8804627, -93.325031, 'Arc\'teryx', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.8803784, -93.3249263, 'Janie & Jack', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.8813415, -93.324738, 'Camp', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.8123283, -93.3310969, 'Valley West Shopping Center', '10606 France Ave South Bloomington', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(44.9246647, -93.4194951, 'Jeff’s Auto Service', '1505 Mainstreet Hopkins', '#3498db', 38, 'Unnamed Retail Center', false);
+addStore(44.863016, -93.4860724, 'Dave\'s Hot Chicken', '16492 West 78th Street Eden Prairie', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(44.93478, -93.3852371, 'Stilo Cuts', '-', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(44.9344544, -93.3852556, 'Wingstop', '-', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(44.863642, -93.4869559, 'Patina', '16502 West 78th Street', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(44.8581434, -93.3068185, 'Fresh Thyme Market', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.8581463, -93.3081762, 'Allure Nails & Spa', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.8576236, -93.3075328, 'The Mane Aptistry', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.8635481, -93.5430312, 'Sweet Salon & Barber Shoppe', '854 West 78th Street Chanhassen', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.9172549, -93.5049964, 'Starbucks', '4848 County Road 101 Minnetonka', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.8636759, -93.4870897, 'Eden Prairie Liquor', '16508 West 78th Street Eden Prairie', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(44.8539237, -93.4245618, 'Subway', '-', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(44.8538119, -93.4245445, 'Potbelly', '-', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(44.8539101, -93.4248812, 'Dairy Queen', '-', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(44.8543581, -93.425015, 'Eden Prairie Center', '8251 Flying Cloud Drive Eden Prairie', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(44.8601492, -93.5391122, 'Cub Foods', '7900 Market Boulevard Chanhassen', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.8614982, -93.5385642, 'Wendy\'s', '7820 Market Boulevard Chanhassen', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(44.8618949, -93.5393988, 'Wells Fargo', '7830 Market Boulevard Chanhassen', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.8613749, -93.5423382, 'Target', '851 West 78th Street Chanhassen', '#f39c12', 4, 'Unnamed Retail Center', true);
+addStore(44.9378066, -93.3861173, 'Knollwood Mall', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.7744268, -93.5032917, 'America\'s Best Contacts & Eyeglasses', '1593 17th Avenue Shakopee', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(44.7760223, -93.5025189, 'Salon Avalon', '1659 17th Avenue East Shakopee', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(44.8807641, -93.3252585, 'Southdale Shopping Center', 'Southdale Center Edina', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.8772536, -93.3257821, 'Galleria Shopping Center', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.7810018, -93.5077746, 'Wells Fargo', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.859532, -93.3112988, 'Target', '2555 West 79th Street Bloomington', '#f39c12', 31, 'Unnamed Retail Center', true);
+addStore(44.8595653, -93.3129678, 'Hobby Lobby', '2600 West 79th Street;West 80th Street Bloomington', '#3498db', 31, 'Unnamed Retail Center', false);
+addStore(44.9348839, -93.3870837, 'White Castle', '-', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(44.7760607, -93.5016137, 'Target', '1685 17th Avenue Shakopee', '#f39c12', 12, 'Unnamed Retail Center', true);
+addStore(44.8314688, -93.5997997, 'The Home Depot', '300 Pioneer Trail, East Chaska', '#f39c12', 26, 'Unnamed Retail Center', true);
+addStore(44.8273617, -93.601208, 'Target', '111 Pioneer Trail Chaska', '#f39c12', 28, 'Unnamed Retail Center', true);
+addStore(44.8542019, -93.4291913, 'Huntington Bank', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.8535194, -93.4299221, 'McDonald\'s', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.8598993, -93.4355333, 'Costco', '12011 Technology Drive Eden Prairie', '#f39c12', 36, 'Unnamed Retail Center', true);
+addStore(44.8608809, -93.4244633, 'Best Buy', '11600 Leona Road Eden Prairie', '#f39c12', 25, 'Unnamed Retail Center', true);
+addStore(44.7759463, -93.5028151, 'Planet Fitness', '1633 17th Avenue Shakopee', '#f39c12', 12, 'Unnamed Retail Center', true);
+addStore(44.7758554, -93.5032024, 'Five Below', '1607 17th Avenue', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(44.7760322, -93.5040771, 'Kohl\'s', '1529 17th Avenue Shakopee', '#f39c12', 12, 'Unnamed Retail Center', true);
+addStore(44.7742075, -93.5032917, 'Famous Footwear', '1593 17th Avenue Shakopee', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(44.7741891, -93.5045617, 'AutoZone', '1503 17th Avenue Shakopee', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(44.7741706, -93.5042622, 'Verizon', '1531 17th Avenue Shakopee', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(44.7741716, -93.5040534, 'Caribou Coffee', '1539 17th Avenue Shakopee', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(44.8616586, -93.5367158, 'Country Inn & Suites', '591 West 78th Street Chanhassen', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(44.859414, -93.5342735, 'Buffalo Wild Wings', '560 West 79th Street Chanhassen', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(44.8593803, -93.5344951, 'Chipotle', '560 West 79th Street Chanhassen', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(44.8595743, -93.5364596, 'Walgreens', '600 West 79th Street Chanhassen', '#f39c12', 11, 'Unnamed Retail Center', true);
+addStore(44.8598457, -93.5352331, 'Tires Plus', '580 West 79th Street Chanhassen', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(44.8628962, -93.5437065, 'FedEx Office', '880 West 78th Street Chanhassen', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.8636951, -93.5414163, 'Lunds & Byerlys', '800 West 78th Street Chanhassen', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.8635546, -93.5422068, 'Party City', '830 West 78th Street Chanhassen', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.8617595, -93.541156, 'BMO Harris Bank', '761 West 78th Street Chanhassen', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.8616972, -93.5398519, 'Subway', '7836 Market Boulevard Chanhassen', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.7825431, -93.507776, 'Taco John\'s', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.780645, -93.5045901, 'Kwik Trip', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.7800265, -93.5047215, 'Arby\'s', '1546 Vierling Drive Shakopee', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.7795166, -93.5044716, 'Applebee\'s', '1568 Shakopee', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.7824175, -93.5042882, 'Country Inn & Suites', '1204 Ramsey Street Shakopee', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.781266, -93.4175152, 'Sam\'s Club', '8201 Old Carriage Court Shakopee', '#f39c12', 34, 'Unnamed Retail Center', true);
+addStore(44.779218, -93.4177301, 'Walmart Supercenter', '8101 Old Carriage Court Shakopee', '#f39c12', 34, 'Unnamed Retail Center', true);
+addStore(44.7769366, -93.4165025, 'Wendy\'s', '8011 Old Carriage Court Shakopee', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(44.7773466, -93.4159823, 'Chase', '8021 Old Carriage Court', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(44.7807241, -93.4141657, 'Discount Tire', '8150 Old Carriage Court Shakopee', '#3498db', 34, 'Unnamed Retail Center', false);
+addStore(44.7734156, -93.411139, 'The Home Depot', '1701 County Road 18 Shakopee', '#f39c12', 37, 'Unnamed Retail Center', true);
+addStore(44.7768337, -93.4666393, 'Lowe\'s', '4270 Dean Lakes Boulevard Shakopee', '#f39c12', 35, 'Unnamed Retail Center', true);
+addStore(44.9360662, -93.3932648, 'Target', '8900 Minnesota State Highway 7 Saint Louis Park', '#f39c12', 18, 'Unnamed Retail Center', true);
+addStore(44.8562374, -93.4311719, 'Walmart Supercenter', '12195 Singletree Lane Eden Prairie', '#f39c12', 6, 'Unnamed Retail Center', true);
+addStore(44.8494034, -93.4374045, 'Michaels', '8565 Columbine Road Eden Prairie', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(44.8580916, -93.4351949, 'Bachman\'s', '770 Prairie Center Drive Eden Prairie', '#3498db', 36, 'Unnamed Retail Center', false);
+addStore(44.8514411, -93.4320302, 'Taco Bell', '8450 Joiner Way Eden Prairie', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(44.8508497, -93.4326394, 'Wendy\'s', '8395 Joiner Way Eden Prairie', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(44.9166756, -93.5054266, 'Target', '4848 County Road 101 Minnetonka', '#f39c12', 10, 'Unnamed Retail Center', true);
+addStore(44.9145198, -93.5044717, 'Walgreens', '-', '#f39c12', 10, 'Unnamed Retail Center', true);
+addStore(44.9338978, -93.4205166, 'MGM Liquor Warehouse', '-', '#3498db', 27, 'Unnamed Retail Center', false);
+addStore(44.8544684, -93.4302961, 'Mattress Firm', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.8561493, -93.4297663, 'Car-X', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.8565954, -93.4297189, 'Jiffy Lube', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.8535372, -93.4312724, 'Wedding Day Diamonds', '8320 Flying Cloud Drive', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.8770604, -93.320582, 'Walgreens', '6975 York Avenue South Edina', '#f39c12', 32, 'Unnamed Retail Center', true);
+addStore(44.8754183, -93.3260792, 'Brandon Square Mall', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.8753929, -93.324237, 'Target', '7000 York Avenue South Edina', '#f39c12', 8, 'Unnamed Retail Center', true);
+addStore(44.8677869, -93.3281045, 'Whole Foods Market', '7401 France Avenue South Edina', '#f39c12', 13, 'Unnamed Retail Center', true);
+addStore(44.8287421, -93.6042143, 'Kwik Trip', '-', '#3498db', 28, 'Unnamed Retail Center', false);
+addStore(44.9358654, -93.3885481, 'Wells Fargo', '8600 Minnesota State Highway 7 Saint Louis Park', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.9349433, -93.3862163, 'Walgreens', '540 Blake Road North', '#f39c12', 21, 'Unnamed Retail Center', true);
+addStore(44.8629485, -93.4845699, 'Walgreens', '16395', '#f39c12', 20, 'Unnamed Retail Center', true);
+addStore(44.8786485, -93.3201606, 'Key Cadillac', '6825 York Avenue South Edina', '#3498db', 32, 'Unnamed Retail Center', false);
+addStore(44.8589741, -93.4266181, 'Popeyes', '7995 Glen Lane Eden Prairie', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(44.8584865, -93.4242291, 'Spark by Hilton', '11500 West 78th Street Eden Prairie', '#3498db', 25, 'Unnamed Retail Center', false);
+addStore(44.8623579, -93.5452966, 'Taco Bell', '975 West 78th Street Chanhassen', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.8603226, -93.4224435, 'SpringHill Suites Minneapolis Eden Prairie', '11552 Leona Road Eden Prairie', '#3498db', 25, 'Unnamed Retail Center', false);
+addStore(44.8603065, -93.423705, 'TownePlace Suites', '-', '#3498db', 25, 'Unnamed Retail Center', false);
+addStore(44.915098, -93.5038934, 'Wendy\'s', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.9149535, -93.5054294, 'Discount Tire', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.9136709, -93.5057567, 'U.S. Bank', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.9143794, -93.5057862, 'The Original Pancake House', '17790 MN-7 Minnetonka', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.9140662, -93.50392, 'Mister Car Wash', '17600 Minnesota State Highway 7', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.9333797, -93.4188357, 'Starbucks', '1505 State Highway 7 Hopkins', '#3498db', 27, 'Unnamed Retail Center', false);
+addStore(44.9251268, -93.4117773, 'U.S. Bank', '-', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(44.915612, -93.5052683, 'Planet Fitness', '-', '#f39c12', 10, 'Unnamed Retail Center', true);
+addStore(44.83584, -93.3969594, 'McDonald\'s', '9240 Bloomington Ferry Road Bloomington', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(44.810819, -93.3309449, 'McDonald\'s', '4000 West Old Shakopee Road Bloomington', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(44.8107448, -93.3302952, 'Freewheel Bike', '3916 West Old Shakopee Road Bloomington', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(44.8598244, -93.3081564, 'McDonald\'s', '7997 Southtown Center Bloomington', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.8593719, -93.3082553, 'Jiffy Lube', '7999 Penn Avenue S Bloomington', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.86095, -93.309811, 'Huntington Bank', '7800 Penn Avenue S Bloomington', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.8610054, -93.3107201, 'Chick-fil-A', '2500 West 79th Street Bloomington', '#3498db', 31, 'Unnamed Retail Center', false);
+addStore(44.8609189, -93.3061657, 'Kohl\'s', '7931 Southtown Center Bloomington', '#f39c12', 1, 'Unnamed Retail Center', true);
+addStore(44.8613072, -93.5374264, 'Jimmy John\'s', '7851 Market Boulevard Chanhassen', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(44.8576372, -93.425303, 'Holiday', '8051 Flying Cloud Drive Eden Prairie', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(44.8615501, -93.4841594, 'Starbucks', '-', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(44.9333286, -93.3861936, 'Wendy\'s', '502 Blake Road North', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(44.8197138, -93.400309, 'Walgreens', '10180 Hennepin Town Road Eden Prairie', '#f39c12', 30, 'Unnamed Retail Center', true);
+addStore(44.9334615, -93.4222742, 'Perkins', '-', '#3498db', 27, 'Unnamed Retail Center', false);
+addStore(44.9119805, -93.3519302, 'Washburn-McReavy Edina Chapel', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.9127682, -93.3541978, 'Holiday', '5200 Interlachen Boulevard Edina', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.9119979, -93.3532741, 'Davanni\'s', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.9108077, -93.3559626, 'Wells Fargo', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.8596163, -93.329552, 'Bobby & Steve\'s Auto World', '7920 France Avenue South Bloomington', '#3498db', 24, 'Unnamed Retail Center', false);
+addStore(44.7768302, -93.4687944, 'Slumberland', '-', '#3498db', 35, 'Unnamed Retail Center', false);
+addStore(44.9513159, -93.4202355, 'Wings Financial Credit Union', '-', '#3498db', 23, 'Unnamed Retail Center', false);
+addStore(44.8575477, -93.4255013, 'Davanni\'s', '8061 Flying Cloud Drive Eden Prairie', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(44.8734774, -93.3233911, 'Yorktown Mall', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.7824686, -93.5058371, 'DQ Grill & Chill', '1251 Tasha Drive Shakopee', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.781705, -93.506108, 'Walgreens', '1291 Tasha Boulevard Shakopee', '#f39c12', 5, 'Unnamed Retail Center', true);
+addStore(44.9340286, -93.4215176, 'Speedy Wash', '-', '#3498db', 27, 'Unnamed Retail Center', false);
+addStore(44.8665972, -93.3284092, 'Starbucks', '7501 France Avenue South Edina', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(44.8745586, -93.3275294, 'Rue De France', '7101 France Avenue South Edina', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.8334902, -93.5996854, 'Kohl\'s', '1140 Hazeltine Boulevard', '#f39c12', 26, 'Unnamed Retail Center', true);
+addStore(44.859532, -93.3305084, 'Perkins', '4201 78th Street West Bloomington', '#3498db', 24, 'Unnamed Retail Center', false);
+addStore(44.858374, -93.309392, 'Bloomington Chrysler Jeep', '8000 Penn Avenue S Bloomington', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.8603978, -93.308249, 'Wedding Day Diamonds', '7901 Penn Avenue S Bloomington', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.8581256, -93.3060328, 'Sonic', '2101 American Boulevard West Bloomington', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.8593462, -93.3340894, 'Holiday Inn Express & Suites', '7770 Johnson Avenue South Bloomington', '#3498db', 24, 'Unnamed Retail Center', false);
+addStore(44.8566119, -93.4277821, 'Bobby & Steve\'s Auto World', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.7761066, -93.4191683, 'Aldi', '7845 Old Carriage Court North Shakopee', '#f39c12', 16, 'Unnamed Retail Center', true);
+addStore(44.9255252, -93.4134465, 'Driskill\'s Food', '-', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(44.9146739, -93.5024503, 'Speedy Wash', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.9378274, -93.3833055, 'Cub Foods', '3620 Texas Avenue South Saint Louis Park', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.9373953, -93.3874706, 'Kohl\'s', '8340 Minnesota State Highway 7 Saint Louis Park', '#f39c12', 0, 'Unnamed Retail Center', true);
+addStore(44.9376911, -93.3844318, 'TJ Maxx', '8322 Minnesota State Highway 7 Saint Louis Park', '#f39c12', 0, 'Unnamed Retail Center', true);
+addStore(44.7770453, -93.4680053, 'Dollar Tree', '-', '#f39c12', 35, 'Unnamed Retail Center', true);
+addStore(44.9240529, -93.4182905, 'Dollar Tree', '-', '#f39c12', 38, 'Unnamed Retail Center', true);
+addStore(44.9346096, -93.3886822, 'Taco Bell', '919 Cambridge Street Hopkins', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(44.8615167, -93.5454092, 'Noodles & Company', '945 West 78th Street Chanhassen', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.8616383, -93.5454088, 'Jersey Mike\'s Subs', '945 West 78th Street Chanhassen', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.8612287, -93.540112, 'MGM Liquor Warehouse', '7856 Market Boulevard Chanhassen', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.8614786, -93.5352305, 'Aldi', '551 West 78th Street Chanhassen', '#f39c12', 11, 'Unnamed Retail Center', true);
+addStore(44.8590595, -93.5330052, 'Panera Bread', '531 West 79th Street Chanhassen', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(44.9354127, -93.3833972, 'Yardbird', '8215 State Highway 7 Service Road Saint Louis Park', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(44.9368819, -93.3885317, 'Burger King', '3650 Aquila Avenue South Saint Louis Park', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.9359426, -93.3881932, 'Firestone', '8530 Minnesota State Highway 7 Saint Louis Park', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(44.9385068, -93.392698, 'Primrose School of St. Louis Park West', '8955 36th Street West Saint Louis Park', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(44.9383093, -93.3923236, 'Huntington Bank', '8951 36th Street West Saint Louis Park', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(44.8794807, -93.3258929, 'AMC Southdale 16', '400 Southdale Center Edina', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.8544408, -93.4262095, 'AMC Eden Prairie Mall 18', '-', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(44.9119197, -93.3553713, 'Grandview Tire & Auto - Vernon', '5100 Vernon Avenue Edina', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.9090698, -93.3555732, 'Speedway', '5205 Eden Avenue Edina', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.9254818, -93.4128748, 'Richards Liquor', '22 10th Avenue North Hopkins', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(44.8614697, -93.4269657, 'Hampton Inn & Suites', '11825 Technology Drive Eden Prairie', '#3498db', 25, 'Unnamed Retail Center', false);
+addStore(44.8561167, -93.4283194, 'FedEx Office', '11993 Singletree Lane Eden Prairie', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.8097083, -93.3310072, 'Walgreens', '3913 West Old Shakopee Road Bloomington', '#f39c12', 7, 'Unnamed Retail Center', true);
+addStore(44.8103253, -93.3290455, 'Caribou Coffee', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(44.8342161, -93.6012513, 'Aldi', '1110 Hazeltine Boulevard Chaska', '#f39c12', 26, 'Unnamed Retail Center', true);
+addStore(44.7813602, -93.5082532, 'Chipotle', '1120 Vierling Drive East Shakopee', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.780422, -93.5032034, 'Taco Bell', '1530 Vierling Drive East Shakopee', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.834978, -93.5999809, 'McDonald\'s', '1120 Hazeltine Boulevard Chaska', '#3498db', 26, 'Unnamed Retail Center', false);
+addStore(44.8349106, -93.6007777, 'Starbucks', '1114 Hazeltine Boulevard Chaska', '#3498db', 26, 'Unnamed Retail Center', false);
+addStore(44.8348146, -93.6011072, 'Chipotle', '1112 Hazeltine Boulevard Chaska', '#3498db', 26, 'Unnamed Retail Center', false);
+addStore(44.8831895, -93.3283636, 'Shake Shack', '551 West 66th Street', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.8519146, -93.432945, 'Chick-fil-A', '-', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(44.9172883, -93.5023882, 'Chase', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.8903332, -93.5816052, 'Caribou Coffee', '2395 Highway 7', '#3498db', 29, 'Unnamed Retail Center', false);
+addStore(44.9121824, -93.3547029, 'Caribou Coffee', '5000 Vernon Avenue Edina', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.8361405, -93.3994407, 'Chipotle', '9246 Hennepin Town Road Eden Prairie', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(44.9358055, -93.3874224, 'Chipotle', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+ 
+  // ---- Tenant name filter ----
+  var allTenantNames = ['$5 Tan', '1890 Meats', '1st Sewing Center', 'A&BÉ', 'ABC Toy Zone', 'Abercrombie Kids', 'Advance Auto Parts', 'Aldi', 'ALDI', 'Allure Hair Salon & Spa', 'Allure Nails & Spa', 'AMC Eden Prairie Mall 18', 'AMC Southdale 16', 'America\'s Best Contacts & Eyeglasses', 'Amy\'s Cupcake Shoppe', 'Anytime Fitness', 'Apple Store', 'Applebee\'s', 'Arby\'s', 'Arc\'teryx', 'ArtFrame of Edina', 'AT&T', 'Athleta', 'AutoZone', 'Bachman\'s', 'Banana Republic', 'Banfield Pet Hospital', 'Barbers & Stylists', 'Barnes & Noble', 'Becklund Jewelers', 'Bella Gina', 'Best Buy', 'Best Buy Outlet', 'Best Cleaners', 'Blaze Pizza', 'Bloomington Chrysler Jeep', 'BMO Harris Bank', 'Bobby & Steve\'s Auto World', 'Bongo\'s & Bud\'s', 'BP', 'Brandon Square Mall', 'Bruegger\'s Bagels', 'Buckle', 'Buffalo Wild Wings', 'Burger King', 'CA Nails', 'Calico', 'Camp', 'Car-X', 'Caribou Coffee', 'Castle Lashes & Nails', 'Cedar Nails', 'Cell Phone Repair', 'Center Drug', 'Chanhassen Floral', 'ChargePoint', 'Chase', 'Chick-fil-A', 'Chipotle', 'Chuck & Don\'s', 'Chuck & Don\'s Pet Food & Supplies', 'Clarkson Eyecare', 'Cleaners', 'Club Pilates', 'Cold Stone Creamery', 'Cost Cutters', 'Costco', 'Country Inn & Suites', 'Crumbl Cookies', 'Cub Foods', 'Cub Liquor', 'Dairy Queen', 'Daisy Nails', 'Davanni\'s', 'Dave\'s Hot Chicken', 'Dero', 'Dick\'s Sports Barbers', 'Discount Tire', 'Dollar Tree', 'Domino\'s', 'DQ Grill & Chill', 'Driskill\'s Food', 'DSW', 'Duff\'s Barber Shop', 'Eden Prairie Center', 'Eden Prairie Liquor', 'Eden Tailors', 'Edina Liquor', 'Edward Jones', 'Elements Massage', 'Enchanted Formals', 'Envy Nails', 'Ethan Allen', 'European Massage Therapy', 'Evolve Salon', 'Famous Footwear', 'Fantastic Sams', 'Fashion Nails', 'FedEx', 'FedEx Office', 'Fido\'s Pantry', 'Firestone', 'Five Below', 'Five Guys', 'Flagship Salon', 'Flock Safety', 'Flooring Expo by Carpet King', 'Freewheel Bike', 'Fresh Thyme Market', 'Freshii', 'Furnishare', 'Galleria Shopping Center', 'Games by James', 'Games Workshop', 'GameStop', 'Garage', 'GiVan\'s Salon & Spa', 'GNC', 'Go Glow', 'Grandview Tire & Auto - Vernon', 'Great Clips', 'Greenleaf Vape & Tobacco', 'H&R Block', 'Hairazors Salon', 'Hallmark Cleaners & Launderers', 'Hampton Inn & Suites', 'Hance Ace Hardware', 'Haute Dog Spa', 'Highscore Video Games', 'Hirshfields', 'Historic Tattoo', 'Hobby Lobby', 'Holiday', 'Holiday Inn Express & Suites', 'Home Choice', 'HomeGoods', 'Hour Glass Cleaners', 'Huntington Bank', 'Interlachen Barber Shop', 'InVision Distinctive Eyewear', 'J.Crew', 'Jamba', 'Janie & Jack', 'JCPenney', 'Jeff’s Auto Service', 'Jerry\'s Do It Best Hardware', 'Jerry\'s Do it Best Hardware', 'Jerry\'s Foods', 'Jerry\'s Printing', 'Jersey Mike\'s Subs', 'Jiffy Lube', 'Jimmy John\'s', 'JoS. A. Bank', 'Juut Salonspa', 'Kendra Scott', 'Key Cadillac', 'Kids Empire', 'Knollwood Mall', 'Kohl\'s', 'Kohler', 'Kona Grill', 'Kowalski\'s', 'Kowalski\'s Markets', 'KT Nails', 'Kwik Trip', 'La-Z-Boy', 'Le Monde Tailors', 'Liberty Oxygen', 'Life Time', 'Little Blind Spot', 'Local Imports', 'Lodestone Coffee and Games', 'Lowe\'s', 'Lunds & Byerlys', 'Macy\'s', 'Mainstream Boutique', 'Mainstreet Nails', 'Mango', 'Marshalls', 'Massage Retreat & Spa', 'Mattress Firm', 'McCormick & Schmick\'s', 'McDonald\'s', 'MGM Liquor Warehouse', 'Michaels', 'Milio\'s', 'Mill City Sound', 'Mister Car Wash', 'Mobil', 'Mulberrys Dry Cleaners and Laundry', 'Muska Lighting', 'My Salon Suites', 'Nails Lovely', 'NAPA Auto Parts', 'Nautical Bowls', 'Nean Tobacco', 'Niemann Ace Hardware', 'Noodles & Company', 'Nordstrom Rack', 'Nothing Bundt Cakes', 'Office Depot', 'Old Navy', 'Once Upon a Child', 'Orangetheory Fitness', 'Original Mattress Factory', 'P.F. Chang\'s', 'Palm Beach Tan', 'Panda Express', 'Pandora', 'Panera Bread', 'Papa Murphy\'s', 'Party City', 'Patina', 'Pearle Vision', 'Pei Wei', 'Perkins', 'Pet Clips', 'Petco', 'Pizza Ranch', 'Planet Fitness', 'Popeyes', 'Potbelly', 'Preserve Barbers', 'Primrose School of St. Louis Park West', 'PXG Minneapolis', 'Qdoba', 'Redbox', 'Regis', 'Restwell Mattress Factory', 'Richards Liquor', 'Richfield Tailors', 'Ruby Tuesday', 'Rue De France', 'Rustica', 'Safelite AutoGlass', 'Sally Beauty', 'Salon Avalon', 'Salon Concepts', 'Salon L\'Image', 'Salon Lofts', 'Salon Oriana', 'Sam\'s Club', 'Scheels', 'Schneiderman\'s Furniture', 'Schuler Shoes', 'Seasons Golf', 'Seidou Spa', 'Sephora', 'Shake Shack', 'Sherwin-Williams', 'Shoppe 5101 Salon & Spa', 'Shorewood Smoke Shop Plus', 'Sierra', 'Slumberland', 'Smoke World Vape', 'Snap Fitness', 'Sola Salons', 'Solana Nail Spa', 'Sonic', 'Southbridge Liquor', 'Southdale Shopping Center', 'SouthSide Liquor', 'Southtown Nails', 'Spark by Hilton', 'Speedway', 'Speedy Wash', 'Sport Clips', 'SpringHill Suites Minneapolis Eden Prairie', 'Starbucks', 'Stilo Cuts', 'Strong Liquors', 'Subway', 'Swarovski', 'Sweet Salon & Barber Shoppe', 'T-Mobile', 'Taco Bell', 'Taco John\'s', 'Target', 'Tesla Supercharger', 'Texas Roadhouse', 'The Cheesecake Factory', 'The Drip Bar', 'The Hair District', 'The Home Depot', 'The Liquor Store & More', 'The Mane Aptistry', 'The Original Pancake House', 'The UPS Store', 'The Vine Room', 'Thomas Printworks', 'Tide Cleaners', 'Tires Plus', 'TJ Maxx', 'Top Ten Liquors', 'Torrid', 'Total Hockey', 'Total Wine', 'TownePlace Suites', 'Trader Joe\'s', 'Travel Advisors International;Pilgrim Dry Cleaners', 'True Value', 'U.S. Bank', 'Ulta Beauty', 'Uniform Advantage', 'UPS', 'US Nails', 'USPS', 'Valley West Shopping Center', 'Value Village', 'Vaping Studio', 'Verizon', 'Victoria\'s Secret', 'Von Hanson\'s Meats', 'Von Hansons Meats', 'Von Maur', 'Walgreens', 'Walmart Supercenter', 'Warners\' Stellian', 'Washburn-McReavy Edina Chapel', 'Wedding Day Diamonds', 'Wells Fargo', 'Wendy\'s', 'White Castle', 'Whole Foods Market', 'Wings Financial Credit Union', 'Wingstop', 'World Market', 'WW Studio', 'X Golf', 'Yardbird', 'Yorktown Mall'];
+  var selectedNames = new Set(allTenantNames);
+ 
+  var plazaNameIndex = {};
+  storesData.forEach(function(s) {
+    if (s.plazaId === -1) return;
+    if (!plazaNameIndex[s.plazaId]) plazaNameIndex[s.plazaId] = new Set();
+    plazaNameIndex[s.plazaId].add(s.name);
+  });
+ 
+  var tenantControl = L.control({position: 'topleft'});
+  tenantControl.onAdd = function() {
+    var container = L.DomUtil.create('div', 'tenant-filter');
+    container.innerHTML =
+      '<button id="tenantToggleBtn" class="tenant-toggle-btn" type="button">'
+      + 'Tenants: All (' + allTenantNames.length + ')</button>'
+      + '<div id="tenantPanel" class="tenant-panel" style="display:none;">'
+      +   '<input id="tenantSearch" class="tenant-search" type="text" placeholder="Search tenants...">'
+      +   '<div class="tenant-actions">'
+      +     '<button id="tenantSelectAll" type="button">Select all</button>'
+      +     '<button id="tenantDeselectAll" type="button">Deselect all</button>'
+      +   '</div>'
+      +   '<div id="tenantList" class="tenant-list"></div>'
+      + '</div>';
+    L.DomEvent.disableClickPropagation(container);
+    L.DomEvent.disableScrollPropagation(container);
+    return container;
+  };
+  tenantControl.addTo(map);
+ 
+  function updateTenantToggleLabel() {
+    var btn = document.getElementById('tenantToggleBtn');
+    var n = selectedNames.size;
+    var total = allTenantNames.length;
+    var label;
+    if (n === total) {
+      label = 'Tenants: All (' + total + ')';
+    } else if (n === 0) {
+      label = 'Tenants: none selected';
+    } else {
+      label = 'Tenants: ' + n + ' of ' + total + ' selected';
+    }
+    btn.innerHTML = label;
+  }
+ 
+  var tenantRows = [];
+  var tenantListEl = document.getElementById('tenantList');
+  allTenantNames.forEach(function(name) {
+    var row = document.createElement('label');
+    row.className = 'tenant-item';
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = true;
+    cb.addEventListener('change', function() {
+      if (cb.checked) { selectedNames.add(name); } else { selectedNames.delete(name); }
+      updateTenantToggleLabel();
+      updateVisibility();
+    });
+    row.appendChild(cb);
+    row.appendChild(document.createTextNode(' ' + name));
+    tenantListEl.appendChild(row);
+    tenantRows.push({el: row, checkbox: cb, lower: name.toLowerCase()});
+  });
+ 
+  document.getElementById('tenantToggleBtn').addEventListener('click', function() {
+    var panel = document.getElementById('tenantPanel');
+    panel.style.display = (panel.style.display === 'none') ? 'block' : 'none';
+  });
+ 
+  document.getElementById('tenantSearch').addEventListener('input', function(e) {
+    var q = e.target.value.toLowerCase();
+    tenantRows.forEach(function(r) {
+      r.el.style.display = (r.lower.indexOf(q) !== -1) ? '' : 'none';
+    });
+  });
+ 
+  document.getElementById('tenantSelectAll').addEventListener('click', function() {
+    tenantRows.forEach(function(r) { r.checkbox.checked = true; });
+    selectedNames = new Set(allTenantNames);
+    updateTenantToggleLabel();
+    updateVisibility();
+  });
+ 
+  document.getElementById('tenantDeselectAll').addEventListener('click', function() {
+    tenantRows.forEach(function(r) { r.checkbox.checked = false; });
+    selectedNames = new Set();
+    updateTenantToggleLabel();
+    updateVisibility();
+  });
+  // ---- end tenant name filter ----
+ 
+  map.on('overlayadd overlayremove', updateVisibility);
+  updateVisibility();
+ 
+  var overlays = {
+    '🔴  Multi-anchor plazas (2+ anchors)': layerMultiAnchor,
+    '⭕  Single-anchor plazas': layerSingleAnchor,
+    '🟣  Plaza Center Points': layerPlazaCenters,
+    '🟡  Anchor Stores (in Plaza)': layerAnchors,
+    '🔵🔴  Tenants (In Plaza)': layerTenants,
+    '━━━━━━━━━━━━━━': L.layerGroup(),
+    '🔥  High Density Plazas (10+ tenants)': layerHighDensity,
+    '🔹  Lower Density (< 10 tenants)': layerLowDensity
+  };
+ 
+  var countyDivider = false;
+  for (var county in countyLayers) {
+    if (!countyDivider) {
+        overlays['━━━━━━━━━━━━━━ '] = L.layerGroup();
+        countyDivider = true;
+    }
+    overlays['📍 ' + county] = countyLayers[county];
+  }
+ 
+  L.control.layers(null, overlays, {
+    position: 'topright',
+    collapsed: false,
+  }).addTo(map);
+ 
+  var legend = L.control({position: 'bottomright'});
+  legend.onAdd = function() {
+    var div = L.DomUtil.create('div', 'legend');
+    div.innerHTML = '<b>Retail Centers – Eden Prairie, MN</b><br>'
+      + '<span class="legend-dot" style="background:#e74c3c"></span> Named plaza<br>'
+      + '<span class="legend-dot" style="background:#3498db"></span> Unnamed plaza<br>'
+      + '<span class="legend-dot" style="background:#8e44ad"></span> Plaza center point<br>'
+      + '<span class="legend-dot" style="background:#f39c12"></span> Anchor store (in plaza)<br>'
+      + '<span class="legend-dot" style="background:#27ae60"></span> Standalone store<br>'
+      + '⚓ = anchor &nbsp; 🔥 = 10+ tenants<br>'
+      + '<span style="font-size:11px;color:#666;">Use the Tenants filter (top-left) to isolate specific names.</span>';
+    return div;
+  };
+  legend.addTo(map);
+ 
+  document.getElementById('legendHeader').addEventListener('click', function() {
+    var body = document.getElementById('legendBody');
+    var icon = document.getElementById('legendToggleIcon');
+    var collapsed = (body.style.display === 'none');
+    body.style.display = collapsed ? 'block' : 'none';
+    icon.textContent = collapsed ? '▾' : '▸';
+  });
+</script>
+</body>
+</html>
