@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8' />
+  <title>Retail Centers – Montecito, CA</title>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' />
+  <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
+  <style>
+    body { margin: 0; font-family: sans-serif; }
+    #map { height: 100vh; width: 100%; }
+    .legend {
+      background: white; padding: 10px 14px; border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); line-height: 1.8;
+      font-size: 13px;
+    }
+    .legend-dot { display: inline-block; width: 12px; height: 12px;
+                   border-radius: 50%; margin-right: 6px; }
+    .tenant-filter { font-size: 13px; }
+    .tenant-toggle-btn {
+      background: white; border: 2px solid rgba(0,0,0,0.2); border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); padding: 8px 12px; font-size: 13px;
+      font-family: sans-serif; cursor: pointer; min-width: 180px; text-align: left;
+    }
+    .tenant-toggle-btn:hover { background: #f4f4f4; }
+    .tenant-panel {
+      background: white; border-radius: 6px; box-shadow: 0 1px 5px rgba(0,0,0,0.3);
+      margin-top: 4px; padding: 10px; width: 260px; max-height: 380px;
+      display: flex; flex-direction: column;
+    }
+    .tenant-search {
+      width: 100%; box-sizing: border-box; padding: 6px 8px; margin-bottom: 8px;
+      border: 1px solid #ccc; border-radius: 4px; font-size: 13px;
+    }
+    .tenant-actions { display: flex; gap: 6px; margin-bottom: 8px; }
+    .tenant-actions button {
+      flex: 1; padding: 5px 6px; font-size: 12px; border: 1px solid #ccc;
+      border-radius: 4px; background: #f7f7f7; cursor: pointer;
+    }
+    .tenant-actions button:hover { background: #eaeaea; }
+    .tenant-list { overflow-y: auto; max-height: 260px; border-top: 1px solid #eee; padding-top: 6px; }
+    .tenant-item {
+      display: block; font-size: 12.5px; padding: 3px 2px; cursor: pointer;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .tenant-item:hover { background: #f4f4f4; }
+    .tenant-item input { margin-right: 6px; }
+  </style>
+</head>
+<body>
+<div id='map'></div>
+<script>
+  var map = L.map('map').setView([34.42355336868203, -119.68968594690442], 12);
+ 
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(map);
+ 
+  var plazasData = [];
+  var storesData = [];
+ 
+  var layerMultiAnchor = L.layerGroup().addTo(map);
+  var layerSingleAnchor = L.layerGroup().addTo(map);
+  var layerPlazaCenters = L.layerGroup().addTo(map);
+  var layerAnchors = L.layerGroup().addTo(map);
+  var layerTenants = L.layerGroup().addTo(map);
+  var layerStandalone = L.layerGroup().addTo(map);
+  var layerHighDensity = L.layerGroup().addTo(map);
+  var layerLowDensity = L.layerGroup().addTo(map);
+  var countyLayers = {};
+ 
+  function getOrCreateCountyLayer(county) {
+    if (!county || county === '-') county = 'Unknown';
+    if (!countyLayers[county]) {
+        countyLayers[county] = L.layerGroup().addTo(map);
+    }
+    return countyLayers[county];
+  }
+ 
+  function addPlaza(lat, lng, radius_m, plazaId, name, address, county, city, numAnchors, anchors, numTenants, tenants, color, leasingHtml) {
+    var popup = '<b>' + name + '</b><br>'
+      + (address !== '-' ? address + '<br>' : '')
+      + city + (county !== '-' ? ', ' + county + ' County' : '') + '<br>'
+      + leasingHtml
+      + '<br><b>' + numAnchors + ' anchor(s): </b><br>'
+      + anchors.split(', ').join('<br>')
+      + '<br><br><b>' + numTenants + ' other tenant(s):</b><br>'
+      + tenants.split(', ').join('<br>');
+    
+    var circle = L.circle([lat, lng], {
+      radius: radius_m,
+      color: color,
+      fillColor: color,
+      fillOpacity: 0.08,
+      weight: 2
+    });
+    if (numAnchors > 1) {
+      layerMultiAnchor.addLayer(circle);
+    } else {
+      layerSingleAnchor.addLayer(circle);
+    }
+ 
+    var center = L.circleMarker([lat,lng], {
+        radius: 9,
+        color: '#fff',
+        fillColor: '#8e44ad',
+        fillOpacity: 1,
+        weight: 2
+    }).bindPopup(popup, {maxHeight: 320, autoPanPadding: [20, 20]}).bindTooltip(name, {permanent: false, direction: 'top'});
+ 
+    var cleanCounty = (!county || county === '-') ? 'Unknown' : county;
+    getOrCreateCountyLayer(cleanCounty);
+ 
+    plazasData.push({
+        circle: circle,
+        center: center,
+        id: plazaId,
+        name: name,
+        county: cleanCounty,
+        numAnchors: numAnchors,
+        numTenants: numTenants
+    });
+  }
+ 
+  function addStore(lat, lng, name, address, color, plazaId, plaza, isAnchor) {
+    var size = isAnchor ? 11 : 9;
+    var icon = L.divIcon({
+      className: '',
+      html: '<div style="position:absolute;width:' + size + 'px;height:' + size + 'px;'
+          + 'border-radius:50%;background:' + color + ';border:2px solid white;'
+          + 'box-shadow:0 1px 3px rgba(0,0,0,0.4);top:50%;left:50%;'
+          + 'transform:translate(-50%,-50%)'
+          + (isAnchor ? ';outline:2px solid rgba(0,0,0,0.25)' : '')
+          + '"></div>',
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2]
+    });
+    var marker = L.marker([lat, lng], {icon: icon})
+      .bindPopup('<b>' + name + '</b>' + (isAnchor ? '⚓' : '')+ '<br>' 
+        + '<i>' + plaza + '</i><br>'
+        + address)
+      .bindTooltip(name, {direction: 'top'})
+    
+    storesData.push({
+      marker: marker,
+      plazaId: plazaId,
+      plazaLabel: plaza,
+      isAnchor: isAnchor,
+      name: name
+    });
+  }
+ 
+  function tenantFilterMatchesPlaza(plazaId) {
+    // Fast path: nothing deselected, every plaza passes.
+    if (selectedNames.size >= allTenantNames.length) return true;
+    var names = plazaNameIndex[plazaId];
+    if (!names) return false;
+    for (var n of names) {
+      if (selectedNames.has(n)) return true;
+    }
+    return false;
+  }
+ 
+  function updateVisibility() {
+    plazasData.forEach(function(p) {
+      var anchorMatch = (p.numAnchors > 1) ? map.hasLayer(layerMultiAnchor): map.hasLayer(layerSingleAnchor);
+      var densityMatch = (p.numTenants >= 10) ? map.hasLayer(layerHighDensity) : map.hasLayer(layerLowDensity);
+      var countyLayer = countyLayers[p.county];
+      var countyMatch = countyLayer ? map.hasLayer(countyLayer) : true;
+      var tenantMatch = tenantFilterMatchesPlaza(p.id);
+ 
+      var plazaVisible = anchorMatch && densityMatch && countyMatch && tenantMatch;
+      p.isActive = plazaVisible;
+ 
+      if (plazaVisible) {
+        // FIX 2: Changed map.has() to map.hasLayer()
+        if (!map.hasLayer(p.circle)) p.circle.addTo(map);
+      } else {
+        if (map.hasLayer(p.circle)) map.removeLayer(p.circle);
+      }
+ 
+      if (plazaVisible && map.hasLayer(layerPlazaCenters)) {
+        if (!map.hasLayer(p.center)) p.center.addTo(map);
+      } else {
+        if (map.hasLayer(p.center)) map.removeLayer(p.center);
+      }
+    });
+      
+    storesData.forEach(function(s) {
+        var storeVisible = false;
+        var nameMatch = selectedNames.has(s.name);
+ 
+        if (s.plazaId === -1) {
+            // Standalone store
+            storeVisible = map.hasLayer(layerStandalone) && nameMatch;
+ 
+        } else {
+            var parentPlaza = plazasData.find(function(p) {
+                return p.id === s.plazaId;
+            });
+ 
+            if (parentPlaza && parentPlaza.isActive) {
+                storeVisible = (s.isAnchor
+                    ? map.hasLayer(layerAnchors)
+                    : map.hasLayer(layerTenants)) && nameMatch;
+            }
+        }
+ 
+        if (storeVisible) {
+            if (!map.hasLayer(s.marker))
+                s.marker.addTo(map);
+        } else {
+            if (map.hasLayer(s.marker))
+                map.removeLayer(s.marker);
+        }
+    });
+  }
+ 
+  addPlaza(34.419980271962615, -119.70020441495326, 393.0, 0, 'Unnamed Retail Center', '827 State Street Santa Barbara', 'Santa Barbara County', 'Santa Barbara', 2, 'H&M, Marshalls', 105, '33 Jewels, 7-Eleven, 805 University, Ace of Fadez, Alessia Patisserie & Cafe, Alo, American Eagle Outfitters, Anatola, Anna Janelle Jewelry, Antique Alley, Apple Store, Arrediamo Summerland, Aveda, BCycle, Banana Republic, Bank of America, Bank of the Sierra, Bath & Body Works, Bonika\'s Boutique, Brandy Melville, Bruxie, Bryant & Sons, Bungalow West, Charles Schwab, Coach, Courtney Burke, Creations Boutique, Crossroads Trading, EOS Fitness, Electrify America, Elenita, Fastrack Bicycles, Float Luxury Spa, Foot Locker, Game Seeker, Gap, Gap Kids, Grassini Family Vineyards, Handlebar Coffee Roasters, Hollister, Indie Beauty Collective, Inspire, Italian Pottery Outlet, Jamie Sloan Wines, Kariella, Kimpton Canary Hotel, Kristina Sklar Art, La Bomba, Layla Threading, Lighthouse Skate Shop, Lokum, Longoria Wines, Loubud Wines, Lovebird, Lululemon, Mathnasium, Mayberry, McConnell‘s, Men\'s Wearhouse, Miss Behavin\', Mister Softee, N&S Expressions, Namaste, Neez Goodz, Neighbor Neighbor, Novo Salon, O\' My Sole, Occhiali Fine Eyewear, PacSun, Pampel Design, Panda Express, Paseo Nuevo Mall, Pavilion Mini Storage, Pink, Pink Browny, Poke House, Rejuvenation Spa & Nails, Santa Barbara Travel Bureau, Seaside Makers, Sephora, Sirena, Skechers, Solstice Sunglass Boutique, Soul Sucker, Studio S, Sunglass Hut, SuperMoss Garden Living, T-Mobile, Te Amo Jewelers, The Closet Trading Co., The Polar Bear, The Tent Merchant Prop & Decor Outlet, Thrifty Beaches, Tilly Timm\'s, Tillys, Tokyo Japanese Lifestyle, Tri County Office Furniture, U.S. Bank, Urban Flea Market, Victoria\'s Secret, Viva Santa Barbara, Zitzilin Imports, Zumiez, bluemercury, claire\'s', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.crexi.com/lease/properties/59237/california-the-pavilion" target="_blank" rel="noopener">Investec Real Estate Companies — Crosby Slaught</a><br><a href="https://www.crexi.com/lease/properties/59237/california-the-pavilion" target="_blank" rel="noopener">Crexi Listing — Isaiah Bolton</a><br><a href="https://www.crexi.com/lease/properties/945991/california-retail-space-located-in-prominent-shopping-mall" target="_blank" rel="noopener">Hayes Commercial Group — Francois DeJohn</a><br><a href="https://www.crexi.com/lease/properties/945991/california-retail-space-located-in-prominent-shopping-mall" target="_blank" rel="noopener">Hayes Commercial Group — Caitlin Hensel</a><br><a href="https://www.crexi.com/lease/properties/1170635/california-831-state-street" target="_blank" rel="noopener">Hayes Commercial Group — Liam Murphy</a><br><a href="https://www.crexi.com/lease/properties/1170635/california-831-state-street" target="_blank" rel="noopener">Hayes Commercial Group — Toni Floyd</a><br><a href="https://www.crexi.com/lease/properties/1170635/california-831-state-street" target="_blank" rel="noopener">Hayes Commercial Group — Marissa Ruelas</a><br>');
+addPlaza(34.43894791886792, -119.75004473584904, 375.1, 1, 'Unnamed Retail Center', '3855 State Street Santa Barbara', 'Santa Barbara County', 'Santa Barbara', 5, 'Bristol Farms, Macy\'s, Petco, Ross, Target', 48, 'A Crimson Holiday, AT&T, Ageless Men\'s Health, Alpha Thrift Store, Barbie\'s Pet Salon, Bayside Watch, Berkshire Hathaway HomeServices, Champagne Nail Bar, Channel City Hardware and Gifts, Chevron, Chipotle, Conservmart, CorePower Yoga, EVgo, Eco Friendly Cleaners, European Wax Center, ExtraMile, FOUND Hotels, Santa Barbara, Series by Marriott, Fashion Hair Salon, FedEx Office, Furniture Gallery by Mattress Mike, Habit Burger & Grill, Hertz, Islands, J.Jill, La-Z-Boy, LensCrafters, Massage Envy, Mattress Firm, Miss Daisy\'s, Nutrishop, O\'Reilly Auto Parts, Orchid Thai Massage And Spa, Panda Express, Peet\'s Coffee, Phenix Salon Suites, Pottery Barn, See\'s Candies, St. Paul Cleaners, Starbucks, Subway, Thai Massage, Thairapy Salon, The UPS Store, Town & Country Distinct Event Rentals & Services, True Zero, Williams-Sonoma, uBreakiFix', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(34.416174710000014, -119.69490405600003, 368.5, 2, 'Unnamed Retail Center', '424 State Street Santa Barbara', 'Santa Barbara County', 'Santa Barbara', 1, 'Dollar Tree', 49, 'AAMCO Transmissions, Abbey\'s Carpet City & Flooring, Ablitt\'s Fine Cleaners & Launderers, Above & Beyond Body Arts, Carlyle Salon & Style Bar, Champs Barber Shop, Chocolate Maya, Coast Supply Co., Cuso\'s Bikes, D\'Angelo Bread, Drift Hotel, Essence Med Spa, Evolutions, F45 Training, Folio Press & Paperie, Ghirardelli, Golden Eagle Tattoo, Habitat for Humanity ReStore, Hayward\'s, High Tide Glass Gallery, Hotel Virginia, Insomnia Cookies, Justo\'s Beauty Salon, Kiwi\'s Auto Repair, La Aroma de Havana Cigar Lounge, Le Reve Organic Spa, Levi\'s, Little Rainbow Foot Spa, Marcel Hemp, Ministry of the Interior, Motion Training Collective, Moxy Santa Barbara, Nick The Greek, REI, Reid\'s Appliances, Relaxing Station, Riviera Towel Company, Santa Barbara Art & Frame Co., Santa Barbara Autowerks, Silver And..., Starbucks, State Street Beverages, State Street Smoke Shop, The Adult Store, The Corner Room, Tribal Rugs, Trunks and Treasures, World Market, oat bakery', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.crexi.com/lease/properties/1116579/california-downtown-retailrestaurant-space" target="_blank" rel="noopener">Hayes Commercial Group — Dan Ferrick</a><br><a href="https://www.crexi.com/lease/properties/1116579/california-downtown-retailrestaurant-space" target="_blank" rel="noopener">Hayes Commercial Group — Marissa Ruelas</a><br><a href="https://www.crexi.com/lease/properties/1229936/california-434-state-st-santa-barbara-ca-93101-2305" target="_blank" rel="noopener">Berkshire Hathaway Commercial Division — Mitch Stark</a><br>');
+addPlaza(34.43994502307692, -119.72882122820513, 399.5, 3, 'Unnamed Retail Center', '3025 De La Vina Street Santa Barbara', 'Santa Barbara County', 'Santa Barbara', 2, 'BevMo!, Trader Joe\'s', 37, 'Amy\'s Skin Care, Asia Warren Skin Care, ChargePoint, Coastal Design Drapery and Shade, Creative Kitchen Spaces, Creative Nails, Dimensional Millwork, Inc. Windows & Doors, Domino\'s, Evan\'s Relaxing Station, Farmers Insurance, GV Optical, Happy Little Hippo, Healthy Life Massage, Healthy Pet, Island View Outfitters, Jaz Hair Salon, Legends Salon, Panoyan Custom Tailors, Paws & Claws, Petersen Plaza, Pueblo Del Rey Funeral Services, Rainbow Nails, San Roque Market & Liquors, Santa Barbara Audiology, Santa Barbara Screen & Shade, Santa Barbara Spa, Shaddai Print & Design, Shell, Starbucks, State Farm, State Street Jewelry, Team Hair & Makeup, The Palms Barbershop, Verizon, Vishions Smoke Shop, Wellness Therapy Center, Whitney Chic Boutique', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(34.42028179090909, -119.70429064545455, 334.9, 4, 'Unnamed Retail Center', '100 West Carrillo Street Santa Barbara', 'Santa Barbara County', 'Santa Barbara', 1, 'Ralphs', 21, 'Anna Janelle Jewelry, BCycle, Coastal, CorePower Yoga, Dunn-Edwards Paints, Econo Auto Center, Favorites, Fiesta Cash & Loans, Frame, Fuzion Glass Gallery & Boutique, Goodwill, Hempwise, Honey\'s, Impact Hub, Modern Laundry, Puff Club, Red Sand Market, SB Volume Lash & Spa, Starbucks, The Salon, Tino\'s Italian Grocery', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(34.40185183333334, -119.7228399888889, 289.7, 5, 'Unnamed Retail Center', '2010 Cliff Drive Santa Barbara', 'Santa Barbara County', 'Santa Barbara', 2, 'Rite Aid, Vons', 16, '7-Eleven, American Cleaners & Tailoring, Charming Nails, Dero, Lazy Acres, McDonald\'s, Mesa Bookstore, Mesa Produce, Montecito Bank, Starbucks, Subway, Taco Bell, The Little Things Bakery, The Point Market, Union Bank, Zip Kleen', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.crexi.com/lease/properties/59225/california-mesa-center" target="_blank" rel="noopener">Investec Real Estate Companies — Crosby Slaught</a><br><a href="https://www.crexi.com/lease/properties/59225/california-mesa-center" target="_blank" rel="noopener">Crexi Listing — Isaiah Bolton</a><br>');
+addPlaza(34.39820869375, -119.51913496874998, 315.6, 6, 'Unnamed Retail Center', '850 Linden Avenue Carpinteria', 'Santa Barbara County', 'Carpinteria', 1, 'Smart & Final', 15, 'Bon Fortune, Carpinteria Lock & Key, ChargePoint, Homestead Antiques Trading Co., Linden Laundry & Laundromat, Linden Strands, Linden Studio, Murphy\'s Vinyl Shack, Reynaldo\'s Mexican Bakery, Rincon Designs Surf Shop, Robitaille\'s Fine Candies, Seaside Makers Collective, Snack Shop, Tidepools, Whimsy', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(34.41984447857143, -119.69170143571428, 424.4, 7, 'Unnamed Retail Center', '217 East Gutierrez Street Santa Barbara', 'Santa Barbara County', 'Santa Barbara', 1, 'Smart & Final', 13, 'Apex Smoke & Vape, Avis, Buena Tool, Dago Hardwood & Flooring, Debbie\'s Delights, Exit Auto Collision, Higgins Muffler & Brake, Linde Welding Gas & Equipment Center, Los Tarascos Bakery and Deli, OfficeMax, Rad Power Bikes, Santa Barbara Fasteners, VCA Care Specialty and Emergency Animal Hospital', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(34.44005876153845, -119.75282464615384, 289.7, 8, 'Unnamed Retail Center', '3943 State Street Santa Barbara', 'Santa Barbara County', 'Santa Barbara', 2, 'Big 5 Sporting Goods, Smart & Final', 11, 'Allpoint, Club Pilates, EōS Fitness, Firestone, Jiffy Lube, McDonald\'s, Quest Diagnostics, SalonCentric, Santa Barbara Supercharger, The Good Feet Store, WDC Kitchen & Bath Center', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.crexi.com/lease/properties/614231/california-five-points-shopping-center" target="_blank" rel="noopener">Regency Centers — Erin Saltzman</a><br><a href="https://www.crexi.com/lease/properties/22315/california-3944-state-st" target="_blank" rel="noopener">Hayes Commercial Group — Caitlin McCahill</a><br><a href="https://www.crexi.com/lease/properties/22315/california-3944-state-st" target="_blank" rel="noopener">Hayes Commercial Group — Kris Roth</a><br><a href="https://www.crexi.com/lease/properties/22315/california-3944-state-st" target="_blank" rel="noopener">Hayes Commercial Group — Dan Ferrick</a><br>');
+addPlaza(34.43997846923077, -119.73535813076923, 292.0, 9, 'Unnamed Retail Center', '3305 State Street Santa Barbara', 'Santa Barbara County', 'Santa Barbara', 1, 'Gelson\'s', 12, '7 Day Nursery, 7-Eleven, Chaucer\'s Books, Cox Store, Fantastic Sams, Farmers Insurance, Leslie\'s Pool Supplies, Malai Thai Massage, Renaud\'s Patisserie and Bistro, Salon Patine, Singer\'s Big & Tall, United States Postal Service', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(34.44031020909091, -119.74579507272729, 365.4, 10, 'Unnamed Retail Center', '3761 State Street Santa Barbara', 'Santa Barbara County', 'Santa Barbara', 1, 'Whole Foods Market', 10, 'BMO, Bank of America, Chase, Electrify America, Fidelity Investments, Jack in the Box, Santa Barbara Herb Clinic, Starbucks, Velo Pro Cyclery, Wells Fargo', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.crexi.com/lease/properties/1214466/california-3760-state-street" target="_blank" rel="noopener">santa barbara property group — Ben Williams</a><br>');
+addPlaza(34.436659045454554, -119.72583835454544, 289.7, 11, 'Unnamed Retail Center', '2840 De La Vina Street Santa Barbara', 'Santa Barbara County', 'Santa Barbara', 1, 'Grocery Outlet', 10, '76, Alebrije Homewares, Amigos Hair Cutting, Cris Market & Restaurant, De La Vina Barbers, GM Auto & Smog, Goodland Tattoo, Launderland, Plaza Liquor, Soapy Suds Laundromat', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(34.424359044444444, -119.68219935555554, 289.7, 12, 'Unnamed Retail Center', '222 North Milpas Street Santa Barbara', 'Santa Barbara County', 'Santa Barbara', 1, 'Trader Joe\'s', 8, 'Arco, AutoZone, Canopy Club, Classic Design German Car Specialist, House of Laundry, PetSmart, Starbucks, Winchell\'s Donut House', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(34.3953973, -119.51254995000001, 381.1, 13, 'Unnamed Retail Center', '1018 Casitas Pass Road Carpinteria', 'Santa Barbara County', 'Carpinteria', 1, 'Albertsons', 7, 'Arco, Chase, McDonald\'s, Motel 6 Carpinteria, Starbucks, Taco Bell, Union Bank', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://srsre.com/properties/lease/retail/california/carpinteria/1001-1049-casitas-pass-rd/l14508" target="_blank" rel="noopener">SRS Real Estate Partners — Mike Hieshima</a><br><a href="https://srsre.com/properties/lease/retail/california/carpinteria/1001-1049-casitas-pass-rd/l14508" target="_blank" rel="noopener">SRS Real Estate Partners — Caden Westwick</a><br><a href="https://srsre.com/properties/lease/retail/california/carpinteria/1001-1049-casitas-pass-rd/l14508" target="_blank" rel="noopener">SRS Real Estate Partners — Bree Casas</a><br><a href="https://www.crexi.com/lease/properties/1172674/california-1039-casitas-pass-road" target="_blank" rel="noopener">Hayes Commercial Group — Caitlin McCahill</a><br><a href="https://www.crexi.com/lease/properties/1172674/california-1039-casitas-pass-road" target="_blank" rel="noopener">Hayes Commercial Group — Marissa Ruelas</a><br><a href="https://www.crexi.com/lease/properties/1172674/california-1039-casitas-pass-road" target="_blank" rel="noopener">Hayes Commercial Group — Dan Ferrick</a><br>');
+addPlaza(34.42130298, -119.67878221999999, 289.7, 14, 'Unnamed Retail Center', '29 South Milpas Street Santa Barbara', 'Santa Barbara County', 'Santa Barbara', 2, 'Rite Aid, Sprouts Farmers Market', 3, 'Cal Coast Adventures, Little Caesars, McDonald\'s', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+  addStore(34.4002857, -119.7216572, 'Lazy Acres', '302 Meigs Road Santa Barbara', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.4025023, -119.723794, 'Vons', '2010 Cliff Drive Santa Barbara', '#f39c12', 5, 'Unnamed Retail Center', true);
+addStore(34.4018295, -119.7223439, 'McDonald\'s', '1906 Cliff Drive Santa Barbara', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.4389102, -119.728945, 'Trader Joe\'s', '3025 De La Vina Street Santa Barbara', '#f39c12', 3, 'Unnamed Retail Center', true);
+addStore(34.3949057, -119.5119971, 'Albertsons', '1018 Casitas Pass Road Carpinteria', '#f39c12', 13, 'Unnamed Retail Center', true);
+addStore(34.3968085, -119.5123961, 'McDonald\'s', '-', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(34.4400964, -119.7346999, '7 Day Nursery', '3301 State Street Santa Barbara', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(34.4175525, -119.6967592, 'Starbucks', '539 State Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4218488, -119.702642, 'Lokum', '1019 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.439347, -119.735372, 'Gelson\'s', '3305 State Street Santa Barbara', '#f39c12', 9, 'Unnamed Retail Center', true);
+addStore(34.4385132, -119.7502858, 'Chevron', '115 South La Cumbre Road Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4388069, -119.7525581, 'Starbucks', '3957 State Street Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4394341, -119.7452961, 'Whole Foods Market', '3761 State Street Santa Barbara', '#f39c12', 10, 'Unnamed Retail Center', true);
+addStore(34.419686, -119.704823, 'Modern Laundry', '1015 De La Vina Street Santa Barbara', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4223917, -119.7053582, 'Fiesta Cash & Loans', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4023711, -119.7233736, 'Starbucks', '1990 Cliff Drive Santa Barbara', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.4419423, -119.729854, 'ChargePoint', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.4402556, -119.7515615, 'Peet\'s Coffee', '3905 State Street Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.3955733, -119.5135528, 'Chase', '-', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(34.394962, -119.513122, 'Starbucks', '5436 Carpinteria Avenue Carpinteria', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(34.4405871, -119.7318663, 'Pueblo Del Rey Funeral Services', '3120 State Street Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.4212987, -119.701355, 'Apple Store', '928 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4377325, -119.750905, 'True Zero', '150 South La Cumbre Road Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4188449, -119.69231, 'Smart & Final', '217 East Gutierrez Street Santa Barbara', '#f39c12', 7, 'Unnamed Retail Center', true);
+addStore(34.4192498, -119.6920587, 'OfficeMax', '219 East Gutierrez Street Santa Barbara', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(34.4223119, -119.6985395, 'Handlebar Coffee Roasters', '128 East Canon Perdido Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4194219, -119.698832, 'McConnell‘s', '728 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4195982, -119.6990948, 'N&S Expressions', '736 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4375083, -119.7261472, 'Grocery Outlet', '2840 De La Vina Street Santa Barbara', '#f39c12', 11, 'Unnamed Retail Center', true);
+addStore(34.4202273, -119.7004511, 'H&M', '827 State Street Santa Barbara', '#f39c12', 0, 'Unnamed Retail Center', true);
+addStore(34.4184242, -119.6992705, 'Viva Santa Barbara', '505 Paseo Nuevo Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4185938, -119.6993601, 'Victoria\'s Secret', '320 Paseo Nuevo Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4191172, -119.70019, 'Inspire', '209 Paseo Nuevo Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4191387, -119.7005038, 'American Eagle Outfitters', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4397409, -119.744314, 'Velo Pro Cyclery', '15 Hitchcock Way Santa Barbara', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(34.3987447, -119.5188481, 'Seaside Makers Collective', '961 Linden Avenue Carpinteria', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(34.4408577, -119.7283271, 'Legends Salon', '9 East Calle Laureles Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.440708, -119.737845, '7-Eleven', '3430 State Street Santa Barbara', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(34.440707, -119.736799, 'Malai Thai Massage', '3400 State Street Santa Barbara', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(34.4375629, -119.7274428, 'Alebrije Homewares', '2915 De La Vina Street Santa Barbara', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(34.4389803, -119.7280599, 'The Palms Barbershop', '37 West Calle Laureles Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.4382504, -119.7275035, 'Santa Barbara Screen & Shade', '2930 De La Vina Street Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.4402183, -119.7283501, 'Dimensional Millwork, Inc. Windows & Doors', '3001 State Street Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.422399, -119.703931, 'Fuzion Glass Gallery & Boutique', '1115 State Street Santa Barbara', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4222641, -119.6802126, 'McDonald\'s', '29 North Milpas Street Santa Barbara', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(34.417449, -119.6928543, 'Kiwi\'s Auto Repair', '111 East Gutierrez Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.3965846, -119.513333, 'Taco Bell', '1045 Casitas Pass Road Carpinteria', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(34.4232038, -119.680693, 'Canopy Club', '118 North Milpas Street Santa Barbara', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(34.4381655, -119.7274689, 'Amy\'s Skin Care', '2928 De La Vina Street Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.439435, -119.735853, 'Renaud\'s Patisserie and Bistro', '3315 State Street Santa Barbara', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(34.4249233, -119.68148, 'PetSmart', '222 North Milpas Street Santa Barbara', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(34.4249852, -119.681662, 'Trader Joe\'s', '222 North Milpas Street Santa Barbara', '#f39c12', 12, 'Unnamed Retail Center', true);
+addStore(34.421474, -119.677476, 'Rite Aid', '-', '#f39c12', 14, 'Unnamed Retail Center', true);
+addStore(34.4398008, -119.7359347, 'Chaucer\'s Books', '3321 State Street Santa Barbara', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(34.440001, -119.7364028, 'United States Postal Service', '3345 State Street', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(34.4241786, -119.682718, 'Arco', '-', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(34.4208708, -119.7013246, 'Tillys', '917 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4384133, -119.7522997, 'Ross', '3965 State Street Santa Barbara', '#f39c12', 1, 'Unnamed Retail Center', true);
+addStore(34.4388859, -119.7526437, 'SalonCentric', '3953 State Street Santa Barbara', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(34.4389257, -119.752682, 'Club Pilates', '3951 State Street Santa Barbara', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(34.439133, -119.752984, 'Smart & Final', '3943 State Street Santa Barbara', '#f39c12', 8, 'Unnamed Retail Center', true);
+addStore(34.4397264, -119.7533689, 'Big 5 Sporting Goods', '3935 State Street Santa Barbara', '#f39c12', 8, 'Unnamed Retail Center', true);
+addStore(34.4386904, -119.7515477, 'Petco', '3985 State Street Santa Barbara', '#f39c12', 1, 'Unnamed Retail Center', true);
+addStore(34.4386527, -119.7518472, 'Eco Friendly Cleaners', '3969 State Street Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4387187, -119.7518561, 'Subway', '3967 State Street Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4394969, -119.7519315, 'Mattress Firm', '3987 State Street Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4393891, -119.7512519, 'European Wax Center', '3993 State Street Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.3981174, -119.518472, 'ChargePoint', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(34.3982434, -119.5189679, 'Robitaille\'s Fine Candies', '900 Linden Avenue Carpinteria', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(34.3982526, -119.5194468, 'Reynaldo\'s Mexican Bakery', '895 Linden Avenue Carpinteria', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(34.3982227, -119.5195057, 'Linden Laundry & Laundromat', '887 Linden Avenue Carpinteria', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(34.3968253, -119.5212227, 'Rincon Designs Surf Shop', '659 Linden Avenue Carpinteria', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(34.3966208, -119.5214245, 'Tidepools', '619 Linden Avenue Carpinteria', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(34.3962499, -119.512238, 'Arco', '-', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(34.4003339, -119.7219417, 'Dero', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.402474, -119.7239908, 'The Little Things Bakery', '2018 Cliff Drive Santa Barbara', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.3983507, -119.5186237, 'Bon Fortune', '929 Linden Avenue Carpinteria', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(34.4150609, -119.6947924, 'D\'Angelo Bread', '25 West Gutierrez Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4149448, -119.6946413, 'Le Reve Organic Spa', '21 West Gutierrez Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.395123, -119.5133093, 'Union Bank', '-', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(34.4025192, -119.7249451, 'Mesa Produce', '2036 Cliff Dr Santa Barbara', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.4165248, -119.695651, 'oat bakery', '5 West Haley Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4393013, -119.734562, 'Fantastic Sams', '3303 State Street', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(34.4394165, -119.7345582, 'Singer\'s Big & Tall', '-', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(34.4192258, -119.7046102, 'Tino\'s Italian Grocery', '210 West Carrillo Street Santa Barbara', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4197489, -119.701764, 'Charles Schwab', '900 Chapala Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4407414, -119.7277917, 'Petersen Plaza', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.4408015, -119.7283319, 'Asia Warren Skin Care', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.40231, -119.7230407, 'Rite Aid', '1976 Cliff Drive Santa Barbara', '#f39c12', 5, 'Unnamed Retail Center', true);
+addStore(34.3985328, -119.5186038, 'Linden Strands', '954 Linden Avenue Carpinteria', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(34.3991844, -119.5193672, 'Carpinteria Lock & Key', '4939 Carpinteria', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(34.3980682, -119.5177821, 'Snack Shop', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(34.3985683, -119.5185708, 'Whimsy', '970 Linden Avenue Carpinteria', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(34.3987721, -119.51881, 'Linden Studio', '961 Linden Avenue Carpinteria', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(34.4022161, -119.7227005, 'Union Bank', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.4022316, -119.7225225, 'Subway', '1940 Cliff Drive Santa Barbara', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.4381465, -119.7483785, 'Islands', '3825 State Street Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.402276, -119.7244369, 'Montecito Bank', '2034 Cliff Drive Santa Barbara', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.4224215, -119.698406, 'Alessia Patisserie & Cafe', '134 East Canon Perdido Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.420461, -119.6995794, 'Grassini Family Vineyards', '24 El Paseo Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.420452, -119.6989648, 'Jamie Sloan Wines', '23 East De La Guerra Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4186809, -119.6991748, 'Miss Behavin\'', '322 Paseo Nuevo Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4185769, -119.6992909, 'Pink', '320 Paseo Nuevo Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4180625, -119.696947, 'World Market', '610 State Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4179709, -119.6973742, 'Levi\'s', '611 State Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4181774, -119.6971474, 'Silver And...', '616 State Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.3988313, -119.51873, 'Murphy\'s Vinyl Shack', '977 Linden Avenue', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(34.4216866, -119.6778499, 'Sprouts Farmers Market', '29 South Milpas Street Santa Barbara', '#f39c12', 14, 'Unnamed Retail Center', true);
+addStore(34.4225643, -119.7045963, 'CorePower Yoga', '1129 State Street Santa Barbara', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4223819, -119.7033974, 'Favorites', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4219011, -119.7026949, 'O\' My Sole', '1021 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4216944, -119.7024351, 'Tri County Office Furniture', '1013 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4188798, -119.6981324, '7-Eleven', '700 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4189827, -119.6987429, 'Men\'s Wearhouse', '719 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.418564, -119.6996035, 'Bath & Body Works', '619 Paseo Nuevo Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4186099, -119.6996988, 'Gap Kids', '615 Paseo Nuevo Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4212153, -119.7018082, 'Mister Softee', '935 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4189263, -119.6999694, 'Aveda', '307 Paseo Nuevo Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4192199, -119.6999292, 'Bruxie', '12 West de la Guerra Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4187845, -119.6999597, 'Tokyo Japanese Lifestyle', '651 Paseo Nuevo Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4190887, -119.7003926, 'Pink Browny', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4212434, -119.7018727, 'Brandy Melville', '939 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4192728, -119.7003844, 'Elenita', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4213547, -119.7014938, 'The Tent Merchant Prop & Decor Outlet', '930 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4211044, -119.7016473, 'Italian Pottery Outlet', '929 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4210113, -119.7014975, 'Mayberry', '923 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4211055, -119.7011847, 'Game Seeker', '920 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.418749, -119.6999078, 'Ace of Fadez', '651 Paseo Nuevo Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4166668, -119.6950999, 'Insomnia Cookies', '430 State Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4166428, -119.6955274, 'State Street Beverages', '439 State Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.439542, -119.7345569, 'Cox Store', '3303 State Street Santa Barbara', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(34.422194, -119.7013666, 'Bank of the Sierra', '21 East Carrillo Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4193624, -119.6993073, 'Banana Republic', '735 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4201006, -119.6996662, 'Bryant & Sons', '812 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4410793, -119.7460596, 'Electrify America', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(34.4160954, -119.6947818, 'La Aroma de Havana Cigar Lounge', '411 State Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4158895, -119.6945996, 'The Adult Store', '405 State Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4159568, -119.6946141, 'Golden Eagle Tattoo', '407 State Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4159407, -119.6946612, 'Above & Beyond Body Arts', '407 State Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4197048, -119.6991898, 'Lululemon', '740 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.419787, -119.6998286, 'Sunglass Hut', '809 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4197617, -119.6992913, 'bluemercury', '742 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4400459, -119.7536842, 'Santa Barbara Supercharger', '3943 State Street Santa Barbara', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(34.4174827, -119.6966652, 'Marcel Hemp', '531 State Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4187391, -119.6996993, 'Te Amo Jewelers', '651 Paseo Nuevo', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4186693, -119.6998102, 'Gap', '615 Paseo Nuevo Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4187187, -119.7001884, 'Panda Express', '605 Paseo Nuevo Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4190197, -119.7002763, 'Anna Janelle Jewelry', '711 Paseo Nuevo Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.419205, -119.7003394, 'Neez Goodz', '205 Paseo Nuevo Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4186609, -119.6995191, 'PacSun', '319 Paseo Nuevo Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4186832, -119.6990878, 'Anatola', '651 Paseo Nuevo Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4189833, -119.7002205, 'Solstice Sunglass Boutique', '713 Paseo Nuevo Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4190228, -119.6987899, 'Hollister', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4189117, -119.6981805, 'Antique Alley', '706 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4222754, -119.7026829, 'Santa Barbara Travel Bureau', '1028 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4219941, -119.7028881, 'Crossroads Trading', '1025 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4211564, -119.7012189, 'SuperMoss Garden Living', '922 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4191278, -119.698935, 'Bungalow West', '723 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4190882, -119.6983932, 'The Closet Trading Co.', '714 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4192946, -119.6991627, 'Sephora', '733 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4191888, -119.6990094, 'Seaside Makers', '727 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4192301, -119.6990751, 'Urban Flea Market', '729 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4190431, -119.6983419, 'Thrifty Beaches', '710 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4195012, -119.6989629, 'Longoria Wines', '732 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4202919, -119.7005524, 'Kariella', '833 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4206573, -119.7010348, 'Lighthouse Skate Shop', '907 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4209559, -119.699917, 'Float Luxury Spa', '18 East Canon Perdido Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4406688, -119.753489, 'Firestone', '3948 State Street Santa Barbara', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(34.4197269, -119.6997301, 'Skechers', '807 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4197511, -119.7000355, 'claire\'s', '811 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4178444, -119.7054516, 'Puff Club', '309 West Carrillo Street Santa Barbara', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.420031, -119.6994095, 'Lovebird', '7 East De la Guerra Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4202095, -119.6998518, '33 Jewels', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4200238, -119.6996928, 'Coach', '808 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4199137, -119.7001375, 'Tilly Timm\'s', '819 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4196596, -119.6996382, 'Zumiez', '803 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4202858, -119.6997686, 'Sirena', '814 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4195936, -119.7001841, 'La Bomba', '811 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4205045, -119.6993482, 'Loubud Wines', '20 El Paseo Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4182886, -119.705045, 'Dunn-Edwards Paints', '233 West Carrillo Street Santa Barbara', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4204687, -119.6977261, 'The Polar Bear', '726 Anacapa Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4394188, -119.7490795, 'Chipotle', '3851 State Street Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4389947, -119.7491467, 'Panda Express', '3849 State Street Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4392011, -119.7491301, 'St. Paul Cleaners', '3849 State Street Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4392938, -119.7491357, 'See\'s Candies', '3849 State Street Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.439101, -119.749139, 'Bayside Watch', '3849 State Street Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4192953, -119.7003426, '805 University', '651 Paseo Nuevo Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4192211, -119.7005345, 'Bonika\'s Boutique', '651 Paseo Nuevo Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4195621, -119.7008264, 'T-Mobile', '651 Paseo Nuevo Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4196218, -119.7008871, 'Layla Threading', '651 Paseo Nuevo Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4196634, -119.7001245, 'Poke House', '811 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4193016, -119.6999392, 'Foot Locker', '10 West de la Guerra Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4190522, -119.6998005, 'Zitzilin Imports', '301 Paseo Nuevo Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4381491, -119.7494813, 'LensCrafters', '3855 State Street Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4368799, -119.7485136, 'Massage Envy', '136 South Hope Avenue Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4372579, -119.7485757, 'Phenix Salon Suites', '130 South Hope Avenue Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4374959, -119.7484418, 'Williams-Sonoma', '3835 State Street Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4383532, -119.7483201, 'Starbucks', '3815 State Street Santa Barbara', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(34.4384025, -119.7480143, 'J.Jill', '3815 State Street Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4387633, -119.7476115, 'Pottery Barn', '110 South Hope Avenue Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.43868, -119.7477025, 'Barbie\'s Pet Salon', '121 South Hope Avenue Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4383417, -119.7478539, 'A Crimson Holiday', '121 South Hope Avenue Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4407147, -119.7450053, 'Chase', '3768 State Street Santa Barbara', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(34.4407337, -119.7463881, 'Bank of America', '3790 State Street Santa Barbara', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(34.4408546, -119.7523662, 'WDC Kitchen & Bath Center', '3920 State Street Santa Barbara', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(34.4389541, -119.7500301, 'CorePower Yoga', '3889 La Cumbre Plaza Lane Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4383245, -119.7498249, 'Habit Burger & Grill', '3890 La Cumbre Plaza Lane Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4406157, -119.732699, 'Salon Patine', '3206 State Street Santa Barbara', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(34.4405534, -119.7325373, 'Paws & Claws', '3204 State Street Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.4406611, -119.7320125, 'State Street Jewelry', '3122 State Street Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.4405814, -119.7306969, 'Shell', '3060 State Street Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.4406204, -119.7303516, 'BevMo!', '3052 State Street Santa Barbara', '#f39c12', 3, 'Unnamed Retail Center', true);
+addStore(34.4405541, -119.729824, 'Island View Outfitters', '3040 State Street Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.4406887, -119.7298112, 'Team Hair & Makeup', '3040 State Street Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.4405382, -119.7288794, 'San Roque Market & Liquors', '3014 State Street Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.4405462, -119.7285245, 'Domino\'s', '3006 State Street Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.4401279, -119.7293507, 'Starbucks', '3052 De La Vina Street Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.4393731, -119.7286888, 'Creative Nails', '3022 De La Vina Street Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.436993, -119.7268815, '76', '2837 De La Vina Street Santa Barbara', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(34.43582, -119.7252721, 'Cris Market & Restaurant', '2704 De La Vina Street Santa Barbara', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(34.435523, -119.7247162, 'Launderland', '2636 De La Vina Street Santa Barbara', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(34.4356, -119.724613, 'GM Auto & Smog', '155 West Alamar Avenue Santa Barbara', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(34.4407375, -119.7538646, 'Jiffy Lube', '3956 State Street Santa Barbara', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(34.4017482, -119.7217724, 'Mesa Bookstore', '1838 Cliff Drive Santa Barbara', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.4017338, -119.7216326, 'American Cleaners & Tailoring', '1836 Cliff Drive Santa Barbara', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.401658, -119.7213306, 'Charming Nails', '1824 Cliff Drive Santa Barbara', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.4024002, -119.7235296, 'Zip Kleen', '1998 Cliff Drive Santa Barbara', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.4171009, -119.6957031, 'Tribal Rugs', '506 State Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4171545, -119.6957774, 'Nick The Greek', '508 State Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4160508, -119.6942134, 'Habitat for Humanity ReStore', '400 State Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4249936, -119.6829218, 'House of Laundry', '310 North Milpas Street Santa Barbara', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(34.4244925, -119.6832226, 'AutoZone', '305 North Milpas Street Santa Barbara', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(34.4257261, -119.6839762, 'Starbucks', '402 North Milpas Street Santa Barbara', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(34.4202075, -119.692151, 'VCA Care Specialty and Emergency Animal Hospital', '301 East Haley Street Santa Barbara', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(34.4205545, -119.6922331, 'Avis', '305 East Haley Street Santa Barbara', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(34.4206766, -119.6917783, 'Exit Auto Collision', '315 East Haley Street Santa Barbara', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(34.4203643, -119.6915571, 'Los Tarascos Bakery and Deli', '314 East Haley Street Santa Barbara', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(34.4211442, -119.6978333, 'Kristina Sklar Art', '112 East De La Guerra Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4017592, -119.7218584, 'Taco Bell', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.4159569, -119.6932994, 'REI', '321 Anacapa Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4158263, -119.6944879, 'Little Rainbow Foot Spa', '401 State Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4166889, -119.6946654, 'Dollar Tree', '424 State Street Santa Barbara', '#f39c12', 2, 'Unnamed Retail Center', true);
+addStore(34.4205109, -119.7001675, 'Bank of America', '834 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4209454, -119.7004658, 'Marshalls', '900 State Street Santa Barbara', '#f39c12', 0, 'Unnamed Retail Center', true);
+addStore(34.4226031, -119.704025, 'Impact Hub', '1117 State Street Santa Barbara', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4396344, -119.7531108, 'Allpoint', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(34.4401877, -119.7441611, 'Jack in the Box', '3747 State Street Santa Barbara', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(34.4400417, -119.75065, 'Target', '3891 State Street Santa Barbara', '#f39c12', 1, 'Unnamed Retail Center', true);
+addStore(34.4408562, -119.7530556, 'McDonald\'s', '3940 State Street Santa Barbara', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(34.4384658, -119.7494828, 'Bristol Farms', '3855 State Street Santa Barbara', '#f39c12', 1, 'Unnamed Retail Center', true);
+addStore(34.439351, -119.7477658, 'Macy\'s', '3805 State Street Santa Barbara', '#f39c12', 1, 'Unnamed Retail Center', true);
+addStore(34.401286, -119.7228095, '7-Eleven', '1909 Cliff Drive Santa Barbara', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.4013982, -119.7234398, 'The Point Market', '1929 Cliff Drive Santa Barbara', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(34.4166332, -119.6906867, 'Rad Power Bikes', '132 East Montecito Street Santa Barbara', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(34.4169083, -119.6934072, 'Reid\'s Appliances', '409 Anacapa Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4219319, -119.7009228, 'U.S. Bank', '20 East Carrillo Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4208574, -119.7011561, 'BCycle', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4199392, -119.6995698, 'Rejuvenation Spa & Nails', '802 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4207954, -119.701195, 'Arrediamo Summerland', '911 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4211573, -119.7017211, 'Courtney Burke', '931 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4201037, -119.700261, 'Creations Boutique', '825 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.420727, -119.7024533, 'EOS Fitness', '21 West Carrillo Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4207383, -119.7011366, 'Namaste', '911 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4200306, -119.7001571, 'Alo', '821 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4390099, -119.750633, 'AT&T', '101 South La Cumbre Road Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4403117, -119.7519718, 'Quest Diagnostics', '3905 State Street Santa Barbara', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(34.4402998, -119.751834, 'The Good Feet Store', '3905 State Street Santa Barbara', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(34.4402052, -119.7518148, 'The UPS Store', '3905 State Street Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4400552, -119.7518305, 'Thairapy Salon', '3905 State Street Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4402592, -119.7516644, 'Ageless Men\'s Health', '3905 State Street Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4401682, -119.7512603, 'Nutrishop', '3905 State Street Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.440684, -119.7516656, 'EōS Fitness', '3908 State Street Santa Barbara', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(34.4402873, -119.7513776, 'Champagne Nail Bar', '3905 State Street Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4399011, -119.7512775, 'Hertz', '16 South La Cumbre Road Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4399027, -119.7515558, 'Thai Massage', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4399673, -119.7515629, 'Fashion Hair Salon', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4394709, -119.7516522, 'uBreakiFix', '3987 State Street Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4403008, -119.7512527, 'Town & Country Distinct Event Rentals & Services', '3905 State Street Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4237579, -119.6815428, 'Winchell\'s Donut House', '202 North Milpas Street Santa Barbara', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(34.4229704, -119.6815778, 'Classic Design German Car Specialist', '129 North Milpas Street Santa Barbara', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(34.4167158, -119.6951627, 'State Street Smoke Shop', '432 State Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4150279, -119.6942659, 'Folio Press & Paperie', '301 Motor Way Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4152569, -119.6945799, 'Chocolate Maya', '15 West Gutierrez Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4149863, -119.6942044, 'Coast Supply Co.', '14 Parker Way Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4152311, -119.6946648, 'Riviera Towel Company', '17 West Gutierrez Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4218444, -119.6797425, 'Little Caesars', '21 North Milpas Street Santa Barbara', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(34.4402373, -119.7464276, 'Fidelity Investments', '3793 State Street Santa Barbara', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(34.4407443, -119.7458429, 'BMO', '3780 State Street Santa Barbara', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(34.4394241, -119.7508821, 'O\'Reilly Auto Parts', '55 South La Cumbre Road Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4397168, -119.7512557, 'Orchid Thai Massage And Spa', '38 South La Cumbre Road Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4407133, -119.7472131, 'Wells Fargo', '3804 State Street Santa Barbara', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(34.4407448, -119.7494745, 'Berkshire Hathaway HomeServices', '3868 State Street Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4406363, -119.7501848, 'Channel City Hardware and Gifts', '3888 State Street Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4392139, -119.7465023, 'FedEx Office', '23 South Hope Avenue Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4224495, -119.7034916, 'Hempwise', '1103 State Street Santa Barbara', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4198119, -119.6920854, 'Apex Smoke & Vape', '234 East Haley Street Santa Barbara', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(34.4200102, -119.6919116, 'Dago Hardwood & Flooring', '302 East Haley Street Santa Barbara', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(34.4205036, -119.6918705, 'Linde Welding Gas & Equipment Center', '305 East Haley Street Santa Barbara', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(34.4205163, -119.691801, 'Santa Barbara Fasteners', '305 East Haley Street Santa Barbara', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(34.4205112, -119.6912746, 'Higgins Muffler & Brake', '324 East Haley Street Santa Barbara', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(34.4208442, -119.6909492, 'Buena Tool', '433 Laguna Street Santa Barbara', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(34.438497, -119.728251, 'Happy Little Hippo', '2945 De La Vina Street Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.4382567, -119.7280419, 'Vishions Smoke Shop', '2939 De La Vina Street Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.4224644, -119.7035239, 'Anna Janelle Jewelry', '1103 State Street Santa Barbara', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4219956, -119.7023614, 'Pampel Design', '1014 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4182752, -119.7055294, 'Goodwill', '302 West Carrillo Street Santa Barbara', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4373051, -119.7262467, 'Plaza Liquor', '2840 De La Vina Street Santa Barbara', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(34.4369759, -119.7259327, 'De La Vina Barbers', '2830 De La Vina Street Santa Barbara', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(34.4370751, -119.7257779, 'Goodland Tattoo', '2830 De La Vina Street Santa Barbara', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(34.4371879, -119.7256068, 'Soapy Suds Laundromat', '2830 De La Vina Street Santa Barbara', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(34.438851, -119.7280682, 'GV Optical', '2946 De La Vina Street Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.4387754, -119.7286215, 'Santa Barbara Audiology', '3009 De La Vina Street Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.4407343, -119.7331452, 'Leslie\'s Pool Supplies', '3218 State Street Santa Barbara', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(34.4400438, -119.7283238, 'Rainbow Nails', '10 West Calle Laureles Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.439405, -119.7283369, 'Wellness Therapy Center', '32 West Calle Laureles Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.4395853, -119.7283208, 'Creative Kitchen Spaces', '22 West Calle Laureles Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.4401092, -119.728309, 'Santa Barbara Spa', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.4397455, -119.7283345, 'Coastal Design Drapery and Shade', '16 West Calle Laureles Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.439763, -119.7283265, 'Shaddai Print & Design', '16 West Calle Laureles Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.4414738, -119.7447179, 'Santa Barbara Herb Clinic', '3760 State Street Santa Barbara', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(34.4392294, -119.7283759, 'Jaz Hair Salon', '3008 De La Vina Street Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.4400151, -119.737228, 'Farmers Insurance', '3425 State Street Santa Barbara', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(34.4372363, -119.7492803, 'Miss Daisy\'s', '3845 State Street Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4371188, -119.7488327, 'La-Z-Boy', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4384339, -119.7500802, 'ExtraMile', '115 South La Cumbre Road Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4356983, -119.725585, 'Amigos Hair Cutting', '2709 De La Vina Street Santa Barbara', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(34.439304, -119.7283322, 'Whitney Chic Boutique', '36 West Calle Laureles Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.4190491, -119.6951477, 'F45 Training', '528 Anacapa Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4190713, -119.7023705, 'Fastrack Bicycles', '118 West Canon Perdido Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4161359, -119.6959327, 'Hotel Virginia', '17 West Haley Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4164299, -119.6968505, 'Santa Barbara Autowerks', '515 Fig Avenue Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4154991, -119.6949861, 'Ablitt\'s Fine Cleaners & Launderers', '14 West Gutierrez Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4148084, -119.6951066, 'Evolutions', '350 Chapala Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4143979, -119.695599, 'Essence Med Spa', '107 West Gutierrez Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4200886, -119.7008681, 'Studio S', '9 West Canon Perdido Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4207967, -119.7016732, 'Novo Salon', '921 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4201351, -119.7007974, 'Occhiali Fine Eyewear', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4194162, -119.7002197, 'Pavilion Mini Storage', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4191683, -119.6996077, 'Indie Beauty Collective', '11 West De La Guerra Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4196354, -119.6995963, 'Neighbor Neighbor', '801 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4180369, -119.7034335, 'The Salon', '218 West Canon Perdido Street Santa Barbara', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4183703, -119.7030826, 'Frame', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4180235, -119.7031008, 'Honey\'s', '209 West Canon Perdido Street Santa Barbara', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4179786, -119.7031585, 'SB Volume Lash & Spa', '211 West Canon Perdido Street Santa Barbara', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4179131, -119.6973318, 'Cuso\'s Bikes', '609 State Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4172152, -119.6963149, 'Relaxing Station', '521 State Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4169721, -119.6959948, 'Ghirardelli', '509 State Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4212713, -119.701503, 'BCycle', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.420344, -119.6997182, 'Soul Sucker', '814 State Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4199449, -119.6990927, 'Mathnasium', '8 East De La Guerra Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4155841, -119.6935445, 'Motion Training Collective', '320 State Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4166171, -119.692981, 'AAMCO Transmissions', '333 Anacapa Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4171287, -119.6927019, 'Champs Barber Shop', '334 Anacapa Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4169588, -119.6928289, 'High Tide Glass Gallery', '334 Anacapa Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4165539, -119.6932944, 'Ministry of the Interior', '26 East Gutierrez Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.42081, -119.70308, 'Electrify America', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4405551, -119.7271456, 'Panoyan Custom Tailors', '2964 State Street Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.4401178, -119.7271882, 'Farmers Insurance', '1 West Calle Crespis Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.4144577, -119.6944052, 'Trunks and Treasures', '31 Parker Way Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4145095, -119.694317, 'Santa Barbara Art & Frame Co.', '27 Parker Way Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4144187, -119.6944679, 'Justo\'s Beauty Salon', '33 Parker Way Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.414872, -119.693938, 'Hayward\'s', '7 Parker Way Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4145601, -119.6948176, 'Carlyle Salon & Style Bar', '350 Chapala Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4142333, -119.6948561, 'Abbey\'s Carpet City & Flooring', '317 Chapala Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4144848, -119.6947305, 'The Corner Room', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4190945, -119.6911529, 'Debbie\'s Delights', '233 East Gutierrez Street Santa Barbara', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(34.4401024, -119.7289814, 'State Farm', '3015 State Street Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.4401412, -119.7287147, 'Evan\'s Relaxing Station', '3009 State Street Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.4405294, -119.7286045, 'Healthy Life Massage', '3008 State Street Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.440529, -119.728962, 'Healthy Pet', '3018 State Street Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.4380806, -119.7474384, 'EVgo', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.3972476, -119.5187979, 'Smart & Final', '850 Linden Avenue Carpinteria', '#f39c12', 6, 'Unnamed Retail Center', true);
+addStore(34.4369166, -119.749128, 'Furniture Gallery by Mattress Mike', '3845 State Street Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4363872, -119.7497263, 'Alpha Thrift Store', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.438119, -119.7509858, 'Conservmart', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.420962, -119.7068569, 'Red Sand Market', '207 West Anapamu Street Santa Barbara', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4209708, -119.7067062, 'Econo Auto Center', '1131 De La Vina Street Santa Barbara', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4192797, -119.7045553, 'Starbucks', '208 West Carrillo Street Santa Barbara', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(34.4200131, -119.7042225, 'Ralphs', '100 West Carrillo Street Santa Barbara', '#f39c12', 4, 'Unnamed Retail Center', true);
+addStore(34.4204303, -119.7025512, 'Kimpton Canary Hotel', '31 West Carrillo Street Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.4176093, -119.6961208, 'Drift Hotel', '524 State Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.4150047, -119.6923874, 'Moxy Santa Barbara', '12 East Montecito Street Santa Barbara', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(34.3929714, -119.5104513, 'Motel 6 Carpinteria', '5550 Carpinteria Avenue Carpinteria', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(34.4190563, -119.6998857, 'Paseo Nuevo Mall', '651 Paseo Nuevo Santa Barbara', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(34.440751, -119.748716, 'FOUND Hotels, Santa Barbara, Series by Marriott', '3850 State Street Santa Barbara', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(34.4406165, -119.727614, 'Verizon', '2980 State Street Santa Barbara', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(34.4192458, -119.6786301, 'Cal Coast Adventures', '736 Carpinteria Street Santa Barbara', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(34.3987568, -119.5189863, 'Homestead Antiques Trading Co.', '970 Linden Avenue Carpinteria', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(34.4207193, -119.7039923, 'Coastal', '1019 Chapala Street Santa Barbara', '#3498db', 4, 'Unnamed Retail Center', false);
+ 
+  // ---- Tenant name filter ----
+  var allTenantNames = ['33 Jewels', '7 Day Nursery', '7-Eleven', '76', '805 University', 'A Crimson Holiday', 'AAMCO Transmissions', 'Abbey\'s Carpet City & Flooring', 'Ablitt\'s Fine Cleaners & Launderers', 'Above & Beyond Body Arts', 'Ace of Fadez', 'Ageless Men\'s Health', 'Albertsons', 'Alebrije Homewares', 'Alessia Patisserie & Cafe', 'Allpoint', 'Alo', 'Alpha Thrift Store', 'American Cleaners & Tailoring', 'American Eagle Outfitters', 'Amigos Hair Cutting', 'Amy\'s Skin Care', 'Anatola', 'Anna Janelle Jewelry', 'Antique Alley', 'Apex Smoke & Vape', 'Apple Store', 'Arco', 'Arrediamo Summerland', 'Asia Warren Skin Care', 'AT&T', 'AutoZone', 'Aveda', 'Avis', 'Banana Republic', 'Bank of America', 'Bank of the Sierra', 'Barbie\'s Pet Salon', 'Bath & Body Works', 'Bayside Watch', 'BCycle', 'Berkshire Hathaway HomeServices', 'BevMo!', 'Big 5 Sporting Goods', 'bluemercury', 'BMO', 'Bon Fortune', 'Bonika\'s Boutique', 'Brandy Melville', 'Bristol Farms', 'Bruxie', 'Bryant & Sons', 'Buena Tool', 'Bungalow West', 'Cal Coast Adventures', 'Canopy Club', 'Carlyle Salon & Style Bar', 'Carpinteria Lock & Key', 'Champagne Nail Bar', 'Champs Barber Shop', 'Channel City Hardware and Gifts', 'ChargePoint', 'Charles Schwab', 'Charming Nails', 'Chase', 'Chaucer\'s Books', 'Chevron', 'Chipotle', 'Chocolate Maya', 'claire\'s', 'Classic Design German Car Specialist', 'Club Pilates', 'Coach', 'Coast Supply Co.', 'Coastal', 'Coastal Design Drapery and Shade', 'Conservmart', 'CorePower Yoga', 'Courtney Burke', 'Cox Store', 'Creations Boutique', 'Creative Kitchen Spaces', 'Creative Nails', 'Cris Market & Restaurant', 'Crossroads Trading', 'Cuso\'s Bikes', 'D\'Angelo Bread', 'Dago Hardwood & Flooring', 'De La Vina Barbers', 'Debbie\'s Delights', 'Dero', 'Dimensional Millwork, Inc. Windows & Doors', 'Dollar Tree', 'Domino\'s', 'Drift Hotel', 'Dunn-Edwards Paints', 'Eco Friendly Cleaners', 'Econo Auto Center', 'Electrify America', 'Elenita', 'EOS Fitness', 'Essence Med Spa', 'European Wax Center', 'Evan\'s Relaxing Station', 'EVgo', 'Evolutions', 'Exit Auto Collision', 'ExtraMile', 'EōS Fitness', 'F45 Training', 'Fantastic Sams', 'Farmers Insurance', 'Fashion Hair Salon', 'Fastrack Bicycles', 'Favorites', 'FedEx Office', 'Fidelity Investments', 'Fiesta Cash & Loans', 'Firestone', 'Float Luxury Spa', 'Folio Press & Paperie', 'Foot Locker', 'FOUND Hotels, Santa Barbara, Series by Marriott', 'Frame', 'Furniture Gallery by Mattress Mike', 'Fuzion Glass Gallery & Boutique', 'Game Seeker', 'Gap', 'Gap Kids', 'Gelson\'s', 'Ghirardelli', 'GM Auto & Smog', 'Golden Eagle Tattoo', 'Goodland Tattoo', 'Goodwill', 'Grassini Family Vineyards', 'Grocery Outlet', 'GV Optical', 'H&M', 'Habit Burger & Grill', 'Habitat for Humanity ReStore', 'Handlebar Coffee Roasters', 'Happy Little Hippo', 'Hayward\'s', 'Healthy Life Massage', 'Healthy Pet', 'Hempwise', 'Hertz', 'Higgins Muffler & Brake', 'High Tide Glass Gallery', 'Hollister', 'Homestead Antiques Trading Co.', 'Honey\'s', 'Hotel Virginia', 'House of Laundry', 'Impact Hub', 'Indie Beauty Collective', 'Insomnia Cookies', 'Inspire', 'Island View Outfitters', 'Islands', 'Italian Pottery Outlet', 'J.Jill', 'Jack in the Box', 'Jamie Sloan Wines', 'Jaz Hair Salon', 'Jiffy Lube', 'Justo\'s Beauty Salon', 'Kariella', 'Kimpton Canary Hotel', 'Kiwi\'s Auto Repair', 'Kristina Sklar Art', 'La Aroma de Havana Cigar Lounge', 'La Bomba', 'La-Z-Boy', 'Launderland', 'Layla Threading', 'Lazy Acres', 'Le Reve Organic Spa', 'Legends Salon', 'LensCrafters', 'Leslie\'s Pool Supplies', 'Levi\'s', 'Lighthouse Skate Shop', 'Linde Welding Gas & Equipment Center', 'Linden Laundry & Laundromat', 'Linden Strands', 'Linden Studio', 'Little Caesars', 'Little Rainbow Foot Spa', 'Lokum', 'Longoria Wines', 'Los Tarascos Bakery and Deli', 'Loubud Wines', 'Lovebird', 'Lululemon', 'Macy\'s', 'Malai Thai Massage', 'Marcel Hemp', 'Marshalls', 'Massage Envy', 'Mathnasium', 'Mattress Firm', 'Mayberry', 'McConnell‘s', 'McDonald\'s', 'Men\'s Wearhouse', 'Mesa Bookstore', 'Mesa Produce', 'Ministry of the Interior', 'Miss Behavin\'', 'Miss Daisy\'s', 'Mister Softee', 'Modern Laundry', 'Montecito Bank', 'Motel 6 Carpinteria', 'Motion Training Collective', 'Moxy Santa Barbara', 'Murphy\'s Vinyl Shack', 'N&S Expressions', 'Namaste', 'Neez Goodz', 'Neighbor Neighbor', 'Nick The Greek', 'Novo Salon', 'Nutrishop', 'O\' My Sole', 'O\'Reilly Auto Parts', 'oat bakery', 'Occhiali Fine Eyewear', 'OfficeMax', 'Orchid Thai Massage And Spa', 'PacSun', 'Pampel Design', 'Panda Express', 'Panoyan Custom Tailors', 'Paseo Nuevo Mall', 'Pavilion Mini Storage', 'Paws & Claws', 'Peet\'s Coffee', 'Petco', 'Petersen Plaza', 'PetSmart', 'Phenix Salon Suites', 'Pink', 'Pink Browny', 'Plaza Liquor', 'Poke House', 'Pottery Barn', 'Pueblo Del Rey Funeral Services', 'Puff Club', 'Quest Diagnostics', 'Rad Power Bikes', 'Rainbow Nails', 'Ralphs', 'Red Sand Market', 'REI', 'Reid\'s Appliances', 'Rejuvenation Spa & Nails', 'Relaxing Station', 'Renaud\'s Patisserie and Bistro', 'Reynaldo\'s Mexican Bakery', 'Rincon Designs Surf Shop', 'Rite Aid', 'Riviera Towel Company', 'Robitaille\'s Fine Candies', 'Ross', 'Salon Patine', 'SalonCentric', 'San Roque Market & Liquors', 'Santa Barbara Art & Frame Co.', 'Santa Barbara Audiology', 'Santa Barbara Autowerks', 'Santa Barbara Fasteners', 'Santa Barbara Herb Clinic', 'Santa Barbara Screen & Shade', 'Santa Barbara Spa', 'Santa Barbara Supercharger', 'Santa Barbara Travel Bureau', 'SB Volume Lash & Spa', 'Seaside Makers', 'Seaside Makers Collective', 'See\'s Candies', 'Sephora', 'Shaddai Print & Design', 'Shell', 'Silver And...', 'Singer\'s Big & Tall', 'Sirena', 'Skechers', 'Smart & Final', 'Snack Shop', 'Soapy Suds Laundromat', 'Solstice Sunglass Boutique', 'Soul Sucker', 'Sprouts Farmers Market', 'St. Paul Cleaners', 'Starbucks', 'State Farm', 'State Street Beverages', 'State Street Jewelry', 'State Street Smoke Shop', 'Studio S', 'Subway', 'Sunglass Hut', 'SuperMoss Garden Living', 'T-Mobile', 'Taco Bell', 'Target', 'Te Amo Jewelers', 'Team Hair & Makeup', 'Thai Massage', 'Thairapy Salon', 'The Adult Store', 'The Closet Trading Co.', 'The Corner Room', 'The Good Feet Store', 'The Little Things Bakery', 'The Palms Barbershop', 'The Point Market', 'The Polar Bear', 'The Salon', 'The Tent Merchant Prop & Decor Outlet', 'The UPS Store', 'Thrifty Beaches', 'Tidepools', 'Tilly Timm\'s', 'Tillys', 'Tino\'s Italian Grocery', 'Tokyo Japanese Lifestyle', 'Town & Country Distinct Event Rentals & Services', 'Trader Joe\'s', 'Tri County Office Furniture', 'Tribal Rugs', 'True Zero', 'Trunks and Treasures', 'U.S. Bank', 'uBreakiFix', 'Union Bank', 'United States Postal Service', 'Urban Flea Market', 'VCA Care Specialty and Emergency Animal Hospital', 'Velo Pro Cyclery', 'Verizon', 'Victoria\'s Secret', 'Vishions Smoke Shop', 'Viva Santa Barbara', 'Vons', 'WDC Kitchen & Bath Center', 'Wellness Therapy Center', 'Wells Fargo', 'Whimsy', 'Whitney Chic Boutique', 'Whole Foods Market', 'Williams-Sonoma', 'Winchell\'s Donut House', 'World Market', 'Zip Kleen', 'Zitzilin Imports', 'Zumiez'];
+  var selectedNames = new Set(allTenantNames);
+ 
+  var plazaNameIndex = {};
+  storesData.forEach(function(s) {
+    if (s.plazaId === -1) return;
+    if (!plazaNameIndex[s.plazaId]) plazaNameIndex[s.plazaId] = new Set();
+    plazaNameIndex[s.plazaId].add(s.name);
+  });
+ 
+  var tenantControl = L.control({position: 'topleft'});
+  tenantControl.onAdd = function() {
+    var container = L.DomUtil.create('div', 'tenant-filter');
+    container.innerHTML =
+      '<button id="tenantToggleBtn" class="tenant-toggle-btn" type="button">'
+      + 'Tenants: All (' + allTenantNames.length + ')</button>'
+      + '<div id="tenantPanel" class="tenant-panel" style="display:none;">'
+      +   '<input id="tenantSearch" class="tenant-search" type="text" placeholder="Search tenants...">'
+      +   '<div class="tenant-actions">'
+      +     '<button id="tenantSelectAll" type="button">Select all</button>'
+      +     '<button id="tenantDeselectAll" type="button">Deselect all</button>'
+      +   '</div>'
+      +   '<div id="tenantList" class="tenant-list"></div>'
+      + '</div>';
+    L.DomEvent.disableClickPropagation(container);
+    L.DomEvent.disableScrollPropagation(container);
+    return container;
+  };
+  tenantControl.addTo(map);
+ 
+  function updateTenantToggleLabel() {
+    var btn = document.getElementById('tenantToggleBtn');
+    var n = selectedNames.size;
+    var total = allTenantNames.length;
+    var label;
+    if (n === total) {
+      label = 'Tenants: All (' + total + ')';
+    } else if (n === 0) {
+      label = 'Tenants: none selected';
+    } else {
+      label = 'Tenants: ' + n + ' of ' + total + ' selected';
+    }
+    btn.innerHTML = label;
+  }
+ 
+  var tenantRows = [];
+  var tenantListEl = document.getElementById('tenantList');
+  allTenantNames.forEach(function(name) {
+    var row = document.createElement('label');
+    row.className = 'tenant-item';
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = true;
+    cb.addEventListener('change', function() {
+      if (cb.checked) { selectedNames.add(name); } else { selectedNames.delete(name); }
+      updateTenantToggleLabel();
+      updateVisibility();
+    });
+    row.appendChild(cb);
+    row.appendChild(document.createTextNode(' ' + name));
+    tenantListEl.appendChild(row);
+    tenantRows.push({el: row, checkbox: cb, lower: name.toLowerCase()});
+  });
+ 
+  document.getElementById('tenantToggleBtn').addEventListener('click', function() {
+    var panel = document.getElementById('tenantPanel');
+    panel.style.display = (panel.style.display === 'none') ? 'block' : 'none';
+  });
+ 
+  document.getElementById('tenantSearch').addEventListener('input', function(e) {
+    var q = e.target.value.toLowerCase();
+    tenantRows.forEach(function(r) {
+      r.el.style.display = (r.lower.indexOf(q) !== -1) ? '' : 'none';
+    });
+  });
+ 
+  document.getElementById('tenantSelectAll').addEventListener('click', function() {
+    tenantRows.forEach(function(r) { r.checkbox.checked = true; });
+    selectedNames = new Set(allTenantNames);
+    updateTenantToggleLabel();
+    updateVisibility();
+  });
+ 
+  document.getElementById('tenantDeselectAll').addEventListener('click', function() {
+    tenantRows.forEach(function(r) { r.checkbox.checked = false; });
+    selectedNames = new Set();
+    updateTenantToggleLabel();
+    updateVisibility();
+  });
+  // ---- end tenant name filter ----
+ 
+  map.on('overlayadd overlayremove', updateVisibility);
+  updateVisibility();
+ 
+  var overlays = {
+    '🔴  Multi-anchor plazas (2+ anchors)': layerMultiAnchor,
+    '⭕  Single-anchor plazas': layerSingleAnchor,
+    '🟣  Plaza Center Points': layerPlazaCenters,
+    '🟡  Anchor Stores (in Plaza)': layerAnchors,
+    '🔵🔴  Tenants (In Plaza)': layerTenants,
+    '━━━━━━━━━━━━━━': L.layerGroup(),
+    '🔥  High Density Plazas (10+ tenants)': layerHighDensity,
+    '🔹  Lower Density (< 10 tenants)': layerLowDensity
+  };
+ 
+  var countyDivider = false;
+  for (var county in countyLayers) {
+    if (!countyDivider) {
+        overlays['━━━━━━━━━━━━━━ '] = L.layerGroup();
+        countyDivider = true;
+    }
+    overlays['📍 ' + county] = countyLayers[county];
+  }
+ 
+  L.control.layers(null, overlays, {
+    position: 'topright',
+    collapsed: false,
+  }).addTo(map);
+ 
+  var legend = L.control({position: 'bottomright'});
+  legend.onAdd = function() {
+    var div = L.DomUtil.create('div', 'legend');
+    div.innerHTML = '<b>Retail Centers – Montecito, CA</b><br>'
+      + '<span class="legend-dot" style="background:#e74c3c"></span> Named plaza<br>'
+      + '<span class="legend-dot" style="background:#3498db"></span> Unnamed plaza<br>'
+      + '<span class="legend-dot" style="background:#8e44ad"></span> Plaza center point<br>'
+      + '<span class="legend-dot" style="background:#f39c12"></span> Anchor store (in plaza)<br>'
+      + '<span class="legend-dot" style="background:#27ae60"></span> Standalone store<br>'
+      + '⚓ = anchor &nbsp; 🔥 = 10+ tenants<br>'
+      + '<span style="font-size:11px;color:#666;">Use the Tenants filter (top-left) to isolate specific names.</span>';
+    return div;
+  };
+  legend.addTo(map);
+ 
+  document.getElementById('legendHeader').addEventListener('click', function() {
+    var body = document.getElementById('legendBody');
+    var icon = document.getElementById('legendToggleIcon');
+    var collapsed = (body.style.display === 'none');
+    body.style.display = collapsed ? 'block' : 'none';
+    icon.textContent = collapsed ? '▾' : '▸';
+  });
+</script>
+</body>
+</html>
