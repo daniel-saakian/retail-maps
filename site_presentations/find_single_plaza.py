@@ -27,7 +27,17 @@ def find_single_plaza(lat,lng,search_km=default_search_km, radius_mi=None, use_c
     print(f"Searching {search_km}km around ({lat:.5f}, {lng:.5f})")
     state_fips, county_fips = get_fips_from_coords(lat, lng)
  
-    store_elements = run_overpass(build_store_query(lat, lng, search_km))
+    # Unlike the mall-name lookup below, a failure here used to propagate
+    # all the way up as an unhandled 500 -- a total Overpass outage (all 4
+    # mirrors down/rate-limited at once, which does happen) took down the
+    # whole site-presentations report instead of just leaving the
+    # co-tenants section blank, the way a missing mall name already does.
+    try:
+        store_elements = run_overpass(build_store_query(lat, lng, search_km))
+    except RuntimeError as e:
+        print(f"  [warn] Store lookup failed ({e}). Treating this as no plaza found nearby.")
+        return None
+ 
     try:
         mall_elements = run_overpass(build_mall_query(lat, lng, search_km))
     except RuntimeError as e:

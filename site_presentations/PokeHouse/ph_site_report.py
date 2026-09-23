@@ -178,10 +178,6 @@ def generate_site_report(address, used_names=None):
         print(f"  {c['name']} ({c['distance_mi']} mi): {sales_str}, {c['rank_display']}")
  
     print("Finding plaza and co-tenants...")
-    # co-tenant matching uses the FULL shared competitor database (same one
-    # TGG uses), not just the 5 poke-specific brands, since a co-tenant could
-    # be a grocery anchor, CAVA, Jersey Mike's, etc. - the poke-specific file
-    # is reserved for the Primary Competitor table above
     tgg_comp = build_tgg_competitor_lookup()
     combined_comp_for_cotenants = pd.concat([poke_comp, tgg_comp], ignore_index=True)
     co_tenants, plaza_name = find_co_tenants(lat, lon, combined_comp_for_cotenants)

@@ -371,25 +371,42 @@ out tags;
  
 def run_overpass(query: str, retries: int = 2) -> list:
     last_error = None
+    # Client-side timeout must stay ahead of the query's own [timeout:N] --
+    # otherwise a legitimately-slow-but-working request gets killed by
+    # requests before Overpass itself would even give up, which reads as a
+    # mirror failure and burns a retry for nothing.
+    query_timeout_match = re.search(r"\[timeout:(\d+)\]", query)
+    server_timeout = int(query_timeout_match.group(1)) if query_timeout_match else 25
+    http_timeout = server_timeout + 10
+ 
     for mirror in overpass_mirrors:
         for attempt in range(retries):
             try:
-                resp = requests.post(mirror, data={"data": query}, headers=headers, timeout=12)
-                if resp.status_code == 400:
-                    print(f"\n  [Overpass 400] Query:\n{query}\n  Response: {resp.text[:300]}")
-                    resp.raise_for_status()
+                resp = requests.post(mirror, data={"data": query}, headers=headers, timeout=http_timeout)
                 if resp.status_code == 429:
                     wait = 8 * (attempt + 1)
                     print(f"  [warn] {mirror} rate limited (429), waiting {wait}s...")
                     time.sleep(wait)
                     last_error = RuntimeError(f"HTTP 429 from {mirror}")
-                    continue  # ← try next attempt, then next mirror
+                    continue  # try next attempt, then next mirror
                 if resp.status_code in (502, 503, 504):
                     wait = 2 * (attempt + 1)
                     print(f"  [warn] {mirror} returned {resp.status_code}, waiting {wait}s...")
                     time.sleep(wait)
                     last_error = RuntimeError(f"HTTP {resp.status_code} from {mirror}")
                     continue
+                if resp.status_code == 400:
+                    # A 400 is worth logging loudly (it usually means a real
+                    # query bug, not a transient mirror issue), but it must
+                    # NOT abort the whole call -- previously this raised
+                    # immediately and skipped every other mirror, which is
+                    # why a single bad/overloaded mirror could take down an
+                    # entire lookup (e.g. every plaza name lookup failing at
+                    # once). Treat it like any other mirror-level failure:
+                    # log it, then keep trying the remaining mirrors.
+                    print(f"\n  [Overpass 400] Query:\n{query}\n  Response: {resp.text[:300]}")
+                    last_error = RuntimeError(f"HTTP 400 from {mirror}: {resp.text[:200]}")
+                    break  # this mirror's interpreter rejects the query -- retrying it won't help, move on
                 resp.raise_for_status()
                 return resp.json().get("elements", [])
             except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
@@ -399,13 +416,14 @@ def run_overpass(query: str, retries: int = 2) -> list:
                 time.sleep(wait)
                 continue
             except requests.exceptions.HTTPError as e:
-                if "429" in str(e):
-                    wait = 8 * (attempt + 1)
-                    print(f"  [warn] {mirror} rate limited, waiting {wait}s...")
-                    time.sleep(wait)
-                    last_error = e
-                    continue  # ← don't raise, try next mirror
-                raise RuntimeError(f"Overpass query failed: {e}") from e
+                # Any other HTTP error (401/403/404/500/...) is treated the
+                # same way -- log it and move to the next mirror instead of
+                # aborting the whole multi-mirror lookup on the first one.
+                wait = 4 * (attempt + 1)
+                print(f"  [warn] {mirror} returned an error ({e}), attempt {attempt+1}/{retries}, waiting {wait}s...")
+                last_error = e
+                time.sleep(wait)
+                continue
         print(f"  [warn] {mirror} exhausted, moving to next mirror...")
     raise RuntimeError(f"All Overpass mirrors failed. Last error: {last_error}")
  
@@ -1254,7 +1272,7 @@ def generate_map(plazas: list[Plaza], city_display: str, radius_miles: float,all
     return div;
   }};
   legend.addTo(map);
-
+ 
   document.getElementById('legendHeader').addEventListener('click', function() {{
     var body = document.getElementById('legendBody');
     var icon = document.getElementById('legendToggleIcon');
@@ -1823,7 +1841,7 @@ def run_city_search(city: str, search_km: float | None=None, radius_mi: float | 
         return {"ok": False, "reason": reason, "plazas": [], "map_path": None,
                 "map_url": None, "excel_path": None, "state": "-", "display": args.city,
                 "lat": None, "lng": None}
-
+ 
     def _cancelled() -> bool:
         return bool(cancel_check and cancel_check())
  
@@ -1842,13 +1860,18 @@ def run_city_search(city: str, search_km: float | None=None, radius_mi: float | 
  
     state = FIPS_TO_STATE.get(state_fips.zfill(2) if state_fips and state_fips != "-" else "", "") \
         or (args.city.split(",")[1].strip() if "," in args.city else "-")
-
+ 
     if _cancelled():
         return _empty("Cancelled by user")
  
     print("  [2/6] Querying OpenStreetMap for stores (may take 10-20s)...")
     store_elements = run_overpass(build_store_query(lat,lng,args.search_km))
     print(f"   -> {len(store_elements)} raw elements returned")
+ 
+    # Give the mirror we just hit a moment before firing the next big query
+    # at it -- back-to-back heavy Overpass calls on the same host are what
+    # tends to trigger a 429/timeout on the very next request.
+    time.sleep(2)
  
     print("  [3/6] querying for mall/retail area names...")
     try:
@@ -1863,7 +1886,7 @@ def run_city_search(city: str, search_km: float | None=None, radius_mi: float | 
     print(f"\n  Total shops identified: {len(stores)}  ({n_anchors} are anchors)")
     if n_anchors == 0 or not stores:
         return _empty("No anchor stores found. OSM data may be sparse for this area.")
-
+ 
     if _cancelled():
         return _empty("Cancelled by User")
  
@@ -1873,7 +1896,7 @@ def run_city_search(city: str, search_km: float | None=None, radius_mi: float | 
     plazas = deduplicate_plaza_stores(plazas)
     plazas = merge_same_name_plazas(plazas)
     attach_plaza_radius(plazas, args.radius * 1609.34)
-
+ 
     if _cancelled():
         return _empty("Cancelled by User")
  
@@ -1892,7 +1915,7 @@ def run_city_search(city: str, search_km: float | None=None, radius_mi: float | 
  
         print(f"  Scoring {len(new_plazas)} plazas...")
         score_plazas(new_plazas,state_fips,county_fips)
-
+ 
         if _cancelled():
             return _empty("Cancelled by User")
  
@@ -1905,7 +1928,7 @@ def run_city_search(city: str, search_km: float | None=None, radius_mi: float | 
             print(f"  [warn] continuing without broker contact columns.")
     else:
         print("  [5/6]-[6/6] Nothing new - all plazas matched existing Supabase data")
-
+ 
     if _cancelled():
         return _empty("Cancelled by User")
  

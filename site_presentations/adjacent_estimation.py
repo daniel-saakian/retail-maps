@@ -40,6 +40,133 @@ OVERPASS_MIRRORS = [
     "https://overpass.openstreetmap.ru/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
 ]
+ 
+# Standard FHWA functional-classification scheme (1-7 rural, 11-17 the
+# urban equivalents of the same 7 categories) -- this is the field almost
+# every state DOT roadway layer uses under some name like FUNCTION_CLASS_CD.
+# Mapped onto the same OSM-style tag strings traffic_est.py's road_class_rank
+# already understands, so a DOT-sourced road and an OSM-sourced road feed
+# build_feature_vector identically.
+_FHWA_CLASS_TO_HIGHWAY = {
+    1: "motorway", 2: "trunk", 3: "primary",
+    4: "secondary", 5: "tertiary", 6: "unclassified", 7: "residential",
+}
+ 
+def _fhwa_class_to_highway(code):
+    try:
+        code = int(code) % 10
+    except (TypeError, ValueError):
+        return None
+    return _FHWA_CLASS_TO_HIGHWAY.get(code)
+ 
+ 
+# MTFCC (Census TIGER/Line's own road classification) mapped the same way,
+# for the nationwide fallback when a state has no roadway layer configured.
+_MTFCC_TO_HIGHWAY = {
+    "S1100": "trunk",          # Primary road (US/state highway)
+    "S1200": "secondary",      # Secondary road
+    "S1400": "residential",    # Local neighborhood road / city street
+    "S1500": "unclassified",   # Vehicular trail
+    "S1630": "motorway_link",  # Ramp
+    "S1640": "service",        # Service drive
+    "S1730": "service",        # Alley
+    "S1780": "service",        # Parking lot road
+}
+ 
+TIGERWEB_ROAD_LAYERS = [
+    # Primary Roads first (interstates/US/state highways), then Local
+    # Roads (everything else) -- stop early once enough candidates are found.
+    "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Transportation/MapServer/2/query",
+    "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Transportation/MapServer/8/query",
+]
+ 
+ 
+def dot_road_candidates_near(state_abbr, lat, lon, radius_m=road_search_rad):
+    """Ask the state DOT's own roadway layer for nearby roads, in the same
+    {name, highway, lanes, maxspeed, ref} shape find_nearby_roads (OSM/
+    Overpass) used to return, so downstream matching/estimation code can't
+    tell the difference. Returns [] when the state has no roadway layer
+    configured -- callers fall back to find_nearby_roads_tiger.
+    """
+    src = STATE_AADT_SOURCES.get(state_abbr)
+    roadway = (src or {}).get("roadway")
+    if not roadway or not roadway.get("verified"):
+        return []
+ 
+    features = _fetch_layer_features(
+        roadway["url"], roadway.get("where"), roadway["out_fields"], lat, lon, radius_m
+    )
+    roads, seen = [], set()
+    for feat in features:
+        a = feat.get("attributes", {})
+        route = (a.get(roadway["route_field"]) or "").strip() if roadway.get("route_field") else ""
+        name = (a.get(roadway.get("name_field")) or "").strip() if roadway.get("name_field") else ""
+        label = name or route
+        if not label or label in seen:
+            continue
+        seen.add(label)
+ 
+        highway = None
+        if roadway.get("class_field"):
+            highway = _fhwa_class_to_highway(a.get(roadway["class_field"]))
+ 
+        roads.append({
+            "name": label,
+            "highway": highway or "unclassified",
+            "lanes": a.get(roadway["lanes_field"]) if roadway.get("lanes_field") else None,
+            "maxspeed": a.get(roadway["speed_field"]) if roadway.get("speed_field") else None,
+            "ref": route,
+        })
+    return roads
+ 
+ 
+def find_nearby_roads_tiger(lat, lon, n=num_roads, radius_m=road_search_rad):
+    """Nationwide fallback for states with no DOT roadway layer configured:
+    Census TIGER/Line roads, government-hosted, no rate limits or mirror
+    juggling like the public Overpass instances. Gives name + a coarse
+    class from MTFCC; no lanes/speed, so those default the same way
+    build_feature_vector already handles a road with unknown lanes/speed.
+    """
+    roads, seen = [], set()
+    for layer_url in TIGERWEB_ROAD_LAYERS:
+        features = _fetch_layer_features(layer_url, None, "NAME,MTFCC,RTTYP", lat, lon, radius_m)
+        for feat in features:
+            a = feat.get("attributes", {})
+            name = (a.get("NAME") or "").strip()
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            highway = _MTFCC_TO_HIGHWAY.get(a.get("MTFCC"), "unclassified")
+            roads.append({"name": name, "highway": highway, "lanes": None, "maxspeed": None, "ref": None})
+        if len(roads) >= n:
+            break
+ 
+    if len(roads) < n and radius_m < 300:
+        return find_nearby_roads_tiger(lat, lon, n=n, radius_m=radius_m * 2)
+ 
+    roads.sort(key=lambda r: _class_rank(r["highway"]), reverse=True)
+    return roads[:n]
+ 
+ 
+def find_nearby_roads_no_overpass(state_abbr, lat, lon, n=num_roads, radius_m=road_search_rad):
+    """Replaces the OSM/Overpass lookup entirely: try the state DOT's own
+    roadway layer first (best -- same system as the AADT layer, sometimes
+    with real lanes/speed like Ohio's), then top up with Census TIGER
+    roads if that didn't return enough candidates.
+    """
+    roads = dot_road_candidates_near(state_abbr, lat, lon, radius_m) if state_abbr else []
+    if len(roads) < n:
+        seen_names = {r["name"] for r in roads}
+        extra = find_nearby_roads_tiger(lat, lon, n=n - len(roads), radius_m=radius_m)
+        roads.extend(r for r in extra if r["name"] not in seen_names)
+    roads.sort(key=lambda r: _class_rank(r["highway"]), reverse=True)
+    return roads[:n]
+ 
+ 
+# Kept for manual/CLI use only -- nothing in the live site-presentations
+# path calls this anymore. find_nearby_roads_no_overpass() above replaced
+# it as the default so a public Overpass mirror outage (as happened
+# searching Ohio) can no longer take down traffic lookups app-wide.
 def find_nearby_roads(lat, lon, n=num_roads, radius_m=road_search_rad):
     query = f"""
     [out:json][timeout:60];
@@ -206,6 +333,78 @@ def _state_counts_near_cached(state_abbr,lat,lon,radius_m):
     _state_counts_cache[key] = (out, time.time(), had_failure)
     return out
     
+def route_candidates_near(state_abbr, lat, lon, radius_m=road_search_rad):
+    """Ask the state DOT's own roadway/LRS layer what route is near this
+    point -- when that layer is configured, this replaces the OSM/Overpass
+    lookup for the single most important case: matching to a *measured*
+    AADT station. Both layers come from the same DOT and speak the same
+    route vocabulary (e.g. Caltrans' RouteS vs its AADT layer's RTE), so
+    the match is exact instead of a fuzzy digit-guess against an OSM name
+    string, and it needs no OSM/Overpass round trip at all.
+    """
+    src = STATE_AADT_SOURCES.get(state_abbr)
+    roadway = (src or {}).get("roadway")
+    if not roadway or not roadway.get("verified"):
+        return []
+ 
+    features = _fetch_layer_features(
+        roadway["url"], roadway.get("where"), roadway["out_fields"], lat, lon, radius_m
+    )
+    routes, seen = [], set()
+    for feat in features:
+        a = feat.get("attributes", {})
+        route = (a.get(roadway["route_field"]) or "").strip()
+        if not route or route in seen:
+            continue
+        seen.add(route)
+        routes.append(route)
+    return routes
+ 
+ 
+def measured_aadt_by_dot_route(state_abbr, lat, lon, radius_m=measured_radius_m):
+    """Look up a measured AADT count using only the DOT's own systems --
+    its roadway layer to identify the route, then its AADT layer to find
+    a station on that same route. No OSM/Overpass dependency, so this
+    still works even when every public Overpass mirror is down.
+    """
+    routes = route_candidates_near(state_abbr, lat, lon, radius_m)
+    if not routes:
+        return None
+    stations = _state_counts_near_cached(state_abbr, lat, lon, radius_m)
+    if not stations:
+        return None
+ 
+    norm_routes = {r.lstrip("0") or "0" for r in routes}
+    best, best_dist = None, float("inf")
+    for aadt, c_lat, c_lon, station_route in stations:
+        if str(station_route).lstrip("0") not in norm_routes:
+            continue
+        try:
+            d = geodesic((lat, lon), (c_lat, c_lon)).meters
+        except Exception:
+            continue
+        if d < best_dist:
+            best_dist, best = d, {"aadt": aadt, "distance_m": d, "route": station_route}
+    return best
+ 
+ 
+def _road_matches_route(road, route_str):
+    """True if a road candidate (DOT- or TIGER-sourced) looks like the same
+    route already resolved via measured_aadt_by_dot_route -- used to avoid
+    listing the same physical road twice.
+    """
+    if not route_str:
+        return False
+    import re
+    digits = set()
+    for field in (road.get("ref"), road.get("name")):
+        if field:
+            digits.update(re.findall(r"\d+", str(field)))
+    route_digits = set(re.findall(r"\d+", str(route_str)))
+    norm = {d.lstrip("0") or "0" for d in digits}
+    return any((d.lstrip("0") or "0") in norm for d in route_digits)
+ 
+ 
 def measured_aadt_for_point(state_abbr,lat,lon,radius_m = measured_radius_m):
     counts = _state_counts_near_cached(state_abbr,lat,lon,radius_m)
     if not counts:
@@ -289,104 +488,49 @@ def _match_station_to_road(road, stations, lat, lon):
             best = {"aadt": aadt, "distance_m": d, "route": route}
     return best
  
-def adjacent_road_traffic(address,n_roads=num_roads):
-    try:
-        geo = geocode_address(address)
-    except Exception as e:
-        return {"error": f"Geocoding failed: {e}"}
- 
-    lat,lon = geo["lat"],geo["lon"]
-    state_abbr = FIPS_TO_STATE_ABBR.get(geo.get("state_fips"))
+def _traffic_results_for(lat, lon, state_abbr, n_roads):
+    """Shared core for both entry points below. No OSM/Overpass involved
+    anywhere in this path -- order of operations:
+      1. Try the DOT's own roadway layer for an exact measured match.
+      2. Get named roads nearby via find_nearby_roads_no_overpass (state
+         DOT roadway layer first, Census TIGER as the nationwide topper),
+         for two reasons: it gives the human-readable road name/class the
+         UI shows, and it's the source for lanes/speed feeding the
+         regression estimate when there's no measured station.
+      3. Skip any road from step 2 that's really the same route already
+         resolved in step 1, so it isn't listed twice.
+    """
     raw_src = STATE_AADT_SOURCES.get(state_abbr)
     src = raw_src if (raw_src and raw_src.get("verified")) else None
  
-    roads = find_nearby_roads(lat,lon,n=n_roads)
-    if not roads:
-        return {
-            "address": geo["matched_address"],
-            "lat": lat, "lon": lon,
-            "roads": [],
-            "note": "No named roads found near address",
-        }
-    model = _load_model()
+    dot_measured = measured_aadt_by_dot_route(state_abbr, lat, lon) if src else None
  
-    state_stations = _state_counts_near_cached(state_abbr,lat,lon,measured_radius_m) if src else tuple()
     results = []
-    for road in roads:
-        measured = _match_station_to_road(road,state_stations,lat,lon) if src else None
-        if measured is not None:
-            results.append({
-                "road_name": road["name"],
-                "road_class": road["highway"],
-                "aadt": measured["aadt"],
-                "source": "measured",
-                "source_detail": (
-                    f"{src['label']} station measured {measured['distance_m']:.0f}m away"
-                ),
-                "confidence": "high",
-                "range": None,
-            })
-        else:
-            est = estimate_aadt_for_road(road,lat,lon,model=model) if model else None
-            if est is None:
-                results.append({
-                    "road_name": road["name"],
-                    "road_class": road["highway"],
-                    "aadt": None,
-                    "source": "unavailable",
-                    "source_detail": "No measured count, model unavailable",
-                    "confidence": "none",
-                    "range": None,
-                })
-            else:
-                medape = est["medape"]
-                confidence = (
-                    "high" if medape <30 else
-                    "medium" if medape <45 else
-                    "low"
-                )
-                if src is None:
-                    no_measured_reason = f"No DOT source configured for {state_abbr or 'this state'}"
-                else:
-                    no_measured_reason = f"No {src['label']} station nearby"
-                results.append({
-                    "road_name": road["name"],
-                    "road_class": road["highway"],
-                    "aadt": est["aadt"],
-                    "source": "estimated",
-                    "source_detail": f"{no_measured_reason} - est. ±{medape:.0f}% typical error",
-                    "confidence": confidence,
-                    "range": est["range"],
-                })
-    return {
-        "address": geo["matched_address"],
-        "lat":lat,
-        "lon": lon,
-        "roads": results
-    }
+    if dot_measured is not None:
+        results.append({
+            "road_name": f"Route {dot_measured['route']}",
+            "road_class": None,
+            "aadt": dot_measured["aadt"],
+            "source": "measured",
+            "source_detail": (
+                f"{src['label']} station on the same route, "
+                f"{dot_measured['distance_m']:.0f}m away "
+                f"(matched via {src['label']}'s own roadway layer)"
+            ),
+            "confidence": "high",
+            "range": None,
+        })
  
-def adjacent_road_traffic_from_coords(lat, lon, n_roads=num_roads):
-    try:
-        geo = reverse_geocode_coords(lat, lon)
-    except Exception as e:
-        return {"error": f"Reverse geocoding failed: {e}"}
+    roads = find_nearby_roads_no_overpass(state_abbr, lat, lon, n=n_roads)
+    if dot_measured is not None:
+        roads = [r for r in roads if not _road_matches_route(r, dot_measured["route"])]
  
-    state_abbr = FIPS_TO_STATE_ABBR.get(geo.get("state_fips"))
-    raw_src = STATE_AADT_SOURCES.get(state_abbr)
-    src = raw_src if (raw_src and raw_src.get("verified")) else None
+    if not roads and not results:
+        return results, "No named roads found nearby"
  
-    roads = find_nearby_roads(lat, lon, n=n_roads)
-    if not roads:
-        return {
-            "address": f"{lat:.6f}, {lon:.6f}",
-            "lat": lat, "lon": lon,
-            "roads": [],
-            "note": "No named roads found near coordinates",
-        }
     model = _load_model()
- 
     state_stations = _state_counts_near_cached(state_abbr, lat, lon, measured_radius_m) if src else tuple()
-    results = []
+ 
     for road in roads:
         measured = _match_station_to_road(road, state_stations, lat, lon) if src else None
         if measured is not None:
@@ -433,12 +577,38 @@ def adjacent_road_traffic_from_coords(lat, lon, n_roads=num_roads):
                     "confidence": confidence,
                     "range": est["range"],
                 })
-    return {
-        "address": f"{lat:.6f}, {lon:.6f}",
-        "lat": lat,
-        "lon": lon,
-        "roads": results
-    }
+    return results, None
+ 
+ 
+def adjacent_road_traffic(address, n_roads=num_roads):
+    try:
+        geo = geocode_address(address)
+    except Exception as e:
+        return {"error": f"Geocoding failed: {e}"}
+ 
+    lat, lon = geo["lat"], geo["lon"]
+    state_abbr = FIPS_TO_STATE_ABBR.get(geo.get("state_fips"))
+ 
+    results, note = _traffic_results_for(lat, lon, state_abbr, n_roads)
+    out = {"address": geo["matched_address"], "lat": lat, "lon": lon, "roads": results}
+    if note:
+        out["note"] = note
+    return out
+ 
+ 
+def adjacent_road_traffic_from_coords(lat, lon, n_roads=num_roads):
+    try:
+        geo = reverse_geocode_coords(lat, lon)
+    except Exception as e:
+        return {"error": f"Reverse geocoding failed: {e}"}
+ 
+    state_abbr = FIPS_TO_STATE_ABBR.get(geo.get("state_fips"))
+ 
+    results, note = _traffic_results_for(lat, lon, state_abbr, n_roads)
+    out = {"address": f"{lat:.6f}, {lon:.6f}", "lat": lat, "lon": lon, "roads": results}
+    if note:
+        out["note"] = note
+    return out
  
 if __name__ == "__main__":
     import sys

@@ -1,5 +1,6 @@
-import requests
 
+import requests
+ 
 STATE_AADT_SOURCES = {
     "CA": {
         "label": "Caltrans",
@@ -7,7 +8,18 @@ STATE_AADT_SOURCES = {
         "aadt_fields": ["AHEAD_AADT", "BACK_AADT"],
         "route_field": "RTE",
         "out_fields": "AHEAD_AADT,BACK_AADT,RTE",
-        "verified": True
+        "verified": True,
+        # Caltrans' own State Highway Network (linear-referencing) layer --
+        # same org, same route numbering as the AADT layer above, so a
+        # route found here matches AADT's RTE field directly with no OSM
+        # round trip. It has no lanes/speed fields, so it can only answer
+        # "what route is this," not feed the regression model.
+        "roadway": {
+            "url": "https://geodata.dot.ca.gov/arcgis/rest/services/chhighway/SHN_Lines/MapServer/0/query",
+            "route_field": "RouteS",
+            "out_fields": "RouteS,Route,RouteType,Direction,County",
+            "verified": True,
+        },
     },
     "IL": {
         "label": "IDOT",
@@ -31,7 +43,16 @@ STATE_AADT_SOURCES = {
         "aadt_fields": ["AADT_CUR"],
         "route_field": "RTE_NM",
         "out_fields": "AADT_CUR,RTE_NM,RTE_PRFX,RTE_NBR",
-        "verified": True
+        "verified": True,
+        # TxDOT's own roadway inventory layer, same route vocabulary
+        # (RTE_NM) as the AADT layer above -- route matching without OSM.
+        # No lanes/speed fields here either.
+        "roadway": {
+            "url": "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/arcgis/rest/services/TxDOT_Roadways/FeatureServer/0/query",
+            "route_field": "RTE_NM",
+            "out_fields": "RTE_NM,RTE_PRFX,RTE_NBR,RTE_SFX,COUNTY",
+            "verified": True,
+        },
     },
     "DE": {
         "label": "DelDOT",
@@ -128,6 +149,24 @@ STATE_AADT_SOURCES = {
         "route_field": "ROUTE_NBR",
         "out_fields": "AADT_TOTAL,AADT_YEAR,ROUTE_NBR,ROUTE_TYPE",
         "verified": True,
+        # ODOT's Road Inventory layer -- unlike CA/TX's roadway layers, this
+        # one actually carries lanes, speed limit, and a functional-class
+        # code directly, so for Ohio the regression fallback doesn't need
+        # OSM/Overpass at all either, not just the measured-station match.
+        # FUNCTION_CLASS_CD's coded domain isn't published in the service
+        # metadata -- this assumes the standard FHWA 1-7 (rural) / 11-17
+        # (urban) scheme every state DOT uses for this field name. Worth a
+        # spot-check against a real response the first time it's used.
+        "roadway": {
+            "url": "https://tims.dot.state.oh.us/ags/rest/services/Roadway_Information/Road_Inventory/MapServer/0/query",
+            "route_field": "ROUTE_NBR",
+            "name_field": "STREET_NAME",
+            "lanes_field": "THROUGH_LANES",
+            "speed_field": "SPEED_LIMIT_NBR",
+            "class_field": "FUNCTION_CLASS_CD",
+            "out_fields": "ROUTE_NBR,ROUTE_TYPE,STREET_NAME,THROUGH_LANES,SPEED_LIMIT_NBR,FUNCTION_CLASS_CD",
+            "verified": True,
+        },
     },
     "VT": {
         "label": "VTrans",
@@ -240,7 +279,7 @@ STATE_AADT_SOURCES = {
         "verified": True,
     }
 }
-
+ 
 def inspect_layer(layer_url: str) -> dict:
     r = requests.get(f"{layer_url.rstrip('/')}", params={"f": "json"}, timeout=30)
     r.raise_for_status()
@@ -250,7 +289,7 @@ def inspect_layer(layer_url: str) -> dict:
         "geometry_type": data.get("geometryType"),
         "fields": [f["name"] for f in data.get("fields", [])],
     }
-
+ 
 if __name__ == "__main__":
     import sys, json
     if len(sys.argv) < 2:
