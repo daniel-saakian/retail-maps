@@ -1,0 +1,1440 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8' />
+  <title>Retail Centers – Roseville, CA</title>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' />
+  <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
+  <style>
+    body { margin: 0; font-family: sans-serif; }
+    #map { height: 100vh; width: 100%; }
+    .legend {
+      background: white; padding: 10px 14px; border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); line-height: 1.8;
+      font-size: 13px;
+    }
+    .legend-dot { display: inline-block; width: 12px; height: 12px;
+                   border-radius: 50%; margin-right: 6px; }
+    .tenant-filter { font-size: 13px; }
+    .tenant-toggle-btn {
+      background: white; border: 2px solid rgba(0,0,0,0.2); border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); padding: 8px 12px; font-size: 13px;
+      font-family: sans-serif; cursor: pointer; min-width: 180px; text-align: left;
+    }
+    .tenant-toggle-btn:hover { background: #f4f4f4; }
+    .tenant-panel {
+      background: white; border-radius: 6px; box-shadow: 0 1px 5px rgba(0,0,0,0.3);
+      margin-top: 4px; padding: 10px; width: 260px; max-height: 380px;
+      display: flex; flex-direction: column;
+    }
+    .tenant-search {
+      width: 100%; box-sizing: border-box; padding: 6px 8px; margin-bottom: 8px;
+      border: 1px solid #ccc; border-radius: 4px; font-size: 13px;
+    }
+    .tenant-actions { display: flex; gap: 6px; margin-bottom: 8px; }
+    .tenant-actions button {
+      flex: 1; padding: 5px 6px; font-size: 12px; border: 1px solid #ccc;
+      border-radius: 4px; background: #f7f7f7; cursor: pointer;
+    }
+    .tenant-actions button:hover { background: #eaeaea; }
+    .tenant-list { overflow-y: auto; max-height: 260px; border-top: 1px solid #eee; padding-top: 6px; }
+    .tenant-item {
+      display: block; font-size: 12.5px; padding: 3px 2px; cursor: pointer;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .tenant-item:hover { background: #f4f4f4; }
+    .tenant-item input { margin-right: 6px; }
+  </style>
+</head>
+<body>
+<div id='map'></div>
+<script>
+  var map = L.map('map').setView([38.752468899080235, -121.29092489517696], 12);
+ 
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(map);
+ 
+  var plazasData = [];
+  var storesData = [];
+ 
+  var layerMultiAnchor = L.layerGroup().addTo(map);
+  var layerSingleAnchor = L.layerGroup().addTo(map);
+  var layerPlazaCenters = L.layerGroup().addTo(map);
+  var layerAnchors = L.layerGroup().addTo(map);
+  var layerTenants = L.layerGroup().addTo(map);
+  var layerStandalone = L.layerGroup().addTo(map);
+  var layerHighDensity = L.layerGroup().addTo(map);
+  var layerLowDensity = L.layerGroup().addTo(map);
+  var countyLayers = {};
+ 
+  function getOrCreateCountyLayer(county) {
+    if (!county || county === '-') county = 'Unknown';
+    if (!countyLayers[county]) {
+        countyLayers[county] = L.layerGroup().addTo(map);
+    }
+    return countyLayers[county];
+  }
+ 
+  function addPlaza(lat, lng, radius_m, plazaId, name, address, county, city, numAnchors, anchors, numTenants, tenants, color, leasingHtml) {
+    var popup = '<b>' + name + '</b><br>'
+      + (address !== '-' ? address + '<br>' : '')
+      + city + (county !== '-' ? ', ' + county + ' County' : '') + '<br>'
+      + leasingHtml
+      + '<br><b>' + numAnchors + ' anchor(s): </b><br>'
+      + anchors.split(', ').join('<br>')
+      + '<br><br><b>' + numTenants + ' other tenant(s):</b><br>'
+      + tenants.split(', ').join('<br>');
+    
+    var circle = L.circle([lat, lng], {
+      radius: radius_m,
+      color: color,
+      fillColor: color,
+      fillOpacity: 0.08,
+      weight: 2
+    });
+    if (numAnchors > 1) {
+      layerMultiAnchor.addLayer(circle);
+    } else {
+      layerSingleAnchor.addLayer(circle);
+    }
+ 
+    var center = L.circleMarker([lat,lng], {
+        radius: 9,
+        color: '#fff',
+        fillColor: '#8e44ad',
+        fillOpacity: 1,
+        weight: 2
+    }).bindPopup(popup, {maxHeight: 320, autoPanPadding: [20, 20]}).bindTooltip(name, {permanent: false, direction: 'top'});
+ 
+    var cleanCounty = (!county || county === '-') ? 'Unknown' : county;
+    getOrCreateCountyLayer(cleanCounty);
+ 
+    plazasData.push({
+        circle: circle,
+        center: center,
+        id: plazaId,
+        name: name,
+        county: cleanCounty,
+        numAnchors: numAnchors,
+        numTenants: numTenants
+    });
+  }
+ 
+  function addStore(lat, lng, name, address, color, plazaId, plaza, isAnchor) {
+    var size = isAnchor ? 11 : 9;
+    var icon = L.divIcon({
+      className: '',
+      html: '<div style="position:absolute;width:' + size + 'px;height:' + size + 'px;'
+          + 'border-radius:50%;background:' + color + ';border:2px solid white;'
+          + 'box-shadow:0 1px 3px rgba(0,0,0,0.4);top:50%;left:50%;'
+          + 'transform:translate(-50%,-50%)'
+          + (isAnchor ? ';outline:2px solid rgba(0,0,0,0.25)' : '')
+          + '"></div>',
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2]
+    });
+    var marker = L.marker([lat, lng], {icon: icon})
+      .bindPopup('<b>' + name + '</b>' + (isAnchor ? '⚓' : '')+ '<br>' 
+        + '<i>' + plaza + '</i><br>'
+        + address)
+      .bindTooltip(name, {direction: 'top'})
+    
+    storesData.push({
+      marker: marker,
+      plazaId: plazaId,
+      plazaLabel: plaza,
+      isAnchor: isAnchor,
+      name: name
+    });
+  }
+ 
+  function tenantFilterMatchesPlaza(plazaId) {
+    // Fast path: nothing deselected, every plaza passes.
+    if (selectedNames.size >= allTenantNames.length) return true;
+    var names = plazaNameIndex[plazaId];
+    if (!names) return false;
+    for (var n of names) {
+      if (selectedNames.has(n)) return true;
+    }
+    return false;
+  }
+ 
+  function updateVisibility() {
+    plazasData.forEach(function(p) {
+      var anchorMatch = (p.numAnchors > 1) ? map.hasLayer(layerMultiAnchor): map.hasLayer(layerSingleAnchor);
+      var densityMatch = (p.numTenants >= 10) ? map.hasLayer(layerHighDensity) : map.hasLayer(layerLowDensity);
+      var countyLayer = countyLayers[p.county];
+      var countyMatch = countyLayer ? map.hasLayer(countyLayer) : true;
+      var tenantMatch = tenantFilterMatchesPlaza(p.id);
+ 
+      var plazaVisible = anchorMatch && densityMatch && countyMatch && tenantMatch;
+      p.isActive = plazaVisible;
+ 
+      if (plazaVisible) {
+        // FIX 2: Changed map.has() to map.hasLayer()
+        if (!map.hasLayer(p.circle)) p.circle.addTo(map);
+      } else {
+        if (map.hasLayer(p.circle)) map.removeLayer(p.circle);
+      }
+ 
+      if (plazaVisible && map.hasLayer(layerPlazaCenters)) {
+        if (!map.hasLayer(p.center)) p.center.addTo(map);
+      } else {
+        if (map.hasLayer(p.center)) map.removeLayer(p.center);
+      }
+    });
+      
+    storesData.forEach(function(s) {
+        var storeVisible = false;
+        var nameMatch = selectedNames.has(s.name);
+ 
+        if (s.plazaId === -1) {
+            // Standalone store
+            storeVisible = map.hasLayer(layerStandalone) && nameMatch;
+ 
+        } else {
+            var parentPlaza = plazasData.find(function(p) {
+                return p.id === s.plazaId;
+            });
+ 
+            if (parentPlaza && parentPlaza.isActive) {
+                storeVisible = (s.isAnchor
+                    ? map.hasLayer(layerAnchors)
+                    : map.hasLayer(layerTenants)) && nameMatch;
+            }
+        }
+ 
+        if (storeVisible) {
+            if (!map.hasLayer(s.marker))
+                s.marker.addTo(map);
+        } else {
+            if (map.hasLayer(s.marker))
+                map.removeLayer(s.marker);
+        }
+    });
+  }
+ 
+  addPlaza(38.7735548925926, -121.26953850296297, 387.8, 0, 'Unnamed Retail Center', '1151 Galleria Boulevard Roseville', 'Placer County', 'Roseville', 4, 'H&M, JCPenney, Macy\'s, Nordstrom', 131, '7th Avenue, Abercrombie & Fitch, Aerie, Aeropostale, Aldo, Allen Edmonds, Alo Yoga, American Eagle Outfitters, Apple Store, Arhaus, Aritzia, Athleta, AuAdore Jewelry, Auntie Anne\'s, Bacio di Latte, Bath & Body Works, Beauty by Thread, Ben Bridge, Blue Nile, Brilliant Earth, Buckle, Build-A-Bear Workshop, Caitlyn Minimalist, Capital One, Champs Sports, Chanel, Cinemark, Cinnabon, Cotton On, Crate & Barrel, Crocs, Daiso Japan, David Yurman, Design Within Reach, Electrify America, Express, FP Movement, Fabletics, Fast-Fix, Finish Line, Foot Locker, Free People, GameStop, Gap, Garage, Gorjana, Gucci, Hallmark, Hollister, Hot Topic, Hugo Boss, Indochino, Intimissimi, J.Jill, Janie & Jack, Jo Malone, Journeys, Kids Foot Locker, L\'Occitane, Lego, LensCrafters, Levi\'s, Lids, Lolli and Pops, Louis Vuitton, LoveSac, Lululemon, Lush, Läderach, MAC Cosmetics, Madewell, Mainland Surf & Skate, Mansour\'s Oriental Rug Gallery, Marine Layer, Miniso, Nespresso, Oakley, OneZo Tapioca, PacSun, Pandora, Pop Mart, Pottery Barn, Pretzelmaker, Pro Image Sports, Psycho Bunny, Quickly, Restoration Hardware, Rothy\'s, Round1, Ruth\'s Chris Steak House, S&L Gem Co., STUDS, Saint Laurent, See\'s Candies, Sephora, Shake Shack, Sharetea, Shoe Palace, Spencer\'s, Sports Fever, Sukoshi, Sunglass Hut, Swarovski, Sweetgreen, T-Mobile, Talbots, Tempur-Pedic, The Cheesecake Factory, The North Face, Tiffany & Company, Tillys, Torrid, Tory Burch, TravisMathew, Tumi, Uniqlo, Urban Outfitters, VINCE., Vans, Verizon, Victoria\'s Secret, Vuori, Warby Parker, Westfield, Westfield Galleria at Roseville, Wetzel\'s Pretzels, Williams-Sonoma, Windsor, Zales, Zara, Zumiez', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-130211" target="_blank" rel="noopener">CBRE — Rick Martinez</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-130211" target="_blank" rel="noopener">CBRE — Josh Schmidt</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-130211" target="_blank" rel="noopener">CBRE — Heath Kastner</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-130211" target="_blank" rel="noopener">CBRE — Jon Schultz</a><br><a href="https://www.crexi.com/lease/properties/133518/california-ridge-at-creekside" target="_blank" rel="noopener">CBRE - Sacramento — Jenni Tabaka</a><br>');
+addPlaza(38.744227968749996, -121.25649936458326, 322.5, 1, 'Unnamed Retail Center', '1850 Douglas Boulevard Roseville', 'Placer County', 'Roseville', 3, 'Big 5 Sporting Goods, Max Home Goods, TJ Maxx', 45, '3 Monkeys, American Automobile Association, Anytime Fitness, Aqua-Tots Swim Schools, Beauty Solutions, Cell Phone Repair, Chevys, Cleaners, Club Pilates, Crossroads Trading Co, Crumbl Cookies, Dunn-Edwards Paints, Famous Footwear, Fastsigns, Fleet Feet, Fringes Salon, GNC, HearUSA, HearingLife, Hotworx, IconiQ, Jack in the Box, Jimmy John\'s, Jollibee, Lakeshore Learning, Lendmark, Leslie\'s Pool Supplies, Level Posh Salon, Mark’s Hallmark, Mountain Mike\'s, Panera Bread, Papa Murphy\'s, Perfect Brows Ink, Pick A Color, Removery, Roseville Nail Spa, Royal Spa & Massage, Salon Hermosa, Supercuts, The Serpentarium, Togo\'s, U.S. Bank, Verizon, West Coast Nutrition, Z’s Massage', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.76793649, -121.26814668749998, 428.0, 2, 'Unnamed Retail Center', '1001 Galleria Boulevard Roseville', 'Placer County', 'Roseville', 1, 'Whole Foods Market', 39, 'Anthropologie, BJ\'s, Brighton Collectibles, Burger Lounge, Button Up Boutique, California Closets, Charles Schwab, Chico\'s, Creamy\'s, Dave & Buster\'s, Eileen Fisher, Engel & Völkers, Escapology, European Wax Center, Evereve, Fogo de Chão, J. Crew Factory, Jack\'s Urban Eats, Joli Nail Spa, Kenny G & Company, LaserAway, Mendocino Farms, Nick The Greek, Paper Source, Peet\'s Coffee, Pet Food Express, Pressed Juicery, Pushkin\'s Bakery, Rock Hill Boutique, Salt & Straw, Sephora, Sole Desire Shoes, Soma, Sunglass Hut, Sur La Table, Tommy Bahama, White House Black Market, Willo, west elm', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.712834417500005, -121.36476651000001, 309.4, 3, 'Unnamed Retail Center', '4300 Elverta Road Antelope', 'Sacramento County', 'Antelope', 3, '24 Hour Fitness, Bel Air, Rite Aid', 37, 'Arco, Banfield Pet Hospital, Bank of America, Batteries Plus, California Sun, Chevron, Coinstar, Custom Cleaners, Domino\'s, Dorian\'s Barber Studio, Firestone, GameStop, Great Clips, Hair Cuts & Facials, Indian Bazaar, Jamba, Les Schwab Tire Center, Leslie\'s Pool Supplies, Little Caesars, London Nails, McDonald\'s, Metro by T-Mobile, Odessa European Deli Store, Palace Nails and Spa, Panda Express, Papa Murphy\'s, Round Table Pizza, Starbucks, Subway, Supercuts, T-Mobile, Togo\'s, Umpqua Bank, Verizon, Wingstop, Xfinity, ampm', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.871747087179486, -121.296397574359, 360.5, 4, 'Unnamed Retail Center', '39 Lincoln Boulevard Lincoln', 'Placer County', 'Lincoln', 3, 'Big 5 Sporting Goods, Lowe\'s, Raley\'s', 36, 'A&W, Anytime Fitness, Arco, Artistic Nails, Bank of America, Baskin-Robbins, Boutique Hair Parlor, California Sun, Champ Cuts, Chase, Coinstar, Cozy Nails, Dog & Cat Health Food, Domino\'s, Enterprise, Epic Sports Cards, Family Massage, Fresh Cleaners, Goodwill, Hotworx, Jamba, KFC, La Belle Nails, LabCorp, Lincoln Medical Supplies, Mountain Mike\'s, My Dog\'s Spot, PNC Bank, Quick Quack Car Wash, Rustic Mule Grazing, Saladworks, Subway, Taco Bell, Twisted Eyebrow Threading, Wingstop, ampm', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.772709836666664, -121.26255971333336, 374.8, 5, 'Unnamed Retail Center', '1196 Galleria Boulevard Roseville', 'Placer County', 'Roseville', 3, 'Best Buy, Marshalls, Nordstrom Rack', 27, 'Bank of America, Bath & Body Works, Buca di Beppo, Buffalo Wild Wings, Carter\'s, Club Champion, Cold Stone Creamery, Courtyard, David\'s Bridal, Famous Footwear, Five Below, Handel\'s Homemade Ice Cream, Homewood Suites Hilton, Jamba, Jimboy\'s Tacos, KB Home Design Studio, Maurices, Men\'s Wearhouse, Michaels, Quiznos, REI, Red Robin, Shell Recharge, Starbucks, Ulta Beauty, Verizon, Visionworks', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.74509541785715, -121.2748389035714, 308.2, 6, 'Unnamed Retail Center', '424 Roseville Square Roseville', 'Placer County', 'Roseville', 7, 'Dollar Tree, Grocery Outlet, Planet Fitness, Rite Aid, Roseville Ace Hardware, Smart & Final Extra!, Trader Joe\'s', 21, 'Arco, Auto Service of Roseville, Banfield Pet Hospital, Bank of America, Big O Tires, BlueZone Sports, Chase, Comfort Western and Workwear, FreeStyle Clothing Exchange, Ionna (planned), Liberty Tax, Mei Mei Hair & Nails, Nail Spa 999, O\'Reilly Auto Parts, Once Upon a Child, Popeyes, Site for Sore Eyes, Starbucks, Tesla Supercharger, Wild Birds Unlimited, ampm', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://gallellire.com/property/420-g-st/" target="_blank" rel="noopener">Gallelli Real Estate — Kevin Soares</a><br><a href="https://gallellire.com/property/420-g-st/" target="_blank" rel="noopener">Gallelli Real Estate — Jeff Hagan</a><br><a href="https://gallellire.com/property/420-g-st/" target="_blank" rel="noopener">Gallelli Real Estate — Matt Goldstein</a><br><a href="https://www.crexi.com/lease/properties/146952/california-406-sunrise-ave" target="_blank" rel="noopener">Ethan Conrad Properties Inc — Todd Newburn</a><br><a href="https://www.crexi.com/lease/properties/146952/california-406-sunrise-ave" target="_blank" rel="noopener">Ethan Conrad Properties Inc — Sandy Rodriguez</a><br>');
+addPlaza(38.75164701599999, -121.30999836, 296.6, 7, 'Unnamed Retail Center', '3999 Foothills Boulevard Roseville', 'Placer County', 'Roseville', 3, 'Raley\'s Bel Air, Rite Aid, Walgreens', 22, 'Bank of America, Carl\'s Jr., Cartridge World, ChargePoint, Crystal Nails, Dry Clean Today, Dutch Bros. Coffee, Great Cuts, India Supermarket, Live-More, McDonald\'s, Mountain Mike\'s, O\'Reilly Auto Parts, Panda Express, Shell, Starbucks, Sundance Self Storage, Supercuts, Sutter Walk-In Care, Trendy Nails, Trojan Storage, USPS', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.78930604166667, -121.28077139166669, 390.4, 8, 'Unnamed Retail Center', '771 Pleasant Grove Boulevard Roseville', 'Placer County', 'Roseville', 5, 'BevMo!, Big Lots, Lowe\'s, Nugget Markets, Trader Joe\'s', 19, 'B. B. Nail Spa, Bianca\'s Fine Jewelry, Chevron, Chipotle, Citibank, ExtraMile, Golden 1 Credit Union, Huntington Learning Center, In-N-Out Burger, Jamba, Krispy Kreme, Massage Heights, Papa Murphy\'s, Peet\'s Coffee, Quiznos, Sherman Clay, The Joint Chiropractic, V Max Cleaners, Wells Fargo', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-128283" target="_blank" rel="noopener">CBRE — Chris Campbell</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-128283" target="_blank" rel="noopener">CBRE — Jason Read</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-128283" target="_blank" rel="noopener">CBRE — Scott Carruth</a><br>');
+addPlaza(38.708475147826086, -121.31328017391303, 289.7, 9, 'Unnamed Retail Center', '7847 Lichen Drive Citrus Heights', 'Placer County', 'Citrus Heights', 2, 'Dollar Tree, Raley\'s', 21, '7-Eleven, 76, Angel Beauty Brows, Body n Mind Massage Spa, Dutch Bros. Coffee, EVgo, Era Salon, Food Mart, Fuzz Monsters Pet Grooming, Great Clips, Jackson Hewitt, Magma Vape and Smoke Shop, McDonald\'s, O\'Reilly Auto Parts, Popeyes, Pro Massage, Quick Quack Car Wash, Round Table Pizza, Taco Bell, Tesla Supercharger, Wendy\'s', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.74335615454547, -121.25151145909089, 289.7, 10, 'Unnamed Retail Center', '2030 Douglas Boulevard Roseville', 'Placer County', 'Roseville', 2, 'BevMo!, Sprouts Farmers Market', 20, 'AT&T, Adam\'s Jewelers, Beauty Concepts, Dog & Cat Health Food, European Wax Center, Everlasting Gifts, FedEx Office, Jersey Mike\'s Subs, Lavish Locks, Learning Express Toys, Noah\'s Bagels, Orangetheory Fitness, Petroglyph Pottery Painting Store, Pieology Pizzeria, Romano\'s Macaroni Grill, Sport Clips, Starbucks, Sunrise Natural Foods, Uptown Cheapskate, Wells Fargo', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.76136856190477, -121.31162987619044, 289.7, 11, 'Unnamed Retail Center', '5130 Foothills Boulevard Roseville', 'Placer County', 'Roseville', 2, 'Dollar Tree, Save Mart', 19, 'A&W, Advance America Cash Advance, AutoZone, Baskin-Robbins, Burger King, Denny\'s, Get Nailed Salon, Goodwill, Jack in the Box, KFC, Liquor & Wine, Papa Murphy\'s, Roseville Cleaners, Taco Bell, The Tools Vault, The UPS Store, Togo\'s, Top Ten Nails, Wells Fargo', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-148221" target="_blank" rel="noopener">CBRE — Chris Campbell</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-148221" target="_blank" rel="noopener">CBRE — Jason Read</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-148221" target="_blank" rel="noopener">CBRE — Scott Carruth</a><br>');
+addPlaza(38.67939765714285, -121.27028577619046, 324.6, 12, 'Unnamed Retail Center', '7929 Greenback Lane Citrus Heights', 'Placer County', 'Citrus Heights', 3, 'BevMo!, Marshalls, Sprouts Farmers Market', 18, 'Black Angus, Buffalo Wild Wings, Firestone, GameStop, Goodyear, HD Supply Home Improvement Solutions, Half Price Books, Panera Bread, Red Lobster, Round Table Pizza, SKECHERS Warehouse Outlet, Shell, Skechers, Staples, Texas Roadhouse, U.S. Bank, Wendy\'s, Wingstop', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.69042064, -121.38296040500002, 358.0, 13, 'Unnamed Retail Center', '3615 Elkhorn Boulevard North Highlands', 'Sacramento County', 'North Highlands', 5, 'Big 5 Sporting Goods, Big Lots, Dollar Tree, Ross, Walgreens', 15, '7-Eleven, AutoZone, Black Widow Tattoo Studio, Boss Liquor, Crown Nails, Derrel\'s Mini Storage, Jackson Hewitt, Jiffy Lube, Long John Silver\'s, McDonald\'s, Mountain Mike\'s, Redbox, Starbucks, Taco Bell, dd\'s Discounts', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.742886725, -121.22534554500002, 289.7, 14, 'Unnamed Retail Center', '4051 Douglas Boulevard Granite Bay', '-', 'Granite Bay', 3, 'Crunch Fitness, Nugget Markets, Walgreens', 17, 'All Seasons Pool & Spa, Awesome Nails Spa, Carl\'s Jr., Chick Fil A, Chipotle, Five Guys, McDonald\'s, Oasis x HLND Salon And Barber, Posh Paws Grooming, Round Table Pizza, Shell, Starbucks, Subway, The Habit Burger Grill, TotalNutrition, Yum Tea House, ampm', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://gallellire.com/property/renaissance-creek/" target="_blank" rel="noopener">Gallelli Real Estate — Kevin Soares</a><br><a href="https://gallellire.com/property/renaissance-creek/" target="_blank" rel="noopener">Gallelli Real Estate — Jeff Hagan</a><br><a href="https://www.crexi.com/lease/properties/897302/california-nugget-at-granite-bay" target="_blank" rel="noopener">CBRE - Sacramento — Jenni Tabaka</a><br><a href="https://www.crexi.com/lease/properties/897302/california-nugget-at-granite-bay" target="_blank" rel="noopener">CBRE - Sacramento — Heath Kastner</a><br><a href="https://www.crexi.com/lease/properties/897302/california-nugget-at-granite-bay" target="_blank" rel="noopener">CBRE - Sacramento — Josh Schmidt</a><br>');
+addPlaza(38.702686268421054, -121.38358244736838, 289.7, 15, 'Unnamed Retail Center', '7477 Watt Avenue North Highlands', 'Sacramento County', 'North Highlands', 1, 'FoodMaxx', 18, 'Aaron\'s, Alien Vape & Smoke Shop, Ancient Inc Tattoos, Bank of America, Big O Check Cashing, Capital Cabinets & Floors, Inc., Carl\'s Jr., DMV Now, Doggie Style Grooming Salon, First Response Phone Repair, Fred Loya Insurance, Metro by T-Mobile, Michelle\'s Furniture & Mattress, SR Food & Liquor, Speedway, Subway, Tailpipes Smog Test Centers, Top Cuts and Nails', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.78336217647059, -121.26845480000001, 306.1, 16, 'Unnamed Retail Center', '6744 Stanford Ranch Road Roseville', 'Placer County', 'Roseville', 3, 'Dick\'s Sporting Goods, Dollar Tree, Ross', 14, 'AT&T, Black Bear Diner, Goodwill, Island Nails, L&L Hawaiian Barbecue, Les Schwab Tire Center, McDonald\'s, Party City, Red Wing, Starbucks, The Cave Roseville, Togo\'s, Wayback Burgers, Western Dental', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://gallellire.com/property/stanford-ranch-crossing/" target="_blank" rel="noopener">Gallelli Real Estate — Kevin Soares</a><br><a href="https://gallellire.com/property/stanford-ranch-crossing/" target="_blank" rel="noopener">Gallelli Real Estate — Jeff Hagan</a><br><a href="https://www.crexi.com/lease/properties/301137/california-stanford-ranch" target="_blank" rel="noopener">Kimco Realty Corporation — Ben Minton</a><br><a href="https://www.crexi.com/lease/properties/163155/california-the-plaza-at-stanford-ranch" target="_blank" rel="noopener">Clark Commercial Realty Advisors — Jeff Clark</a><br>');
+addPlaza(38.7292548, -121.27124532500001, 289.7, 17, 'Unnamed Retail Center', '1039 Sunrise Avenue Roseville', 'Placer County', 'Roseville', 2, 'Bel Air, Safeway', 14, '7-Eleven, A&W, Amazon Locker, Beauty Bungalows, Coinstar, Continental Cleaners, Ji Lang Xing, KFC, McDonald\'s, Peet\'s Coffee, Starbucks, The UPS Store, U.S. Bank, Western Union', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.873617118750005, -121.30292516249999, 289.7, 18, 'Unnamed Retail Center', '113 Ferrari Ranch Road Lincoln', 'Placer County', 'Lincoln', 2, 'Ross, Sprouts Farmers Market', 14, 'AT&T, Beauty By Thread, Carl\'s Jr., Frozen Yogurt, Habit Burger & Grill, In-N-Out Burger, Mattress Firm, O\'Reilly Auto Parts, Panda Express, Philly Nail & Spa, Starbucks, Togo\'s, Ulta Beauty, Vibrance Medical Spa', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.801073556249996, -121.20367823125, 289.7, 19, 'Unnamed Retail Center', '5454 Crossings Drive Rocklin', 'Placer County', 'Rocklin', 3, 'HomeGoods, TJ Maxx, Walmart Supercenter', 13, 'AT&T, Dazzling Nails and Spa, Dickey\'s Barbecue Pit, Gentle Dental, Great Clips, In-N-Out Burger, MOD Pizza, PetSmart, See\'s Candies, Starbucks, The UPS Store, Waxing the City, Wingstop', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.79480066666667, -121.3274157, 311.5, 20, 'Unnamed Retail Center', '9065 Woodcreek Oaks Boulevard Roseville', 'Placer County', 'Roseville', 3, '24 Hour Fitness, Nugget Markets, Walgreens', 12, 'Bank of America, Carl\'s Jr., Chick-fil-A, Del Taco, Dutch Bros. Coffee, Great Clips, Jamba, MOD Pizza, Panda Express, Round Table Pizza, Smashburger, Starbucks', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://gallellire.com/property/crocker-ranch/" target="_blank" rel="noopener">Gallelli Real Estate — Kevin Soares</a><br><a href="https://gallellire.com/property/crocker-ranch/" target="_blank" rel="noopener">Gallelli Real Estate — Jeff Hagan</a><br><a href="https://www.crexi.com/lease/properties/447045/california-crocker-ranch" target="_blank" rel="noopener">Kimco Realty Corporation — Brian Alt</a><br><a href="https://www.crexi.com/lease/properties/447045/california-crocker-ranch" target="_blank" rel="noopener">Kimco Realty Corporation — Ben Minton</a><br>');
+addPlaza(38.67536276, -121.27407488666668, 380.9, 21, 'Unnamed Retail Center', '6110 Birdcage Center Lane Citrus Heights', 'Placer County', 'Citrus Heights', 3, 'Best Buy, Lowe\'s, Walmart Neighborhood Market', 12, 'Barnes & Noble, Electrify America, Hobby Lobby, Jamba, Michaels, Old Navy, Raising Cane\'s, The Vitamin Shoppe, Ulta Beauty, Verizon, Wells Fargo, World Market', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-128624" target="_blank" rel="noopener">CBRE — Chris Campbell</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-128624" target="_blank" rel="noopener">CBRE — Jason Read</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-128624" target="_blank" rel="noopener">CBRE — Scott Carruth</a><br>');
+addPlaza(38.68003489333333, -121.32093042666665, 289.7, 22, 'Unnamed Retail Center', '6085 Greenback Lane Citrus Heights', 'Placer County', 'Citrus Heights', 3, 'Dollar Tree, Grocery Outlet, Petco', 12, '7-Eleven, Arco, B Liquor, Chevron, Creekside Coin Wash, Jack in the Box, McDonald\'s, NVision Sacramento (f/k/a Meister Eye & Laser Center), Shell, Taco Bell, Vonne\'s Hair & Nails, ampm', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.80381165, -121.20796047142856, 352.2, 23, 'Unnamed Retail Center', '5112 Commons Drive Rocklin', 'Placer County', 'Rocklin', 3, 'Ross, Target, Trader Joe\'s', 11, 'Bath & Body Works, Chipotle, EVgo, European Wax Center, Five Below, Jersey Mike\'s Subs, Noodles & Company, Panera Bread, Supercuts, Ulta Beauty, Verizon', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.tricommercial.com/properties/5100-5138-stockton-blvd-sacramento-lease/" target="_blank" rel="noopener">TRI Commercial — Christina Snyder, Sr. VP</a><br>');
+addPlaza(38.67725119230769, -121.29349263076925, 289.7, 24, 'Unnamed Retail Center', '7342 Greenback Lane Citrus Heights', 'Placer County', 'Citrus Heights', 3, 'Burlington, Kohl\'s, Ross', 10, '7-Eleven, BMO, Carl\'s Jr., Daylight Produce, Del Taco, Donut King, Pacific Coast Food, Subway, Twisted, Vilo Spa & Massage', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.crexi.com/lease/properties/1028735/california-san-juan-shopping-center" target="_blank" rel="noopener">Crexi Listing — Chandler Eden</a><br><a href="https://www.crexi.com/lease/properties/1028735/california-san-juan-shopping-center" target="_blank" rel="noopener">Newmark - Sacramento — Mike Chernioglo</a><br>');
+addPlaza(38.71406185833333, -121.39392911666665, 348.1, 25, 'Unnamed Retail Center', '7901 Watt Avenue Antelope', 'Sacramento County', 'Antelope', 1, 'Walmart Supercenter', 11, '76, Antelope Liquors, Antelope Tires and Wheels, Beauty Hair & Nails, First American Self Storage, Goodwill, H&R Block, Jack in the Box, M&M Deli, O\'Reilly Auto Parts, Shell', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.78655491818183, -121.28854521818181, 289.7, 26, 'Unnamed Retail Center', '900 Pleasant Grove Boulevard Roseville', 'Placer County', 'Roseville', 2, 'Sam\'s Club, Walmart Supercenter', 9, 'AAA Insurance, AmeriGas, Batteries Plus Bulbs, Coinstar, Curves, Extreme Soccer, Hawaii Massage, Minute Key, Quick Tag', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.74635277272727, -121.2615752909091, 340.7, 27, 'Unnamed Retail Center', '1740 Santa Clara Drive Roseville', 'Placer County', 'Roseville', 1, 'Ross', 10, 'Dimple Records, Discovery Shop, Enterprise, First Bank, H&R Block, Hobby Lobby, Mattress Express, Moschino Nails, Smoke Barn, United States Post Office', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.75284460000001, -121.26153990909091, 310.0, 28, 'Unnamed Retail Center', '324 North Sunrise Avenue Roseville', 'Placer County', 'Roseville', 2, '24 Hour Fitness, The Home Depot', 9, 'Airport Home Appliance, Autonation Honda, Goodwill, John L. Sullivan\'s Roseville KIA, Niello Acura, Pet Club, Shane Co., Taco Bell, Wendy\'s', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.76925778181819, -121.33147207272727, 289.7, 29, 'Unnamed Retail Center', '4021 Woodcreek Oaks Boulevard Roseville', 'Placer County', 'Roseville', 1, 'Raley\'s', 10, 'Coldwell Banker, Fresh Cleaners, Golden 1 Credit Union, Goodwill Donation Express, Little Caesars, Old Gold Exchange, Starbucks, Subway, Wells Fargo, Woodcreek Nails & Spa', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-129635" target="_blank" rel="noopener">CBRE — Jon Schultz</a><br><a href="https://www.crexi.com/lease/properties/274781/california-4001-4021-woodcreek-oaks-blvd" target="_blank" rel="noopener">CBRE - Sacramento — Jenni Tabaka</a><br>');
+addPlaza(38.686688081818176, -121.34030255454546, 289.7, 30, 'Unnamed Retail Center', '5345 Elkhorn Boulevard Sacramento', 'Placer County', 'Sacramento', 1, 'Safeway', 10, 'Baskin-Robbins, Boost Mobile, Dollar General, EVgo, Golden 1 Credit Union, McDonald\'s, Pizza Hut, Starbucks, Wells Fargo, Western Dental', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.748275920000005, -121.26885789, 293.7, 31, 'Unnamed Retail Center', '130 North Sunrise Avenue Roseville', 'Placer County', 'Roseville', 1, 'Big Lots', 9, 'A Classic Touch Salon, Best Western Plus Orchid Hotel & Suites, Best Western Roseville Inn, Chevron, Echo Park Automotive, Enterprise, Goodyear, Oriental Market, Rose Food & Liquor', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.780383, -121.26597982999999, 391.1, 32, 'Unnamed Retail Center', '6750 Stanford Ranch Road Roseville', 'Placer County', 'Roseville', 2, 'Costco, Costco Tire Service Center', 8, '76, Beach Hut Deli, Carl\'s Jr., Five Star Auto Repair, IHOP, Rocket, SleepFirst, Staples', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.67650926, -121.38318912000003, 290.9, 33, 'Unnamed Retail Center', '5945 Watt Avenue North Highlands', 'Sacramento County', 'North Highlands', 1, 'Planet Fitness', 9, 'Carniceria Atoyac Meat Market, Cricket Wireless, Durango Western Wear, Matthew\'s Sofa & Mattress Gallery, North Highlands Mini Storage & Uhaul, Pacific Thrift Store, The Klubhouse Tattoo and Piercing, US Nails & Beauty, Western Union', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.79933345, -121.29484624000001, 289.7, 34, 'Unnamed Retail Center', '6612 Lone Tree Boulevard Rocklin', 'Placer County', 'Rocklin', 3, 'Crunch Fitness, Dollar Tree, Grocery Outlet', 7, 'Carl\'s Jr., Chevys, GNC, Hobby Lobby, Sportsman\'s Warehouse, Starbucks, UFC Gym', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://gallellire.com/property/1322-blue-oaks-blvd/" target="_blank" rel="noopener">Gallelli Real Estate — Brandon Sessions</a><br><a href="https://gallellire.com/property/1322-blue-oaks-blvd/" target="_blank" rel="noopener">Gallelli Real Estate — Kannon Kuhn</a><br><a href="https://gallellire.com/property/plaza-at-blue-oaks/" target="_blank" rel="noopener">Gallelli Real Estate — Kevin Soares</a><br><a href="https://gallellire.com/property/plaza-at-blue-oaks/" target="_blank" rel="noopener">Gallelli Real Estate — Jeff Hagan</a><br><a href="https://gallellire.com/property/plaza-at-blue-oaks/" target="_blank" rel="noopener">Gallelli Real Estate — Matt Goldstein</a><br><a href="https://www.crexi.com/lease/properties/453325/california-blue-oaks-town-center" target="_blank" rel="noopener">CBRE - Sacramento — Chris Campbell</a><br><a href="https://www.crexi.com/lease/properties/453325/california-blue-oaks-town-center" target="_blank" rel="noopener">CBRE - Sacramento — Scott Carruth</a><br><a href="https://www.crexi.com/lease/properties/453325/california-blue-oaks-town-center" target="_blank" rel="noopener">CBRE - Sacramento — Jason Read</a><br><a href="https://www.crexi.com/lease/properties/228235/california-6661-6681-blue-oaks-blvd" target="_blank" rel="noopener">CBRE - Sacramento — Rick Martinez</a><br><a href="https://www.crexi.com/lease/properties/228235/california-6661-6681-blue-oaks-blvd" target="_blank" rel="noopener">CBRE - Sacramento — Jenni Tabaka</a><br>');
+addPlaza(38.77787065, -121.29031123999998, 289.7, 35, 'Unnamed Retail Center', '1080 Pleasant Grove Boulevard Roseville', 'Placer County', 'Roseville', 1, 'Safeway', 9, 'America\'s Best, Bambu, California Sun, Paris Baguette, Round Table Pizza, Subway, The Doggie Bag, The Sandwich Spot, Union Bank', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-149594" target="_blank" rel="noopener">CBRE — Heath Kastner</a><br>');
+addPlaza(38.789878259999995, -121.22322584000001, 316.3, 36, 'Unnamed Retail Center', '4805 Granite Drive Rocklin', 'Placer County', 'Rocklin', 1, 'Safeway', 9, 'A&W, Arco, Inkspire Beauty, Jamba, KFC, Sourdough & Co., Starbucks, Tesla Supercharger, The Piano Store', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.7150781, -121.36704366666666, 289.7, 37, 'Unnamed Retail Center', '4207 Elverta Road Antelope', 'Sacramento County', 'Antelope', 2, 'Petco, WinCo Foods', 7, 'Ava Nails & Spa, Chase, India Spices, Kajal Eyebrow Threading, Mountain Mike\'s, The UPS Store, Tobacco Plus', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.67227984444443, -121.27257461111111, 289.7, 38, 'Unnamed Retail Center', '5837 Sunrise Boulevard Citrus Heights', 'Placer County', 'Citrus Heights', 2, 'Dollar Tree, Target', 7, 'Chase, Chipotle, Golden 1 Credit Union, Jersey Mike\'s Subs, Metro by T-Mobile, Panda Express, Supercuts', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.crexi.com/lease/properties/583511/california-sunrise-tomorrow" target="_blank" rel="noopener">Ethan Conrad Properties Inc — Ethan Conrad</a><br>');
+addPlaza(38.87042808888889, -121.30407552222222, 289.7, 39, 'Unnamed Retail Center', '950 Groveland Lane Lincoln', 'Placer County', 'Lincoln', 3, 'TJ Maxx, Target, The Home Depot', 6, 'Banfield Pet Hospital, Holiday Inn Express, PetSmart, PetSmart Grooming, Starbucks, Tesla Supercharger', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.7828659, -121.2728231222222, 289.7, 40, 'Unnamed Retail Center', '10001 Fairway Drive Roseville', 'Placer County', 'Roseville', 1, 'The Home Depot', 8, 'Advance America, Chuck E. Cheese, Golf Galaxy, Guitar Center, Home Consignment Center, Mattress Outlet, Red Wing, Total Wine', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.70442927777778, -121.32934556666666, 306.0, 41, 'Unnamed Retail Center', '5821 Antelope Road Sacramento', 'Placer County', 'Sacramento', 2, 'The Home Depot, Walmart Supercenter', 7, 'Antelope Self Storage, BAM Hair Nails Salon, Burger King, Chevron, Food Mart, Redbox, Supercuts', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.747296687500004, -121.2541406, 289.7, 42, 'Unnamed Retail Center', '1925 Douglas Boulevard Roseville', 'Placer County', 'Roseville', 2, 'Target, Walmart Supercenter', 6, 'Creative Nails & Spa, Erik\'s DeliCafé, GameStop, Great Clips, Panda Express, Tesla Supercharger', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.789533049999996, -121.28633088749999, 289.7, 43, 'Unnamed Retail Center', '10375 Fairway Drive Roseville', 'Placer County', 'Roseville', 1, 'Kohl\'s', 7, 'Aaron Brothers, GameStop, Great Clips, Massage Envy, PetSmart, Starbucks, U.S. Bank', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-128605" target="_blank" rel="noopener">CBRE — Chris Campbell</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-128605" target="_blank" rel="noopener">CBRE — Jason Read</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-128605" target="_blank" rel="noopener">CBRE — Scott Carruth</a><br>');
+addPlaza(38.792590112499994, -121.35644011250001, 289.7, 44, 'Unnamed Retail Center', '-', 'Placer County', '-', 1, 'Raley\'s O-N-E Market', 7, 'Arco, AutoZone, Chipotle, FreeWire, The Habit Burger Grill, The UPS Store, ampm', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.7409183, -121.22732554285714, 289.7, 45, 'Unnamed Retail Center', '8676 Sierra College Boulevard Roseville', 'Placer County', 'Roseville', 2, 'HomeGoods, Safeway', 5, 'Baskin-Robbins, Jamba, Quest Diagnostics, Starbucks, Wells Fargo', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.74510848571429, -121.26495452857144, 359.4, 46, 'Unnamed Retail Center', '1607 Douglas Boulevard Roseville', 'Placer County', 'Roseville', 1, 'Office Depot', 6, 'Carl\'s Jr., Del Taco, Galleria Vape & Smoke, Hampton Inn & Suites Roseville, IHOP, Outback Steakhouse', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.67519692857143, -121.26869707142858, 289.7, 47, 'Unnamed Retail Center', '6100 Sunrise Boulevard Citrus Heights', 'Placer County', 'Citrus Heights', 1, 'JCPenney', 6, 'California Basics, Kay Jewelers, Perfumes Luxe, Sunrise Mall, Tops Men\'s Fashion, claire\'s', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-128624" target="_blank" rel="noopener">CBRE — Chris Campbell</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-128624" target="_blank" rel="noopener">CBRE — Jason Read</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-128624" target="_blank" rel="noopener">CBRE — Scott Carruth</a><br>');
+addPlaza(38.70475487142857, -121.36359510000001, 289.7, 48, 'Unnamed Retail Center', '4331 Antelope Road Antelope', 'Sacramento County', 'Antelope', 1, 'Walgreens', 6, 'America\'s Tire, ChargePoint, Dutch Bros. Coffee, Krispy Krunchy Chicken, Mobil, Statewide Self Storage', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.77490315, -121.26365681666665, 305.1, 49, 'Unnamed Retail Center', '1248 Galleria Boulevard Roseville', 'Placer County', 'Roseville', 1, 'Burlington', 5, 'American Furniture Superstore, Barnes & Noble, Bob\'s Discount Furniture, Old Navy, Raising Cane\'s', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.6886017, -121.38421243333335, 289.7, 50, 'Unnamed Retail Center', '6705 Watt Avenue North Highlands', 'Sacramento County', 'North Highlands', 1, 'Rite Aid', 5, 'Crown Wig & Beauty Supply, In the Mix Salon & Barber, NAPA Auto Parts, PJ Mart, Popeyes', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.77794566666666, -121.26266018333332, 289.7, 51, 'Unnamed Retail Center', '6860 Five Star Boulevard Rocklin', 'Placer County', 'Rocklin', 1, 'Harbor Freight Tools', 5, 'Alterations, Beryozka European Food Market, Hair Extensions, Harmony Spa, Scandinavian Designs', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.66809593333333, -121.33776439999998, 305.1, 52, 'Unnamed Retail Center', '5439 Auburn Boulevard Sacramento North', 'Placer County', 'Sacramento North', 1, 'Harbor Freight Tools', 5, 'O\'Reilly Auto Parts, Starbucks, The Bird Shop, Tienda La Bendicion, Tony\'s Haircut', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.72167123333333, -121.29087438333333, 289.7, 53, 'Unnamed Retail Center', '21 Whyte Avenue Roseville', 'Placer County', 'Roseville', 1, 'Gold\'s Gym', 5, '7-Eleven, Chevron, Jack in the Box, Shell, Wells Fargo', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.679596000000004, -121.29345142, 289.7, 54, 'Unnamed Retail Center', '7301 Greenback Lane Citrus Heights', 'Placer County', 'Citrus Heights', 2, 'Safeway, Sam\'s Club', 3, 'Ecothrift, The UPS Store, Verizon', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.crexi.com/lease/properties/825382/california-san-juan-plaza-shopping-center" target="_blank" rel="noopener">ROME Real Estate Group — Chase Burke</a><br><a href="https://www.crexi.com/lease/properties/825382/california-san-juan-plaza-shopping-center" target="_blank" rel="noopener">ROME Real Estate Group — Andy Jonsson</a><br><a href="https://www.crexi.com/lease/properties/916342/california-san-juan-plaza" target="_blank" rel="noopener">GQ North Real Estate — Nate Giwoff</a><br><a href="https://www.crexi.com/lease/properties/916342/california-san-juan-plaza" target="_blank" rel="noopener">GQNorth Real Estate — Bob Shahlaie</a><br>');
+addPlaza(38.851063579999995, -121.28790111999999, 312.5, 55, 'Unnamed Retail Center', '835 Twelve Bridges Drive Lincoln', 'Placer County', 'Lincoln', 1, 'Walgreens', 4, 'Columbia Bank, Nielson Fine Floors, Raceday Cycle & Multisport, Your CBD Store, Lincoln', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.742219, -121.30874762, 326.8, 56, 'Unnamed Retail Center', '3999 Foothills Boulevard Roseville', 'Placer County', 'Roseville', 1, 'Walgreens', 4, 'Arco, Builders Showcase, Tommy\'s Express, ampm', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.80343072, -121.2738981, 289.7, 57, 'Unnamed Retail Center', '2220 Sunset Boulevard Rocklin', 'Placer County', 'Rocklin', 1, 'Safeway', 4, 'Jimboy\'s Tacos, McDonald\'s, Panda Express, Prime Storage', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.664326100000004, -121.30765624, 289.7, 58, 'Unnamed Retail Center', '5450 Dewey Drive Fair Oaks', 'Placer County', 'Fair Oaks', 1, 'Safeway', 4, 'Kaur Beauty Bar, Rocki\'s Chicken, Starbucks, Taco Bell', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.tricommercial.com/properties/529814-lease/" target="_blank" rel="noopener">TRI Commercial — Brenda Miller</a><br>');
+addPlaza(38.7978097, -121.26521908, 289.7, 59, 'Unnamed Retail Center', '2401 Coppervale Drive Rocklin', 'Placer County', 'Rocklin', 1, 'Bel Air', 4, '76, La Petite Academy, Taco Bell, The Human Bean', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.875284674999996, -121.29598167500001, 289.7, 60, 'Unnamed Retail Center', '53 Lincoln Boulevard Lincoln', 'Placer County', 'Lincoln', 1, 'Dollar Tree', 3, 'Lincoln Laundry, McDonald\'s, Verizon', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.678959825, -121.274751525, 289.7, 61, 'Unnamed Retail Center', '7833 Greenback Lane Citrus Heights', 'Placer County', 'Citrus Heights', 2, 'Big 5 Sporting Goods, Harbor Freight Tools', 2, 'Kelly-Moore Paints, Mattress Firm', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.807702675, -121.20464065, 289.7, 62, 'Unnamed Retail Center', '4211 Sierra College Boulevard Rocklin', 'Placer County', 'Rocklin', 1, 'Costco', 3, 'Chevron, Electrify America, McDonald\'s', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.815181825, -121.258577725, 289.7, 63, 'Unnamed Retail Center', '3001 Stanford Ranch Road Rocklin', 'Placer County', 'Rocklin', 1, 'Save Mart', 3, 'Anytime Fitness, Quickly, Starbucks', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.689707199999994, -121.29578624999999, 289.7, 64, 'Unnamed Retail Center', '7010 Auburn Boulevard Citrus Heights', 'Placer County', 'Citrus Heights', 2, 'Costco, Walmart Supercenter', 2, 'Coinstar, Redbox', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.crexi.com/lease/properties/892015/california-sylvan-village" target="_blank" rel="noopener">GQ North Real Estate — Nate Giwoff</a><br><a href="https://www.crexi.com/lease/properties/892015/california-sylvan-village" target="_blank" rel="noopener">GQNorth Real Estate — Bob Shahlaie</a><br>');
+addPlaza(38.767128066666665, -121.3572922, 289.7, 65, 'Unnamed Retail Center', '-', 'Placer County', '-', 1, 'Safeway', 2, 'Bank of America, McDonald\'s', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.7972133, -121.21593896666667, 289.7, 66, 'Unnamed Retail Center', '-', 'Placer County', '-', 1, 'California Family Fitness', 2, 'Model Home Furniture and Consignment, Pottery World', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.7919445, -121.29100585, 289.7, 67, 'Unnamed Retail Center', '10451 Fairway Drive Roseville', 'Placer County', 'Roseville', 1, 'Target', 1, 'Ethan Allen', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.782859849999994, -121.24039015, 289.7, 68, 'Unnamed Retail Center', '5609 Pacific Street Rocklin', 'Placer County', 'Rocklin', 1, 'Walmart Neighborhood Market', 1, 'Rocklin Florist', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+  addStore(38.7897526, -121.279782, 'Nugget Markets', '771 Pleasant Grove Boulevard Roseville', '#f39c12', 8, 'Unnamed Retail Center', true);
+addStore(38.7443698, -121.2739512, 'Arco', '1139 Douglas Boulevard Roseville', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(38.7888409, -121.281336, 'Chevron', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(38.7692114, -121.3304445, 'Wells Fargo', '-', '#3498db', 29, 'Unnamed Retail Center', false);
+addStore(38.7927404, -121.291807, 'Ethan Allen', '10513 Fairway Drive', '#3498db', 67, 'Unnamed Retail Center', false);
+addStore(38.789529, -121.280838, 'Chipotle', '781 Pleasant Grove Boulevard Roseville', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(38.7894609, -121.280705, 'Wells Fargo', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(38.7483901, -121.2691315, 'A Classic Touch Salon', '212 C Harding Boulevard', '#3498db', 31, 'Unnamed Retail Center', false);
+addStore(38.7489257, -121.270201, 'Chevron', '-', '#3498db', 31, 'Unnamed Retail Center', false);
+addStore(38.7607783, -121.310788, 'Togo\'s', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(38.7608739, -121.3107861, 'The UPS Store', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(38.7594892, -121.3119295, 'Papa Murphy\'s', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(38.7595017, -121.3120637, 'Baskin-Robbins', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(38.8498861, -121.286283, 'Your CBD Store, Lincoln', '835 Twelve Bridges Drive Lincoln', '#3498db', 55, 'Unnamed Retail Center', false);
+addStore(38.729761, -121.271777, '7-Eleven', '-', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(38.7523037, -121.309923, 'Starbucks', '4000 Foothills Boulevard Roseville', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.7505391, -121.3087777, 'Panda Express', '3981 Foothills Boulevard Roseville', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.7626962, -121.3128329, 'AutoZone', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(38.7624832, -121.3127424, 'Dollar Tree', '-', '#f39c12', 11, 'Unnamed Retail Center', true);
+addStore(38.7513842, -121.3108962, 'Supercuts', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.7947212, -121.33054, 'Round Table Pizza', '-', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(38.7948484, -121.329879, 'Carl\'s Jr.', '9065 Woodcreek Oaks Boulevard Roseville', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(38.7944584, -121.33038, 'Great Clips', '-', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(38.794862, -121.329189, 'Bank of America', '-', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(38.7692013, -121.331789, 'Subway', '4021 Woodcreek Oaks Boulevard Roseville', '#3498db', 29, 'Unnamed Retail Center', false);
+addStore(38.7690132, -121.3304301, 'Starbucks', '4001 Woodcreek Oaks Boulevard Woodcreek Village', '#3498db', 29, 'Unnamed Retail Center', false);
+addStore(38.7691802, -121.3321015, 'Little Caesars', '-', '#3498db', 29, 'Unnamed Retail Center', false);
+addStore(38.7690115, -121.331011, 'Golden 1 Credit Union', '-', '#3498db', 29, 'Unnamed Retail Center', false);
+addStore(38.7784059, -121.28969, 'Union Bank', '-', '#3498db', 35, 'Unnamed Retail Center', false);
+addStore(38.777996, -121.290267, 'Subway', '1040 Pleasant Grove Boulevard Roseville', '#3498db', 35, 'Unnamed Retail Center', false);
+addStore(38.7773632, -121.289883, 'Paris Baguette', '-', '#3498db', 35, 'Unnamed Retail Center', false);
+addStore(38.7786516, -121.28992, 'Round Table Pizza', '-', '#3498db', 35, 'Unnamed Retail Center', false);
+addStore(38.778185, -121.289054, 'America\'s Best', '-', '#3498db', 35, 'Unnamed Retail Center', false);
+addStore(38.7904983, -121.287419, 'Great Clips', '-', '#3498db', 43, 'Unnamed Retail Center', false);
+addStore(38.7891756, -121.282614, 'Quiznos', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(38.7887666, -121.28368, 'BevMo!', '-', '#f39c12', 8, 'Unnamed Retail Center', true);
+addStore(38.7735738, -121.262937, 'Jamba', '1228 Galleria Boulevard Roseville', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7735738, -121.263065, 'Quiznos', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7722462, -121.2700314, 'Crate & Barrel', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7673647, -121.2670545, 'Whole Foods Market', '1001 Galleria Boulevard Roseville', '#f39c12', 2, 'Unnamed Retail Center', true);
+addStore(38.7675978, -121.2681354, 'Jack\'s Urban Eats', '1005 Roseville Parkway Roseville', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7725745, -121.2702442, 'H&M', '1151 Galleria Boulevard Roseville', '#f39c12', 0, 'Unnamed Retail Center', true);
+addStore(38.782818, -121.2661443, 'Togo\'s', '-', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(38.7481396, -121.262658, 'United States Post Office', '1880 Sierra Gardens Drive', '#3498db', 27, 'Unnamed Retail Center', false);
+addStore(38.7451081, -121.262534, 'Dimple Records', '-', '#3498db', 27, 'Unnamed Retail Center', false);
+addStore(38.7745565, -121.2622119, 'Bath & Body Works', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7735694, -121.2629931, 'Cold Stone Creamery', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7734474, -121.2613465, 'Ulta Beauty', '1232 Galleria Boulevard Roseville', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7726087, -121.261463, 'Carter\'s', '1204 Galleria Boulevard Roseville', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7732387, -121.2613346, 'Club Champion', '1232 Galleria Boulevard Roseville', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7735539, -121.263262, 'Starbucks', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7745547, -121.2619987, 'Famous Footwear', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7735584, -121.2631583, 'Jimboy\'s Tacos', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.782743, -121.266255, 'Red Wing', '-', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(38.7828255, -121.2663727, 'Island Nails', '-', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(38.7827705, -121.2670741, 'AT&T', '-', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(38.7827858, -121.2674385, 'Party City', '6748 Stanford Ranch Road Roseville', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(38.7835765, -121.2727883, 'Mattress Outlet', '-', '#3498db', 40, 'Unnamed Retail Center', false);
+addStore(38.7836132, -121.2728824, 'Advance America', '-', '#3498db', 40, 'Unnamed Retail Center', false);
+addStore(38.7892057, -121.2802984, 'Sherman Clay', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(38.7901565, -121.2789335, 'Papa Murphy\'s', '731 Pleasant Grove Boulevard', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(38.7903623, -121.2787657, 'Bianca\'s Fine Jewelry', '731 Pleasant Grove Boulevard', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(38.7904324, -121.2787154, 'Huntington Learning Center', '731 Pleasant Grove Boulevard', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(38.7897503, -121.280905, 'Citibank', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(38.7898025, -121.279436, 'Massage Heights', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(38.7900252, -121.279111, 'Peet\'s Coffee', '731', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(38.7891326, -121.282649, 'Jamba', '10305 Fairway Drive Roseville', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(38.7767753, -121.2915691, 'Bambu', '-', '#3498db', 35, 'Unnamed Retail Center', false);
+addStore(38.7781113, -121.288956, 'The Sandwich Spot', '-', '#3498db', 35, 'Unnamed Retail Center', false);
+addStore(38.7690217, -121.3309015, 'Coldwell Banker', '-', '#3498db', 29, 'Unnamed Retail Center', false);
+addStore(38.790301, -121.2788157, 'B. B. Nail Spa', '731 Pleasant Grove Boulevard', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(38.7691763, -121.332022, 'Goodwill Donation Express', '-', '#3498db', 29, 'Unnamed Retail Center', false);
+addStore(38.7507739, -121.3077562, 'Mountain Mike\'s', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.7510296, -121.3077687, 'Live-More', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.7521718, -121.3099271, 'Dry Clean Today', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.7609554, -121.3108213, 'Roseville Cleaners', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(38.7621588, -121.3126618, 'Get Nailed Salon', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(38.762037, -121.312614, 'Liquor & Wine', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(38.7622717, -121.3127071, 'Advance America Cash Advance', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(38.7619153, -121.3125663, 'The Tools Vault', '5140 Foothills Boulevard', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(38.7606933, -121.3123256, 'Top Ten Nails', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(38.752588, -121.3111553, 'Trendy Nails', '4006 Foothills Boulevard Roseville', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.7527662, -121.3111487, 'Great Cuts', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.7513878, -121.311097, 'Cartridge World', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.7904338, -121.287265, 'GameStop', '-', '#3498db', 43, 'Unnamed Retail Center', false);
+addStore(38.7893961, -121.287991, 'Starbucks', '10441 Fairway Drive Roseville', '#3498db', 43, 'Unnamed Retail Center', false);
+addStore(38.7887706, -121.284102, 'Aaron Brothers', '-', '#3498db', 43, 'Unnamed Retail Center', false);
+addStore(38.7887808, -121.285172, 'PetSmart', '10363 Fairway Drive Roseville', '#3498db', 43, 'Unnamed Retail Center', false);
+addStore(38.7898487, -121.283812, 'U.S. Bank', '-', '#3498db', 43, 'Unnamed Retail Center', false);
+addStore(38.7894736, -121.288162, 'Massage Envy', '-', '#3498db', 43, 'Unnamed Retail Center', false);
+addStore(38.7438604, -121.2577488, 'Panera Bread', '1850 Douglas Boulevard Roseville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7819047, -121.2720451, 'Guitar Center', '-', '#3498db', 40, 'Unnamed Retail Center', false);
+addStore(38.729082, -121.271042, 'Peet\'s Coffee', '1200 Cirby Way Roseville', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(38.7016959, -121.382406, 'Tailpipes Smog Test Centers', '7460 Watt Avenue North Highlands', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(38.703756, -121.3825219, 'Speedway', '7550 Watt Avenue North Highlands', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(38.7150773, -121.3942227, 'Goodwill', '8031 Watt Avenue', '#3498db', 25, 'Unnamed Retail Center', false);
+addStore(38.714752, -121.394152, 'Antelope Liquors', '8023 Watt Avenue Antelope', '#3498db', 25, 'Unnamed Retail Center', false);
+addStore(38.7147353, -121.393734, 'M&M Deli', '8015 Watt Avenue Antelope', '#3498db', 25, 'Unnamed Retail Center', false);
+addStore(38.714733, -121.393493, 'Beauty Hair & Nails', '8009 Watt Avenue Antelope', '#3498db', 25, 'Unnamed Retail Center', false);
+addStore(38.7147364, -121.393854, 'H&R Block', '8019 Watt Avenue Antelope', '#3498db', 25, 'Unnamed Retail Center', false);
+addStore(38.7121948, -121.3635337, 'Great Clips', '4320 Elverta Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7111095, -121.366035, 'London Nails', '7897 Walerga Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7129996, -121.365462, 'Banfield Pet Hospital', '7917 Elverta Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7120967, -121.363528, 'Subway', '4320 Elverta Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7122392, -121.364785, 'Jamba', '7903 Walerga Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7122438, -121.364708, 'Supercuts', '7903 Walerga Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.712943, -121.3661482, 'Round Table Pizza', '7909 Walerga Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7110712, -121.3656722, 'Xfinity', '7893 Walerga Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7110932, -121.3652546, 'Leslie\'s Pool Supplies', '7893 Walerga Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7112567, -121.3660439, 'Custom Cleaners', '7897 Walerga Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7122018, -121.364884, 'California Sun', '7903 Walerga Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.712422, -121.3635701, 'Papa Murphy\'s', '4320 Elverta Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7507539, -121.310677, 'India Supermarket', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.7504095, -121.3106745, 'Crystal Nails', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.7841973, -121.2713332, 'Starbucks', '9450 Fairway Drive Roseville', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(38.799067, -121.295027, 'Hobby Lobby', '-', '#3498db', 34, 'Unnamed Retail Center', false);
+addStore(38.7850722, -121.287523, 'Extreme Soccer', '-', '#3498db', 26, 'Unnamed Retail Center', false);
+addStore(38.7853085, -121.287185, 'Batteries Plus Bulbs', '-', '#3498db', 26, 'Unnamed Retail Center', false);
+addStore(38.7855986, -121.286475, 'AAA Insurance', '-', '#3498db', 26, 'Unnamed Retail Center', false);
+addStore(38.7855577, -121.2868904, 'Hawaii Massage', '-', '#3498db', 26, 'Unnamed Retail Center', false);
+addStore(38.7854954, -121.286964, 'Curves', '-', '#3498db', 26, 'Unnamed Retail Center', false);
+addStore(38.745814, -121.2550327, 'Crumbl Cookies', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7458136, -121.2549417, 'HearUSA', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.745815, -121.2552148, 'Supercuts', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7457993, -121.255558, 'Leslie\'s Pool Supplies', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7447951, -121.2539029, 'Papa Murphy\'s', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7446284, -121.2536638, 'FedEx Office', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(38.7458145, -121.2551238, 'Club Pilates', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7437687, -121.2525195, 'Wells Fargo', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(38.7486561, -121.263293, 'Enterprise', '199 North Sunrise Avenue Roseville', '#3498db', 27, 'Unnamed Retail Center', false);
+addStore(38.8072101, -121.2048843, 'McDonald\'s', '4211 Sierra College Boulevard Rocklin', '#3498db', 62, 'Unnamed Retail Center', false);
+addStore(38.8068715, -121.204849, 'Chevron', '-', '#3498db', 62, 'Unnamed Retail Center', false);
+addStore(38.751002, -121.307142, 'USPS', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.7429147, -121.2519953, 'Sprouts Farmers Market', '2030 Douglas Boulevard Roseville', '#f39c12', 10, 'Unnamed Retail Center', true);
+addStore(38.7434666, -121.2585537, 'Aqua-Tots Swim Schools', '1850 Douglas Boulevard Roseville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7434643, -121.2581318, 'American Automobile Association', '1850 Douglas Boulevard Roseville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7434648, -121.2580466, 'Royal Spa & Massage', '1850 Douglas Boulevard Roseville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7438782, -121.2504102, 'AT&T', '2030 Douglas Boulevard', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(38.7432556, -121.2572948, 'Mountain Mike\'s', '1850 Douglas Boulevard Roseville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7432605, -121.2571898, 'The Serpentarium', '1850 Douglas Boulevard Roseville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7432567, -121.2570255, 'Lakeshore Learning', '1850 Douglas Boulevard', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7432693, -121.2564663, 'Crossroads Trading Co', '1850 Douglas Boulevard', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7432589, -121.2559852, 'Mark’s Hallmark', '1850 Douglas Boulevard Roseville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7432724, -121.255742, 'Pick A Color', '1850 Douglas Boulevard Roseville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7434866, -121.2554577, 'Lendmark', '1850 Douglas Boulevard Roseville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7438664, -121.2554047, 'HearingLife', '1850 Douglas Boulevard Roseville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7448798, -121.2762033, 'Grocery Outlet', '424 Roseville Square Roseville', '#f39c12', 6, 'Unnamed Retail Center', true);
+addStore(38.6798271, -121.2703327, 'BevMo!', '7929 Greenback Lane Citrus Heights', '#f39c12', 12, 'Unnamed Retail Center', true);
+addStore(38.6798103, -121.270794, 'Sprouts Farmers Market', '7905 Greenback Lane Citrus Heights', '#f39c12', 12, 'Unnamed Retail Center', true);
+addStore(38.6798313, -121.2699143, 'Round Table Pizza', '-', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(38.6788011, -121.269833, 'Black Angus', '-', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(38.6788681, -121.270772, 'Panera Bread', '7901 Greenback Lane Citrus Heights', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(38.6741379, -121.273098, 'Jamba', '6061 Sunrise Boulevard Citrus Heights', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(38.7443353, -121.22684, 'Shell', '-', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(38.7408693, -121.2255523, 'Round Table Pizza', '-', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(38.7433492, -121.309673, 'ampm', '-', '#3498db', 56, 'Unnamed Retail Center', false);
+addStore(38.874087, -121.2948285, 'Lowe\'s', '51 Lincoln Boulevard Lincoln', '#f39c12', 4, 'Unnamed Retail Center', true);
+addStore(38.8509215, -121.287111, 'Columbia Bank', '-', '#3498db', 55, 'Unnamed Retail Center', false);
+addStore(38.7446405, -121.2596895, 'Togo\'s', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.6638699, -121.306634, 'Taco Bell', '6745 Madison Avenue Fair Oaks', '#3498db', 58, 'Unnamed Retail Center', false);
+addStore(38.7892616, -121.2825437, 'V Max Cleaners', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(38.7438166, -121.275224, 'Popeyes', '1110 Douglas Boulevard Roseville', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(38.6812706, -121.322489, 'NVision Sacramento (f/k/a Meister Eye & Laser Center)', '5959 Greenback Lane, Suite 310 Citrus Heights', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(38.7618811, -121.3111371, 'KFC', '5130 Foothills Boulevard Roseville', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(38.7625066, -121.3116283, 'Jack in the Box', '5150 Foothills Boulevard Roseville', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(38.7511492, -121.308851, 'ChargePoint', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.7042523, -121.364476, 'ChargePoint', '-', '#3498db', 48, 'Unnamed Retail Center', false);
+addStore(38.8054624, -121.207038, 'Panera Bread', '5100 Commons Drive Rocklin', '#3498db', 23, 'Unnamed Retail Center', false);
+addStore(38.8034121, -121.209007, 'Ross', '5112 Commons Drive Rocklin', '#f39c12', 23, 'Unnamed Retail Center', true);
+addStore(38.8028944, -121.20906, 'Trader Joe\'s', '5116 Commons Drive', '#f39c12', 23, 'Unnamed Retail Center', true);
+addStore(38.8025154, -121.209088, 'Ulta Beauty', '5120 Commons Drive Rocklin', '#3498db', 23, 'Unnamed Retail Center', false);
+addStore(38.8036419, -121.2089968, 'Bath & Body Works', '-', '#3498db', 23, 'Unnamed Retail Center', false);
+addStore(38.803756, -121.2089915, 'Five Below', '-', '#3498db', 23, 'Unnamed Retail Center', false);
+addStore(38.804377, -121.206592, 'Supercuts', '-', '#3498db', 23, 'Unnamed Retail Center', false);
+addStore(38.8044823, -121.206587, 'Verizon', '-', '#3498db', 23, 'Unnamed Retail Center', false);
+addStore(38.8045876, -121.206583, 'Chipotle', '5194 Commons Drive Rocklin', '#3498db', 23, 'Unnamed Retail Center', false);
+addStore(38.8047787, -121.206824, 'Noodles & Company', '-', '#3498db', 23, 'Unnamed Retail Center', false);
+addStore(38.801216, -121.204207, 'Starbucks', '5494 Crossings Drive Rocklin', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(38.7979011, -121.215404, 'Model Home Furniture and Consignment', '-', '#3498db', 66, 'Unnamed Retail Center', false);
+addStore(38.7967801, -121.2146202, 'Pottery World', '-', '#3498db', 66, 'Unnamed Retail Center', false);
+addStore(38.7959292, -121.328017, 'Walgreens', '-', '#f39c12', 20, 'Unnamed Retail Center', true);
+addStore(38.6747721, -121.2734146, 'Barnes & Noble', '-', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(38.6753522, -121.268001, 'JCPenney', '6100 Sunrise Boulevard Citrus Heights', '#f39c12', 47, 'Unnamed Retail Center', true);
+addStore(38.801012, -121.204694, 'AT&T', '-', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(38.8010135, -121.204163, 'Gentle Dental', '-', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(38.8011221, -121.204186, 'Great Clips', '-', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(38.6799133, -121.2697003, 'GameStop', '7945 Greenback Lane Citrus Heights', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(38.6798118, -121.269531, 'Wingstop', '7947 Greenback Lane Citrus Heights', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(38.6796621, -121.2688785, 'Marshalls', '7975 Greenback Lane Citrus Heights', '#f39c12', 12, 'Unnamed Retail Center', true);
+addStore(38.6794238, -121.2688883, 'Skechers', '7975 Greenback Lane Citrus Heights', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(38.6793033, -121.2684125, 'Half Price Books', '7975 Greenback Lane Citrus Heights', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(38.6792539, -121.2678125, 'HD Supply Home Improvement Solutions', '7999 Greenback Lane Citrus Heights', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(38.6742577, -121.273186, 'Verizon', '6065 Sunrise Boulevard Citrus Heights', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(38.6724031, -121.2720053, 'Panda Express', '5871 Sunrise Boulevard Citrus Heights', '#3498db', 38, 'Unnamed Retail Center', false);
+addStore(38.6722535, -121.2720211, 'Supercuts', '-', '#3498db', 38, 'Unnamed Retail Center', false);
+addStore(38.6721935, -121.2720255, 'Metro by T-Mobile', '5859 Sunrise Boulevard Citrus Heights', '#3498db', 38, 'Unnamed Retail Center', false);
+addStore(38.6721287, -121.2720258, 'Jersey Mike\'s Subs', '5855 Sunrise Boulevard Citrus Heights', '#3498db', 38, 'Unnamed Retail Center', false);
+addStore(38.6720252, -121.2720261, 'Chipotle', '5871 Sunrise Boulevard Citrus Heights', '#3498db', 38, 'Unnamed Retail Center', false);
+addStore(38.6872017, -121.3407833, 'Pizza Hut', '5323 Elkhorn Boulevard Sacramento', '#3498db', 30, 'Unnamed Retail Center', false);
+addStore(38.7680224, -121.2691384, 'Pressed Juicery', '1182 Roseville Parkway', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7680234, -121.2677587, 'Joli Nail Spa', '1198 Roseville Parkway', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7680064, -121.2678613, 'Paper Source', '1198 Roseville Parkway', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7681038, -121.268218, 'Willo', '1198 Roseville Parkway', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7680232, -121.267684, 'Engel & Völkers', '1198 Roseville Parkway', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.768037, -121.2674749, 'Sur La Table', '1198 Roseville Parkway', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7679998, -121.268157, 'Burger Lounge', '1198 East Roseville Parkway Roseville', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7680922, -121.2686631, 'Nick The Greek', '1182 Roseville Parkway Roseville', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7680132, -121.2673246, 'Peet\'s Coffee', '1198 Roseville Parkway', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.767815, -121.2693676, 'Creamy\'s', '1198 Roseville Parkway', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7680328, -121.2689827, 'Anthropologie', '1182 Roseville Parkway', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.768023, -121.2692262, 'Sunglass Hut', '1182 Roseville Parkway', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7680375, -121.269508, 'J. Crew Factory', '1198 Roseville Parkway', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7680287, -121.2700846, 'Dave & Buster\'s', '1174 Roseville Parkway', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7676591, -121.2700574, 'Escapology', '1017 Roseville Parkway', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7676726, -121.270166, 'California Closets', '1017 Roseville Parkway', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7694806, -121.3317877, 'Fresh Cleaners', '-', '#3498db', 29, 'Unnamed Retail Center', false);
+addStore(38.7693701, -121.3317891, 'Woodcreek Nails & Spa', '-', '#3498db', 29, 'Unnamed Retail Center', false);
+addStore(38.7692905, -121.3317831, 'Old Gold Exchange', '-', '#3498db', 29, 'Unnamed Retail Center', false);
+addStore(38.7471939, -121.266342, 'Enterprise', '150 North Sunrise Avenue', '#3498db', 31, 'Unnamed Retail Center', false);
+addStore(38.8750164, -121.3024615, 'Frozen Yogurt', 'Ferrari Ranch Road Lincoln', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(38.8750327, -121.3026745, 'Togo\'s', '107 Ferrari Ranch Road Lincoln', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(38.8723364, -121.3028192, 'Philly Nail & Spa', '127 Ferrari Ranch Road Lincoln', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(38.8724614, -121.3028974, 'Mattress Firm', '127 Ferrari Ranch Road Lincoln', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(38.8729797, -121.3031871, 'Starbucks', '129 Ferrari Ranch Road Lincoln', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(38.8010081, -121.2045186, 'Dazzling Nails and Spa', '-', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(38.8010091, -121.2046071, 'See\'s Candies', '5498 Crossings Drive Rocklin', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(38.8007021, -121.203179, 'Waxing the City', '-', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(38.8002115, -121.204591, 'The UPS Store', '-', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(38.8001782, -121.204412, 'Dickey\'s Barbecue Pit', '-', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(38.8003823, -121.204067, 'Wingstop', '-', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(38.8003807, -121.2038415, 'MOD Pizza', '-', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(38.6810385, -121.3214603, 'Creekside Coin Wash', '6047 Greenback Lane Citrus Heights', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(38.6810511, -121.3217205, 'Vonne\'s Hair & Nails', '-', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(38.6693191, -121.3351407, 'The Bird Shop', '-', '#3498db', 52, 'Unnamed Retail Center', false);
+addStore(38.7141797, -121.367099, 'Panda Express', '4141 Elverta Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7141779, -121.3673459, 'GameStop', '4141 Elverta Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.6800513, -121.29328, 'Ecothrift', '7305', '#3498db', 54, 'Unnamed Retail Center', false);
+addStore(38.8730505, -121.3032737, 'AT&T', '129 Ferrari Ranch Road Lincoln', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(38.7537685, -121.3111228, 'Sutter Walk-In Care', '4010 Foothills Boulevard Roseville', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.6686713, -121.3382838, 'O\'Reilly Auto Parts', '-', '#3498db', 52, 'Unnamed Retail Center', false);
+addStore(38.6690645, -121.3380917, 'Harbor Freight Tools', '5439 Auburn Boulevard Sacramento North', '#f39c12', 52, 'Unnamed Retail Center', true);
+addStore(38.709514, -121.3132575, 'Raley\'s', '7847 Lichen Drive Citrus Heights', '#f39c12', 9, 'Unnamed Retail Center', true);
+addStore(38.7079393, -121.3130374, '76', '7800 Lichen Drive Citrus Heights', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(38.7078349, -121.3124297, 'McDonald\'s', '7850 Lichen Drive Citrus Heights', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(38.7094744, -121.3119575, 'Round Table Pizza', '7873 Lichen Drive Citrus Heights', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(38.7078862, -121.3139054, 'Wendy\'s', '6435 Antelope Road Citrus Heights', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(38.7078936, -121.3144211, 'O\'Reilly Auto Parts', '6425 Antelope Road Citrus Heights', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(38.7095047, -121.3126422, 'Dollar Tree', '7859 Lichen Drive Citrus Heights', '#f39c12', 9, 'Unnamed Retail Center', true);
+addStore(38.7077406, -121.3150017, '7-Eleven', '6401 Antelope Road Citrus Heights', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(38.7077528, -121.3151351, 'Great Clips', '6401 Antelope Road Citrus Heights', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(38.7070359, -121.312996, 'Popeyes', '6502 Antelope Road Citrus Heights', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(38.705833, -121.3276752, 'Chevron', '5869 Antelope Road Sacramento', '#3498db', 41, 'Unnamed Retail Center', false);
+addStore(38.7059143, -121.3280317, 'Burger King', '5869 Antelope Road Sacramento', '#3498db', 41, 'Unnamed Retail Center', false);
+addStore(38.7447821, -121.2734514, 'O\'Reilly Auto Parts', '106 Harding Boulevard Roseville', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(38.7449491, -121.2746096, 'Starbucks', '415 Roseville Square Roseville', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(38.7461181, -121.2738405, 'Chase', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(38.746942, -121.27344, 'Smart & Final Extra!', '1159 Roseville Square Roseville', '#f39c12', 6, 'Unnamed Retail Center', true);
+addStore(38.7434888, -121.2734649, 'Big O Tires', '199 South Harding Boulevard Roseville', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(38.7424161, -121.226555, 'Five Guys', '8620 Sierra College Boulevard Roseville', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(38.7415689, -121.2268138, 'McDonald\'s', '8660 Sierra College Boulevard Roseville', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(38.7426366, -121.2255783, 'The Habit Burger Grill', '-', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(38.6785666, -121.2921157, 'Donut King', '-', '#3498db', 24, 'Unnamed Retail Center', false);
+addStore(38.744824, -121.2256001, 'Carl\'s Jr.', '8477 Sierra College Boulevard Granite Bay', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(38.741348, -121.2256626, 'Subway', '8711 Sierra College Boulevard Granite Bay', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(38.7439176, -121.2625572, 'Galleria Vape & Smoke', '1720 Douglas Boulevard Roseville', '#3498db', 46, 'Unnamed Retail Center', false);
+addStore(38.6778157, -121.295493, 'Subway', '7340 Greenback Lane Citrus Heights', '#3498db', 24, 'Unnamed Retail Center', false);
+addStore(38.6775493, -121.2951651, 'Ross', '7342 Greenback Lane Citrus Heights', '#f39c12', 24, 'Unnamed Retail Center', true);
+addStore(38.6771047, -121.294638, 'Burlington', '6145 San Juan Avenue Citrus Heights', '#f39c12', 24, 'Unnamed Retail Center', true);
+addStore(38.6766633, -121.2939995, 'Kohl\'s', '6135 San Juan Avenue Citrus Heights', '#f39c12', 24, 'Unnamed Retail Center', true);
+addStore(38.6779066, -121.2928074, 'Del Taco', '-', '#3498db', 24, 'Unnamed Retail Center', false);
+addStore(38.6788185, -121.272585, 'Firestone', '-', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(38.6790153, -121.2742775, 'Kelly-Moore Paints', '-', '#3498db', 61, 'Unnamed Retail Center', false);
+addStore(38.6789609, -121.274642, 'Big 5 Sporting Goods', '7833 Greenback Lane Citrus Heights', '#f39c12', 61, 'Unnamed Retail Center', true);
+addStore(38.6789546, -121.2749427, 'Harbor Freight Tools', '7829 Greenback Lane Citrus Heights', '#f39c12', 61, 'Unnamed Retail Center', true);
+addStore(38.6789085, -121.2751439, 'Mattress Firm', '7849 Greenback Lane Citrus Heights', '#3498db', 61, 'Unnamed Retail Center', false);
+addStore(38.6803183, -121.2720844, 'Buffalo Wild Wings', '-', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(38.7139849, -121.3649382, 'Arco', '7969 Walerga Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7144131, -121.3682754, 'Chase', '4117 Elverta Road Antelope', '#3498db', 37, 'Unnamed Retail Center', false);
+addStore(38.715287, -121.3665894, 'The UPS Store', '4207 Elverta Road Antelope', '#3498db', 37, 'Unnamed Retail Center', false);
+addStore(38.7152897, -121.3662588, 'Mountain Mike\'s', '4207 Elverta Road Antelope', '#3498db', 37, 'Unnamed Retail Center', false);
+addStore(38.7153039, -121.3658896, 'Petco', '4207 Elverta Road Antelope', '#f39c12', 37, 'Unnamed Retail Center', true);
+addStore(38.7137302, -121.3634968, 'Firestone', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7137192, -121.3640635, 'Chevron', '7966 Walerga Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.6883026, -121.3845244, 'Rite Aid', '-', '#f39c12', 50, 'Unnamed Retail Center', true);
+addStore(38.6910464, -121.3836531, 'Walgreens', '-', '#f39c12', 13, 'Unnamed Retail Center', true);
+addStore(38.6915343, -121.3808715, 'Big 5 Sporting Goods', '-', '#f39c12', 13, 'Unnamed Retail Center', true);
+addStore(38.6914642, -121.3796322, 'Dollar Tree', '-', '#f39c12', 13, 'Unnamed Retail Center', true);
+addStore(38.6908227, -121.3824571, 'Redbox', '-', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(38.6914622, -121.3817995, 'dd\'s Discounts', '-', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(38.6914676, -121.3812947, 'Big Lots', '3615 Elkhorn Boulevard North Highlands', '#f39c12', 13, 'Unnamed Retail Center', true);
+addStore(38.7938133, -121.3262573, 'Nugget Markets', '-', '#f39c12', 20, 'Unnamed Retail Center', true);
+addStore(38.7817301, -121.2412146, 'Rocklin Florist', '5885 Pacific Street', '#3498db', 68, 'Unnamed Retail Center', false);
+addStore(38.703977, -121.3312778, 'Redbox', '-', '#3498db', 41, 'Unnamed Retail Center', false);
+addStore(38.7888357, -121.224319, 'Sourdough & Co.', '-', '#3498db', 36, 'Unnamed Retail Center', false);
+addStore(38.7890264, -121.223534, 'A&W', '-', '#3498db', 36, 'Unnamed Retail Center', false);
+addStore(38.7891032, -121.223423, 'KFC', '4855 Granite Drive Rocklin', '#3498db', 36, 'Unnamed Retail Center', false);
+addStore(38.7888204, -121.224089, 'Starbucks', '4875 Granite Drive Rocklin', '#3498db', 36, 'Unnamed Retail Center', false);
+addStore(38.8709821, -121.2984342, 'KFC', '35 Lincoln Boulevard Lincoln', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8709433, -121.2982853, 'A&W', '35 Lincoln Boulevard Lincoln', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8712411, -121.2978381, 'Taco Bell', '37 Lincoln Boulevard Lincoln', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8710853, -121.296723, 'Jamba', '825 South State Highway 65 Lincoln', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8714304, -121.2955283, 'Domino\'s', '751 Sterling Parkway Lincoln', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8714787, -121.2964709, 'Baskin-Robbins', '820 Sterling Parkway Lincoln', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8708743, -121.2958983, 'Subway', '731 Sterling Parkway Lincoln', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8502544, -121.2871841, 'Raceday Cycle & Multisport', '825 Fieldstone Drive Lincoln', '#3498db', 55, 'Unnamed Retail Center', false);
+addStore(38.7702312, -121.26333, 'Shell Recharge', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7713919, -121.2638585, 'Handel\'s Homemade Ice Cream', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7716559, -121.26426, 'Buffalo Wild Wings', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.771312, -121.2636677, 'KB Home Design Studio', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.747913, -121.2536349, 'Erik\'s DeliCafé', '1450 Lead Hill Boulevard', '#3498db', 42, 'Unnamed Retail Center', false);
+addStore(38.7479162, -121.253777, 'Great Clips', '1450 Lead Hill Boulevard', '#3498db', 42, 'Unnamed Retail Center', false);
+addStore(38.7479168, -121.2538647, 'Creative Nails & Spa', '1450 Lead Hill Boulevard', '#3498db', 42, 'Unnamed Retail Center', false);
+addStore(38.7479129, -121.253956, 'GameStop', '1450 Lead Hill Boulevard', '#3498db', 42, 'Unnamed Retail Center', false);
+addStore(38.7479146, -121.253515, 'Panda Express', '1450 Lead Hill Boulevard Roseville', '#3498db', 42, 'Unnamed Retail Center', false);
+addStore(38.7683783, -121.26742, 'west elm', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7671968, -121.26841, 'Pet Food Express', '1009', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7681715, -121.267327, 'European Wax Center', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7687538, -121.268655, 'Charles Schwab', '1188 Roseville Parkway', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7684546, -121.2686468, 'White House Black Market', '1182 Roseville Parkway Roseville', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.767673, -121.267969, 'Evereve', '1005 Roseville Parkway', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7677074, -121.2676763, 'Brighton Collectibles', '1005 Roseville Parkway Roseville', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7681721, -121.268219, 'LaserAway', '1198', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7683372, -121.2686493, 'Button Up Boutique', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7675706, -121.2692019, 'Kenny G & Company', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7675805, -121.268811, 'Soma', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7675672, -121.2693545, 'Sole Desire Shoes', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7675754, -121.268556, 'Chico\'s', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7675821, -121.269043, 'Sephora', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7798795, -121.2650123, 'Beach Hut Deli', '-', '#3498db', 32, 'Unnamed Retail Center', false);
+addStore(38.7723525, -121.2705675, 'Pottery Barn', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7797304, -121.2645833, 'SleepFirst', '-', '#3498db', 32, 'Unnamed Retail Center', false);
+addStore(38.7673668, -121.2639167, 'Pushkin\'s Bakery', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7877968, -121.2904992, 'Coinstar', '-', '#3498db', 26, 'Unnamed Retail Center', false);
+addStore(38.6751177, -121.2688016, 'claire\'s', '6076 Sunrise Mall Citrus Heights', '#3498db', 47, 'Unnamed Retail Center', false);
+addStore(38.6750256, -121.268801, 'Perfumes Luxe', '-', '#3498db', 47, 'Unnamed Retail Center', false);
+addStore(38.6751033, -121.2692959, 'Kay Jewelers', '-', '#3498db', 47, 'Unnamed Retail Center', false);
+addStore(38.6748211, -121.2687996, 'California Basics', '-', '#3498db', 47, 'Unnamed Retail Center', false);
+addStore(38.6761321, -121.2686835, 'Tops Men\'s Fashion', '-', '#3498db', 47, 'Unnamed Retail Center', false);
+addStore(38.7027309, -121.384466, 'FoodMaxx', '7477 Watt Avenue North Highlands', '#f39c12', 15, 'Unnamed Retail Center', true);
+addStore(38.7308012, -121.271397, 'Amazon Locker', '-', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(38.7308754, -121.2715396, 'Western Union', '-', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(38.7310226, -121.2710388, 'Starbucks', '989 Sunrise Avenue Roseville', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(38.7309014, -121.2710187, 'U.S. Bank', '-', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(38.7274098, -121.2716439, 'KFC', '1089 Sunrise Avenue Roseville', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(38.727421, -121.2715472, 'A&W', '1089 Sunrise Avenue Roseville', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(38.7308022, -121.2713179, 'Coinstar', '-', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(38.85193, -121.2883397, 'Walgreens', '-', '#f39c12', 55, 'Unnamed Retail Center', true);
+addStore(38.8699931, -121.3039466, 'Starbucks', '950 Groveland Lane Lincoln', '#3498db', 39, 'Unnamed Retail Center', false);
+addStore(38.6898943, -121.2954435, 'Coinstar', '-', '#3498db', 64, 'Unnamed Retail Center', false);
+addStore(38.689911, -121.2953281, 'Redbox', '-', '#3498db', 64, 'Unnamed Retail Center', false);
+addStore(38.6780138, -121.2758137, 'Raising Cane\'s', '-', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(38.7084276, -121.313441, 'Dutch Bros. Coffee', '7853 Lichen Drive Citrus Heights', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(38.7088378, -121.3136871, 'EVgo', '7847 Lichen Drive Citrus Heights', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(38.702637, -121.3841947, 'DMV Now', '-', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(38.8012819, -121.2093593, 'Jersey Mike\'s Subs', '-', '#3498db', 23, 'Unnamed Retail Center', false);
+addStore(38.714172, -121.3663655, 'Metro by T-Mobile', '4241 Elverta Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7141707, -121.3664873, 'Togo\'s', '4241 Elverta Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7145082, -121.3638917, 'Odessa European Deli Store', '8008 Walerga Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7144267, -121.3638942, 'Domino\'s', '8008 Walerga Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7143164, -121.3638936, 'Verizon', '8008 Walerga Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.712887, -121.3626419, 'Little Caesars', '4400 Elverta Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7123441, -121.3635554, 'T-Mobile', '4320 Elverta Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7128222, -121.3660858, 'Wingstop', '7909 Walerga Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7130249, -121.3665451, 'Hair Cuts & Facials', '7909 Walerga Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7042959, -121.3623669, 'Dutch Bros. Coffee', '4341 Antelope Road Antelope', '#3498db', 48, 'Unnamed Retail Center', false);
+addStore(38.704525, -121.3642347, 'Mobil', '4311 Antelope Road Antelope', '#3498db', 48, 'Unnamed Retail Center', false);
+addStore(38.7045106, -121.3642667, 'Krispy Krunchy Chicken', '-', '#3498db', 48, 'Unnamed Retail Center', false);
+addStore(38.7055721, -121.3638497, 'America\'s Tire', '7645 Walerga Road Antelope', '#3498db', 48, 'Unnamed Retail Center', false);
+addStore(38.7054932, -121.3630662, 'Statewide Self Storage', '7646 Walerga Road Antelope', '#3498db', 48, 'Unnamed Retail Center', false);
+addStore(38.7138786, -121.3940747, 'Antelope Tires and Wheels', '7943 Watt Avenue Antelope', '#3498db', 25, 'Unnamed Retail Center', false);
+addStore(38.7138304, -121.3946347, 'O\'Reilly Auto Parts', '7933 Watt Avenue Antelope', '#3498db', 25, 'Unnamed Retail Center', false);
+addStore(38.711529, -121.395207, 'First American Self Storage', '2928 Scotland Drive Antelope', '#3498db', 25, 'Unnamed Retail Center', false);
+addStore(38.7059847, -121.327927, 'Food Mart', '-', '#3498db', 41, 'Unnamed Retail Center', false);
+addStore(38.7038221, -121.3834516, 'SR Food & Liquor', '7547 Watt Avenue North Highlands', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(38.7035685, -121.3834745, 'Big O Check Cashing', '7547 Watt Avenue North Highlands', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(38.7035355, -121.3834774, 'Ancient Inc Tattoos', '7547 Watt Avenue North Highlands', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(38.7034101, -121.3833446, 'Carl\'s Jr.', '7523 Watt Avenue North Highlands', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(38.7039074, -121.383843, 'Alien Vape & Smoke Shop', '7529 Watt Avenue North Highlands', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(38.7038008, -121.3838391, 'Top Cuts and Nails', '7529 Watt Avenue North Highlands', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(38.7032116, -121.3842902, 'Michelle\'s Furniture & Mattress', '7505 Watt Avenue North Highlands', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(38.7019567, -121.3842217, 'First Response Phone Repair', '7471 Watt Avenue North Highlands', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(38.7020729, -121.3842238, 'Metro by T-Mobile', '-', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(38.7018196, -121.3839965, 'Bank of America', '-', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(38.7018174, -121.3832477, 'Aaron\'s', '7453 Watt Avenue North Highlands', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(38.7021812, -121.3832398, 'Fred Loya Insurance', '-', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(38.7022672, -121.3833043, 'Subway', '7459 Watt Avenue North Highlands', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(38.7015644, -121.3840932, 'Capital Cabinets & Floors, Inc.', '7411 Watt Avenue North Highlands', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(38.7012839, -121.3824305, 'Doggie Style Grooming Salon', '7446 Watt Avenue North Highlands', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(38.6905867, -121.3851368, 'Derrel\'s Mini Storage', '3505 Elkhorn Boulevard North Highlands', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(38.6885549, -121.3843504, 'PJ Mart', '6705 Watt Avenue North Highlands', '#3498db', 50, 'Unnamed Retail Center', false);
+addStore(38.6886509, -121.3843727, 'In the Mix Salon & Barber', '6705 Watt Avenue North Highlands', '#3498db', 50, 'Unnamed Retail Center', false);
+addStore(38.6888057, -121.3843627, 'Crown Wig & Beauty Supply', '6705 Watt Avenue North Highlands', '#3498db', 50, 'Unnamed Retail Center', false);
+addStore(38.6894075, -121.3844031, 'Ross', '6736 Watt Avenue North Highlands', '#f39c12', 13, 'Unnamed Retail Center', true);
+addStore(38.689084, -121.3843772, 'NAPA Auto Parts', '6737 Watt Avenue North Highlands', '#3498db', 50, 'Unnamed Retail Center', false);
+addStore(38.6895905, -121.3843423, 'Jackson Hewitt', '-', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(38.6897418, -121.3843395, 'Crown Nails', '6745 Watt Avenue North Highlands', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(38.6898003, -121.3843401, 'Boss Liquor', '6745 Watt Avenue North Highlands', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(38.6899025, -121.384335, 'Black Widow Tattoo Studio', '6745 Watt Avenue North Highlands', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(38.690045, -121.3842898, 'Mountain Mike\'s', '6745 Watt Avenue North Highlands', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(38.7046022, -121.3272221, 'Antelope Self Storage', '5754 Antelope Road Sacramento', '#3498db', 41, 'Unnamed Retail Center', false);
+addStore(38.7079351, -121.3148541, 'Fuzz Monsters Pet Grooming', '6401 Antelope Road Citrus Heights', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(38.7092878, -121.314451, 'Pro Massage', '7908 Zenith Drive Citrus Heights', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(38.7084512, -121.3143866, 'Angel Beauty Brows', '7821 Lichen Drive Citrus Heights', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(38.7095824, -121.3122416, 'Jackson Hewitt', '7871 Lichen Drive Citrus Heights', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(38.7093931, -121.3119297, 'Body n Mind Massage Spa', '7883 Lichen Drive Citrus Heights', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(38.7093006, -121.3119353, 'Era Salon', '7885 Lichen Drive Citrus Heights', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(38.7092084, -121.3118374, 'Magma Vape and Smoke Shop', '7887 Lichen Drive Citrus Heights', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(38.7080302, -121.3116178, 'Quick Quack Car Wash', '7882 Lichen Drive Citrus Heights', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(38.7076724, -121.3130907, 'Food Mart', '-', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(38.7023609, -121.3303952, 'Supercuts', '5830 Antelope Road Sacramento', '#3498db', 41, 'Unnamed Retail Center', false);
+addStore(38.70223, -121.3305537, 'BAM Hair Nails Salon', '5830 Antelope Road Sacramento', '#3498db', 41, 'Unnamed Retail Center', false);
+addStore(38.6778139, -121.38339, 'Pacific Thrift Store', '6101 Watt Avenue North Highlands', '#3498db', 33, 'Unnamed Retail Center', false);
+addStore(38.6775287, -121.3833437, 'Cricket Wireless', '-', '#3498db', 33, 'Unnamed Retail Center', false);
+addStore(38.677995, -121.3836635, 'North Highlands Mini Storage & Uhaul', '-', '#3498db', 33, 'Unnamed Retail Center', false);
+addStore(38.6774526, -121.3822897, 'Carniceria Atoyac Meat Market', '6104 Watt Avenue North Highlands', '#3498db', 33, 'Unnamed Retail Center', false);
+addStore(38.6773514, -121.3822794, 'Durango Western Wear', '6100 Watt Avenue North Highlands', '#3498db', 33, 'Unnamed Retail Center', false);
+addStore(38.6772676, -121.3822201, 'Matthew\'s Sofa & Mattress Gallery', '6098 Watt Avenue North Highlands', '#3498db', 33, 'Unnamed Retail Center', false);
+addStore(38.6755295, -121.3842006, 'Planet Fitness', '5945 Watt Avenue North Highlands', '#f39c12', 33, 'Unnamed Retail Center', true);
+addStore(38.6756024, -121.3832453, 'Western Union', '5949 Watt Avenue North Highlands', '#3498db', 33, 'Unnamed Retail Center', false);
+addStore(38.6742775, -121.3837536, 'US Nails & Beauty', '5909 Watt Avenue North Highlands', '#3498db', 33, 'Unnamed Retail Center', false);
+addStore(38.674274, -121.3835053, 'The Klubhouse Tattoo and Piercing', '5901 Watt Avenue North Highlands', '#3498db', 33, 'Unnamed Retail Center', false);
+addStore(38.744261, -121.2246472, 'Walgreens', '4051 Douglas Boulevard Granite Bay', '#f39c12', 14, 'Unnamed Retail Center', true);
+addStore(38.7428945, -121.2510746, 'Learning Express Toys', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(38.742865, -121.2509965, 'Petroglyph Pottery Painting Store', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(38.7428484, -121.2507978, 'Pieology Pizzeria', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(38.7429056, -121.2505494, 'BevMo!', '-', '#f39c12', 10, 'Unnamed Retail Center', true);
+addStore(38.743468, -121.2587958, 'Dunn-Edwards Paints', '1850 Douglas Boulevard Roseville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7434701, -121.2587153, 'Anytime Fitness', '1850 Douglas Boulevard Roseville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7434411, -121.2584165, 'GNC', '1850 Douglas Boulevard Roseville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7434519, -121.2582591, 'Cell Phone Repair', '1850 Douglas Boulevard Roseville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7438446, -121.2588628, 'Beauty Solutions', '1850 Douglas Boulevard Roseville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7439722, -121.2588521, 'U.S. Bank', '1850 Douglas Boulevard Roseville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7431991, -121.2536436, 'Sunrise Natural Foods', '1950 Douglas Boulevard', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(38.7428315, -121.2523427, 'Beauty Concepts', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(38.742972, -121.2516896, 'Starbucks', '2030 Douglas Boulevard Roseville', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(38.7429203, -121.2515548, 'Noah\'s Bagels', '2030 Douglas Boulevard', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(38.7428631, -121.2513774, 'Jersey Mike\'s Subs', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(38.7450216, -121.2627205, 'Smoke Barn', '1701 Santa Clara Drive', '#3498db', 27, 'Unnamed Retail Center', false);
+addStore(38.6760903, -121.2737663, 'World Market', '6191 Sunrise Boulevard Citrus Heights', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(38.6737187, -121.2730729, 'Ulta Beauty', '5927 Sunrise Boulevard Citrus Heights', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(38.671469, -121.2736632, 'Dollar Tree', '-', '#f39c12', 38, 'Unnamed Retail Center', true);
+addStore(38.7922264, -121.3561927, 'The Habit Burger Grill', '-', '#3498db', 44, 'Unnamed Retail Center', false);
+addStore(38.7930556, -121.3564394, 'The UPS Store', '-', '#3498db', 44, 'Unnamed Retail Center', false);
+addStore(38.792964, -121.3570329, 'Raley\'s O-N-E Market', '1970 Blue Oaks Boulevard', '#f39c12', 44, 'Unnamed Retail Center', true);
+addStore(38.7436674, -121.2534379, 'Everlasting Gifts', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(38.7438765, -121.2534245, 'Dog & Cat Health Food', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(38.743256, -121.2568549, '3 Monkeys', '1850 Douglas Boulevard', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7438456, -121.2542415, 'Verizon', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.74326, -121.2561451, 'TJ Maxx', '-', '#f39c12', 1, 'Unnamed Retail Center', true);
+addStore(38.7432674, -121.256582, 'Famous Footwear', '1850 Douglas Boulevard', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7461118, -121.2758234, 'Comfort Western and Workwear', '1091 Roseville Square', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(38.7461123, -121.2757415, 'Site for Sore Eyes', '1095 Roseville Square', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(38.7461129, -121.2756381, 'Nail Spa 999', '1099 Roseville Square', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(38.7461113, -121.2752845, 'FreeStyle Clothing Exchange', '1107 Roseville Square', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(38.7459946, -121.2759184, 'Once Upon a Child', '384 Roseville Square', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(38.7456204, -121.2759174, 'BlueZone Sports', '392 Roseville Square', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(38.7452838, -121.2759119, 'Wild Birds Unlimited', '408 Roseville Square', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(38.7446062, -121.275018, 'Banfield Pet Hospital', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(38.7447648, -121.2750394, 'Bank of America', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(38.743085, -121.2275239, 'Chipotle', '3988 Douglas Boulevard Roseville', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(38.7839891, -121.271399, 'Western Dental', '9450 Fairway Drive Roseville', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(38.7430214, -121.2744651, 'Mei Mei Hair & Nails', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(38.741391, -121.228126, 'Wells Fargo', '-', '#3498db', 45, 'Unnamed Retail Center', false);
+addStore(38.7426038, -121.2235972, 'Crunch Fitness', '-', '#f39c12', 14, 'Unnamed Retail Center', true);
+addStore(38.7426052, -121.2242213, 'TotalNutrition', '-', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(38.7426038, -121.2243214, 'Oasis x HLND Salon And Barber', '-', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(38.7426038, -121.2243715, 'All Seasons Pool & Spa', '-', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(38.7426247, -121.2245771, 'Posh Paws Grooming', '-', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(38.8148956, -121.259776, 'Anytime Fitness', '3001 Stanford Ranch Road Rocklin', '#3498db', 63, 'Unnamed Retail Center', false);
+addStore(38.74073, -121.2281839, 'HomeGoods', '8676 Sierra College Boulevard Roseville', '#f39c12', 45, 'Unnamed Retail Center', true);
+addStore(38.7407847, -121.2266212, 'Starbucks', '8690 Sierra College Boulevard Renaissance', '#3498db', 45, 'Unnamed Retail Center', false);
+addStore(38.7407157, -121.2266114, 'Quest Diagnostics', '-', '#3498db', 45, 'Unnamed Retail Center', false);
+addStore(38.7405189, -121.2266257, 'Baskin-Robbins', '8690 Sierra College Boulevard Roseville', '#3498db', 45, 'Unnamed Retail Center', false);
+addStore(38.7404323, -121.2266239, 'Jamba', '8690 Sierra College Boulevard Roseville', '#3498db', 45, 'Unnamed Retail Center', false);
+addStore(38.744168, -121.2236792, 'Starbucks', '4033 Cavitt Stallman Road Granite Bay', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(38.744407, -121.2255544, 'ampm', '-', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(38.7618409, -121.3112631, 'A&W', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(38.7926583, -121.3556483, 'FreeWire', '-', '#3498db', 44, 'Unnamed Retail Center', false);
+addStore(38.7924114, -121.3555595, 'ampm', '-', '#3498db', 44, 'Unnamed Retail Center', false);
+addStore(38.7921719, -121.3555576, 'Arco', '-', '#3498db', 44, 'Unnamed Retail Center', false);
+addStore(38.8711736, -121.2967122, 'Saladworks', '820 Sterling Parkway Lincoln', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8713575, -121.2965842, 'California Sun', '820 Sterling Parkway Lincoln', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8712363, -121.2966312, 'Mountain Mike\'s', '820 Sterling Parkway Lincoln', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.7224156, -121.2912031, '7-Eleven', '21 Whyte Avenue Roseville', '#3498db', 53, 'Unnamed Retail Center', false);
+addStore(38.7223915, -121.2908941, 'Chevron', '-', '#3498db', 53, 'Unnamed Retail Center', false);
+addStore(38.7218058, -121.290786, 'Jack in the Box', '8655 Auburn Boulevard Roseville', '#3498db', 53, 'Unnamed Retail Center', false);
+addStore(38.7204283, -121.290764, 'Wells Fargo', '-', '#3498db', 53, 'Unnamed Retail Center', false);
+addStore(38.7204949, -121.2916394, 'Gold\'s Gym', '-', '#f39c12', 53, 'Unnamed Retail Center', true);
+addStore(38.7224913, -121.2899597, 'Shell', '-', '#3498db', 53, 'Unnamed Retail Center', false);
+addStore(38.74553, -121.2736, 'Tesla Supercharger', '108 Harding Boulevard Roseville', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(38.7453356, -121.272745, 'Dollar Tree', '-', '#f39c12', 6, 'Unnamed Retail Center', true);
+addStore(38.7475645, -121.2704327, 'Goodyear', '-', '#3498db', 31, 'Unnamed Retail Center', false);
+addStore(38.7434586, -121.25788, 'Fleet Feet', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7457156, -121.2574919, 'Hotworx', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7457204, -121.2573157, 'Cleaners', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7457159, -121.2575816, 'Level Posh Salon', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7457124, -121.2576565, 'Z’s Massage', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.745257, -121.2576812, 'Removery', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7453717, -121.257677, 'Roseville Nail Spa', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7430649, -121.250441, 'Lavish Locks', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(38.7437915, -121.2504104, 'Uptown Cheapskate', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(38.7433619, -121.2504495, 'Orangetheory Fitness', '2030 Douglas Boulevard Roseville', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(38.7436198, -121.2503929, 'Sport Clips', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(38.743431, -121.2504548, 'European Wax Center', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(38.743699, -121.2503929, 'Adam\'s Jewelers', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(38.7436494, -121.2542937, 'Fastsigns', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7437077, -121.254293, 'IconiQ', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7435746, -121.2544072, 'Fringes Salon', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7437271, -121.253959, 'West Coast Nutrition', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7437649, -121.2542955, 'Perfect Brows Ink', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.743461, -121.2539536, 'Salon Hermosa', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.744668, -121.2538994, 'Jimmy John\'s', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7457912, -121.2553335, 'Max Home Goods', '-', '#f39c12', 1, 'Unnamed Retail Center', true);
+addStore(38.7466068, -121.2604245, 'Mattress Express', '-', '#3498db', 27, 'Unnamed Retail Center', false);
+addStore(38.7466027, -121.2606788, 'Moschino Nails', '1811 Douglas Boulevard', '#3498db', 27, 'Unnamed Retail Center', false);
+addStore(38.7457572, -121.2602638, 'Hobby Lobby', '1815 Douglas Boulevard', '#3498db', 27, 'Unnamed Retail Center', false);
+addStore(38.7464698, -121.2603025, 'H&R Block', '1813 Douglas Boulevard', '#3498db', 27, 'Unnamed Retail Center', false);
+addStore(38.7466126, -121.2613719, 'Ross', '1740 Santa Clara Drive Roseville', '#f39c12', 27, 'Unnamed Retail Center', true);
+addStore(38.7462796, -121.2602967, 'Discovery Shop', '-', '#3498db', 27, 'Unnamed Retail Center', false);
+addStore(38.7900879, -121.2790032, 'The Joint Chiropractic', '731 Pleasant Grove Boulevard', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(38.7779134, -121.2911713, 'The Doggie Bag', '1070 Pleasant Grove Boulevard', '#3498db', 35, 'Unnamed Retail Center', false);
+addStore(38.7779642, -121.2910067, 'California Sun', '-', '#3498db', 35, 'Unnamed Retail Center', false);
+addStore(38.8752771, -121.2965858, 'McDonald\'s', '505 Old Highway 65', '#3498db', 60, 'Unnamed Retail Center', false);
+addStore(38.8091339, -121.2042582, 'Costco', '-', '#f39c12', 62, 'Unnamed Retail Center', true);
+addStore(38.8075952, -121.2045711, 'Electrify America', '-', '#3498db', 62, 'Unnamed Retail Center', false);
+addStore(38.8037774, -121.2074582, 'European Wax Center', '-', '#3498db', 23, 'Unnamed Retail Center', false);
+addStore(38.8039081, -121.2066421, 'EVgo', '-', '#3498db', 23, 'Unnamed Retail Center', false);
+addStore(38.7424451, -121.3098373, 'Tommy\'s Express', '-', '#3498db', 56, 'Unnamed Retail Center', false);
+addStore(38.6676628, -121.3372047, 'Starbucks', '5480 Auburn Boulevard', '#3498db', 52, 'Unnamed Retail Center', false);
+addStore(38.7846398, -121.2736698, 'Red Wing', '-', '#3498db', 40, 'Unnamed Retail Center', false);
+addStore(38.7877683, -121.2814367, 'Trader Joe\'s', '-', '#f39c12', 8, 'Unnamed Retail Center', true);
+addStore(38.7876448, -121.2810318, 'Big Lots', '-', '#f39c12', 8, 'Unnamed Retail Center', true);
+addStore(38.8039554, -121.2733932, 'Panda Express', '-', '#3498db', 57, 'Unnamed Retail Center', false);
+addStore(38.8031889, -121.2728205, 'Jimboy\'s Tacos', 'Sunset Boulevard', '#3498db', 57, 'Unnamed Retail Center', false);
+addStore(38.7146354, -121.3681885, 'Kajal Eyebrow Threading', '4117 Elverta Road Antelope', '#3498db', 37, 'Unnamed Retail Center', false);
+addStore(38.7743805, -121.2686563, 'GameStop', '1151 1151 Galleria Blvd Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7123323, -121.3647237, 'Batteries Plus', '7903 Walerga Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7118147, -121.3661811, 'Coinstar', '7901 Walerga Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7128116, -121.3621947, 'Bank of America', '4336 Elverta Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7128393, -121.3623184, 'Indian Bazaar', '4400 Elverta Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7128738, -121.3625149, 'Dorian\'s Barber Studio', '4400 Elverta Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7128554, -121.3623842, 'Palace Nails and Spa', '4400 Elverta Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7152893, -121.3665031, 'Ava Nails & Spa', '4207 Elverta Road Antelope', '#3498db', 37, 'Unnamed Retail Center', false);
+addStore(38.7152952, -121.3661869, 'Tobacco Plus', '4207 Elverta Road Antelope', '#3498db', 37, 'Unnamed Retail Center', false);
+addStore(38.7145435, -121.3682165, 'India Spices', '4117 Elverta Road Antelope', '#3498db', 37, 'Unnamed Retail Center', false);
+addStore(38.74532, -121.25338, 'Tesla Supercharger', '1925 Douglas Boulevard Roseville', '#3498db', 42, 'Unnamed Retail Center', false);
+addStore(38.79134, -121.2233, 'Tesla Supercharger', '4800 Granite Drive Rocklin', '#3498db', 36, 'Unnamed Retail Center', false);
+addStore(38.8695264, -121.3031117, 'Tesla Supercharger', '950 Groveland Lane Lincoln', '#3498db', 39, 'Unnamed Retail Center', false);
+addStore(38.6787975, -121.2955438, 'Pacific Coast Food', '-', '#3498db', 24, 'Unnamed Retail Center', false);
+addStore(38.6786741, -121.292952, 'BMO', '-', '#3498db', 24, 'Unnamed Retail Center', false);
+addStore(38.6866442, -121.3400653, 'Golden 1 Credit Union', '-', '#3498db', 30, 'Unnamed Retail Center', false);
+addStore(38.6865796, -121.3399252, 'Wells Fargo', '-', '#3498db', 30, 'Unnamed Retail Center', false);
+addStore(38.6873289, -121.3410941, 'Boost Mobile', '-', '#3498db', 30, 'Unnamed Retail Center', false);
+addStore(38.6860275, -121.3389997, 'Baskin-Robbins', '-', '#3498db', 30, 'Unnamed Retail Center', false);
+addStore(38.7441741, -121.2776949, 'Ionna (planned)', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(38.7468754, -121.2740161, 'Planet Fitness', '-', '#f39c12', 6, 'Unnamed Retail Center', true);
+addStore(38.8007046, -121.2964167, 'Sportsman\'s Warehouse', '6640 Lonetree Boulevard', '#3498db', 34, 'Unnamed Retail Center', false);
+addStore(38.7999897, -121.2957676, 'Grocery Outlet', '6652 Lonetree Boulevard', '#f39c12', 34, 'Unnamed Retail Center', true);
+addStore(38.799743, -121.2955477, 'Dollar Tree', '-', '#f39c12', 34, 'Unnamed Retail Center', true);
+addStore(38.7984279, -121.29487, 'Crunch Fitness', '-', '#f39c12', 34, 'Unnamed Retail Center', true);
+addStore(38.7980914, -121.2947963, 'UFC Gym', '-', '#3498db', 34, 'Unnamed Retail Center', false);
+addStore(38.7975553, -121.2945436, 'GNC', '-', '#3498db', 34, 'Unnamed Retail Center', false);
+addStore(38.793095, -121.35814, 'AutoZone', '-', '#3498db', 44, 'Unnamed Retail Center', false);
+addStore(38.7921383, -121.3569505, 'Chipotle', '-', '#3498db', 44, 'Unnamed Retail Center', false);
+addStore(38.7938832, -121.3276024, '24 Hour Fitness', '-', '#f39c12', 20, 'Unnamed Retail Center', true);
+addStore(38.7948347, -121.3271145, 'Del Taco', '-', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(38.7947945, -121.3281113, 'Smashburger', '-', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(38.7946362, -121.3265817, 'Panda Express', '-', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(38.7948004, -121.3252002, 'Starbucks', '-', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(38.7946207, -121.325262, 'Jamba', '-', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(38.7940493, -121.3251847, 'MOD Pizza', '-', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(38.7745842, -121.2626025, 'Five Below', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7729353, -121.2632121, 'Verizon', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.778526, -121.2629942, 'Harmony Spa', '-', '#3498db', 51, 'Unnamed Retail Center', false);
+addStore(38.7782307, -121.263114, 'Alterations', '-', '#3498db', 51, 'Unnamed Retail Center', false);
+addStore(38.7729349, -121.2630259, 'Visionworks', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7782929, -121.2630134, 'Hair Extensions', '-', '#3498db', 51, 'Unnamed Retail Center', false);
+addStore(38.7729249, -121.2628543, 'Maurices', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7781853, -121.2632315, 'Beryozka European Food Market', '-', '#3498db', 51, 'Unnamed Retail Center', false);
+addStore(38.814693, -121.2567695, 'Quickly', '3211 Stanford Ranch Road Rocklin', '#3498db', 63, 'Unnamed Retail Center', false);
+addStore(38.7741254, -121.2696215, 'Quickly', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7091924, -121.3137312, 'Tesla Supercharger', '7873 Lichen Drive Citrus Heights', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(38.7747483, -121.269032, 'Janie & Jack', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7744572, -121.2688492, 'Uniqlo', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7748247, -121.2689687, 'LensCrafters', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7747113, -121.2685076, 'Finish Line', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7425425, -121.2249389, 'Nugget Markets', '-', '#f39c12', 14, 'Unnamed Retail Center', true);
+addStore(38.7437376, -121.2747163, 'Liberty Tax', '1120 Douglas Boulevard Roseville', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(38.7918753, -121.2224128, 'Jamba', '-', '#3498db', 36, 'Unnamed Retail Center', false);
+addStore(38.7842974, -121.2701388, 'The Cave Roseville', '9200 Fairway Drive Roseville', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(38.7846804, -121.271006, 'Goodwill', '9400 Fairway Drive Roseville', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(38.7843694, -121.266912, 'L&L Hawaiian Barbecue', '9050 Fairway Drive Roseville', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(38.8523259, -121.2905878, 'Nielson Fine Floors', '620 Twelve Bridges Drive Lincoln', '#3498db', 55, 'Unnamed Retail Center', false);
+addStore(38.7674356, -121.2698911, 'Rock Hill Boutique', '1017 Galleria Boulevard', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7446764, -121.2568488, 'Jollibee', '1913 Douglas Boulevard', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7674146, -121.3571787, 'Safeway', '-', '#f39c12', 65, 'Unnamed Retail Center', true);
+addStore(38.7666169, -121.356811, 'McDonald\'s', '-', '#3498db', 65, 'Unnamed Retail Center', false);
+addStore(38.7673527, -121.3578869, 'Bank of America', '-', '#3498db', 65, 'Unnamed Retail Center', false);
+addStore(38.7280656, -121.2707338, 'Continental Cleaners', '-', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(38.7280301, -121.2707531, 'The UPS Store', '-', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(38.875276, -121.2956247, 'Dollar Tree', '53 Lincoln Boulevard Lincoln', '#f39c12', 60, 'Unnamed Retail Center', true);
+addStore(38.875304, -121.2959549, 'Verizon', '53 Lincoln Boulevard Lincoln', '#3498db', 60, 'Unnamed Retail Center', false);
+addStore(38.8752816, -121.2957613, 'Lincoln Laundry', '53 Lincoln Boulevard Lincoln', '#3498db', 60, 'Unnamed Retail Center', false);
+addStore(38.8705601, -121.3038426, 'Target', '950 Groveland Lane Lincoln', '#f39c12', 39, 'Unnamed Retail Center', true);
+addStore(38.7276704, -121.2707533, 'Ji Lang Xing', '-', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(38.7275029, -121.2707437, 'Beauty Bungalows', '-', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(38.7923166, -121.2233773, 'Inkspire Beauty', '2630 Sierra Meadows Drive Rocklin', '#3498db', 36, 'Unnamed Retail Center', false);
+addStore(38.742237, -121.2256422, 'Awesome Nails Spa', '-', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(38.7424576, -121.2256252, 'Yum Tea House', '-', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(38.8725894, -121.2973873, 'Goodwill', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.7734833, -121.2708299, 'Sweetgreen', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7730621, -121.2708765, 'Arhaus', '1173 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7731565, -121.270348, 'Tiffany & Company', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7726471, -121.2712918, 'Design Within Reach', '1173 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7719804, -121.268994, 'Nordstrom', '1131 Galleria Boulevard Roseville', '#f39c12', 0, 'Unnamed Retail Center', true);
+addStore(38.7744444, -121.2700897, 'Cinemark', '1191 Galleria Boulevard', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.774689, -121.2702524, 'Round1', '1191 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7684544, -121.2682268, 'Tommy Bahama', '1198 Roseville Parkway Roseville', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7683173, -121.2682288, 'Eileen Fisher', '1198 Roseville Parkway Roseville', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7676809, -121.2677715, 'Salt & Straw', '1005 Galleria Boulevard Roseville', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7677986, -121.2646759, 'Mendocino Farms', '1210 Roseville Parkway Roseville', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.8722088, -121.2968928, 'Coinstar', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8726903, -121.2973339, 'Fresh Cleaners', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8728006, -121.2972988, 'Champ Cuts', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8728605, -121.297265, 'La Belle Nails', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8720988, -121.2960537, 'Family Massage', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8720457, -121.2960838, 'Hotworx', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8719094, -121.2961611, 'Dog & Cat Health Food', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8708103, -121.2974039, 'Anytime Fitness', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8705175, -121.2973081, 'Wingstop', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.869985, -121.295662, 'LabCorp', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8706441, -121.2958502, 'Cozy Nails', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.870484, -121.2955495, 'My Dog\'s Spot', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8707926, -121.2959419, 'Epic Sports Cards', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.870988, -121.2957975, 'Rustic Mule Grazing', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8710617, -121.2957512, 'Artistic Nails', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8710981, -121.2957139, 'Boutique Hair Parlor', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8711587, -121.295672, 'Lincoln Medical Supplies', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8712015, -121.2942311, 'PNC Bank', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8708164, -121.2947303, 'Enterprise', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8714323, -121.2965275, 'Twisted Eyebrow Threading', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8750844, -121.302838, 'Habit Burger & Grill', '-', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(38.8750456, -121.3027788, 'Beauty By Thread', '-', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(38.8721809, -121.3035039, 'Vibrance Medical Spa', '-', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(38.8712024, -121.3043135, 'Banfield Pet Hospital', '-', '#3498db', 39, 'Unnamed Retail Center', false);
+addStore(38.8710342, -121.3042432, 'PetSmart Grooming', '-', '#3498db', 39, 'Unnamed Retail Center', false);
+addStore(38.7878767, -121.2907979, 'AmeriGas', '-', '#3498db', 26, 'Unnamed Retail Center', false);
+addStore(38.7730934, -121.2707096, 'Bacio di Latte', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7736141, -121.2704302, 'Louis Vuitton', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7737371, -121.2703704, 'Tory Burch', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7742418, -121.270398, 'Mainland Surf & Skate', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7741432, -121.2704393, 'Aeropostale', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7742333, -121.2701262, 'STUDS', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7741915, -121.2701642, 'Marine Layer', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7740646, -121.2702516, 'Free People', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7740089, -121.2702718, 'Rothy\'s', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7739237, -121.2702915, 'Brilliant Earth', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7738452, -121.2703323, 'Alo Yoga', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7737201, -121.2705118, 'Shake Shack', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7737745, -121.2700646, 'Saint Laurent', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7736699, -121.2699669, 'Pop Mart', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7737133, -121.2698433, 'Caitlyn Minimalist', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7736241, -121.2698541, 'Chanel', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7738108, -121.2699638, 'Garage', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7739312, -121.2699144, 'Daiso Japan', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.773965, -121.2694834, 'Tillys', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7739469, -121.2693227, 'Fabletics', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7741252, -121.2692903, 'The North Face', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7740336, -121.2693104, 'FP Movement', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7742119, -121.2697441, 'Lolli and Pops', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7739903, -121.2699391, 'Hot Topic', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.773977, -121.270038, 'Vuori', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7740023, -121.2698232, 'OneZo Tapioca', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7736217, -121.2697599, 'Tumi', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7737049, -121.2693907, 'Warby Parker', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7736217, -121.2696533, 'Indochino', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7736205, -121.269488, 'TravisMathew', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7737843, -121.2693413, 'Athleta', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7736771, -121.2696827, 'Cinnabon', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7736892, -121.2695622, 'Oakley', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7738783, -121.2695236, 'Pro Image Sports', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.774142, -121.2694818, 'S&L Gem Co.', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7744166, -121.2693768, 'Journeys', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.774253, -121.2694296, 'PacSun', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7746599, -121.2692609, 'Lids', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.774607, -121.2691021, 'Kids Foot Locker', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7748117, -121.2692164, 'Champs Sports', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7748767, -121.2691052, 'Pretzelmaker', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7750237, -121.2690975, 'Hallmark', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7749358, -121.2688967, 'Macy\'s', '1151 Galleria Boulevard Roseville', '#f39c12', 0, 'Unnamed Retail Center', true);
+addStore(38.7746792, -121.2690573, 'Build-A-Bear Workshop', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.774342, -121.2692149, 'Verizon', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7743998, -121.2691979, 'Pandora', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7742047, -121.269272, 'Sunglass Hut', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7746242, -121.2685657, 'Spencer\'s', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7744926, -121.2686186, 'Foot Locker', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7738217, -121.2688874, 'Victoria\'s Secret', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7736519, -121.2690728, 'Blue Nile', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7737555, -121.2690836, 'Lush', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7738543, -121.2690635, 'Levi\'s', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7739301, -121.2690434, 'Sukoshi', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7740084, -121.2690187, 'Lego', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7743444, -121.2689229, 'Intimissimi', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.774106, -121.2689924, 'Crocs', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7742421, -121.2689554, 'Windsor', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7742637, -121.2687005, 'Buckle', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7740888, -121.2687933, 'Cotton On', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7734291, -121.2690928, 'Nespresso', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7733839, -121.2689768, 'MAC Cosmetics', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7734309, -121.2688601, 'AuAdore Jewelry', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7733222, -121.269119, 'Madewell', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7731486, -121.2691096, 'Lululemon', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7733316, -121.2689768, 'Zales', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7726227, -121.269013, 'Aritzia', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7727523, -121.2690519, 'Psycho Bunny', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7728653, -121.269068, 'Williams-Sonoma', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7729792, -121.2690854, 'Tempur-Pedic', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7724272, -121.2694381, 'Talbots', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7723237, -121.2694046, 'J.Jill', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7723352, -121.2692155, 'T-Mobile', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7724282, -121.269241, 'L\'Occitane', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7724951, -121.2692651, 'Ben Bridge', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7725014, -121.2694636, 'See\'s Candies', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7724679, -121.2696648, 'LoveSac', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7727638, -121.2698968, 'Restoration Hardware', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.772745, -121.2695065, 'Express', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7726164, -121.2695159, '7th Avenue', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7731622, -121.2693778, 'Zara', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7728423, -121.2693349, 'Abercrombie & Fitch', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7729751, -121.2693657, 'Capital One', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7727178, -121.268844, 'Vans', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.772882, -121.2688802, 'Aerie', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7731382, -121.268958, 'American Eagle Outfitters', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7730482, -121.2689366, 'Bath & Body Works', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7725788, -121.2686952, 'Fast-Fix', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7728883, -121.2695226, 'Zumiez', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.773378, -121.2694693, 'Swarovski', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7732893, -121.2694819, 'Läderach', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7734907, -121.2696066, 'Gorjana', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7733096, -121.2700497, 'Gucci', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7733724, -121.2699317, 'Allen Edmonds', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7734114, -121.2698123, 'VINCE.', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7734488, -121.2697013, 'Jo Malone', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.773135, -121.2700229, 'David Yurman', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7730179, -121.269996, 'Apple Store', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7730597, -121.2698338, 'Hollister', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7732977, -121.2698113, 'Auntie Anne\'s', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7733437, -121.2697212, 'Torrid', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7734181, -121.2695592, 'Aldo', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7728506, -121.2697758, 'Miniso', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7729782, -121.2702391, 'Hugo Boss', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7728672, -121.2702176, 'Sephora', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7730069, -121.2704602, 'Gap', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7729081, -121.2704385, 'Urban Outfitters', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7727853, -121.2703999, 'Shoe Palace', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7736512, -121.268886, 'Beauty by Thread', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7723987, -121.2697094, 'Sports Fever', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7745256, -121.2696831, 'Wetzel\'s Pretzels', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7744593, -121.2697773, 'Sharetea', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7715821, -121.2704944, 'Electrify America', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.67476, -121.27605, 'Electrify America', '-', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(38.68592, -121.33824, 'EVgo', '-', '#3498db', 30, 'Unnamed Retail Center', false);
+addStore(38.7875129, -121.2901055, 'Minute Key', '-', '#3498db', 26, 'Unnamed Retail Center', false);
+addStore(38.7875546, -121.2900777, 'Quick Tag', '-', '#3498db', 26, 'Unnamed Retail Center', false);
+addStore(38.7799808, -121.2671893, 'Costco Tire Service Center', '6750 Stanford Ranch Road', '#f39c12', 32, 'Unnamed Retail Center', true);
+addStore(38.6908624, -121.3799395, 'AutoZone', '-', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(38.7879099, -121.2897464, 'Walmart Supercenter', '900 Pleasant Grove Boulevard Roseville', '#f39c12', 26, 'Unnamed Retail Center', true);
+addStore(38.6748265, -121.2684969, 'Sunrise Mall', '6041 Sunrise Mall Road Citrus Heights', '#3498db', 47, 'Unnamed Retail Center', false);
+addStore(38.7864208, -121.2877333, 'Sam\'s Club', '904 Pleasant Grove Boulevard Roseville', '#f39c12', 26, 'Unnamed Retail Center', true);
+addStore(38.7863151, -121.2799849, 'Lowe\'s', '10201 Fairway Drive Roseville', '#f39c12', 8, 'Unnamed Retail Center', true);
+addStore(38.7828167, -121.2742656, 'The Home Depot', '10001 Fairway Drive Roseville', '#f39c12', 40, 'Unnamed Retail Center', true);
+addStore(38.7800946, -121.267971, 'Costco', '6750 Stanford Ranch Road Roseville', '#f39c12', 32, 'Unnamed Retail Center', true);
+addStore(38.7911486, -121.2902047, 'Target', '10451 Fairway Drive Roseville', '#f39c12', 67, 'Unnamed Retail Center', true);
+addStore(38.782295, -121.2664454, 'McDonald\'s', '6710 Stanford Ranch Road Roseville', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(38.7829577, -121.2691881, 'Dollar Tree', '6748 Stanford Ranch Road', '#f39c12', 16, 'Unnamed Retail Center', true);
+addStore(38.7829778, -121.2687035, 'Ross', '6744 Stanford Ranch Road Roseville', '#f39c12', 16, 'Unnamed Retail Center', true);
+addStore(38.7830322, -121.2680144, 'Dick\'s Sporting Goods', '6740 Stanford Ranch Road Roseville', '#f39c12', 16, 'Unnamed Retail Center', true);
+addStore(38.7833328, -121.26631, 'Black Bear Diner', '6700 Stanford Ranch Road', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(38.7831205, -121.2702683, 'Les Schwab Tire Center', '-', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(38.7815774, -121.2718433, 'Total Wine', '5791 Five Star Boulevard Roseville', '#3498db', 40, 'Unnamed Retail Center', false);
+addStore(38.7833885, -121.2722167, 'Chuck E. Cheese', '-', '#3498db', 40, 'Unnamed Retail Center', false);
+addStore(38.7822508, -121.2730523, 'Home Consignment Center', '5761 Five Star Boulevard', '#3498db', 40, 'Unnamed Retail Center', false);
+addStore(38.7820255, -121.2726446, 'Golf Galaxy', '5771 Five Star Boulevard', '#3498db', 40, 'Unnamed Retail Center', false);
+addStore(38.7804491, -121.2699021, 'Staples', '6770 Stanford Ranch Road Roseville', '#3498db', 32, 'Unnamed Retail Center', false);
+addStore(38.7747695, -121.2630228, 'Old Navy', '1244 Galleria Boulevard', '#3498db', 49, 'Unnamed Retail Center', false);
+addStore(38.7736422, -121.2637448, 'Men\'s Wearhouse', '1224 Galleria Boulevard', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7736251, -121.2651214, 'Raising Cane\'s', '1220 Galleria Boulevard Roseville', '#3498db', 49, 'Unnamed Retail Center', false);
+addStore(38.7748459, -121.2647497, 'Barnes & Noble', '1456 Galleria Boulevard Roseville', '#3498db', 49, 'Unnamed Retail Center', false);
+addStore(38.7748879, -121.2641975, 'Bob\'s Discount Furniture', '1452 Galleria Boulevard Roseville', '#3498db', 49, 'Unnamed Retail Center', false);
+addStore(38.7748996, -121.2635853, 'Burlington', '1248 Galleria Boulevard Roseville', '#f39c12', 49, 'Unnamed Retail Center', true);
+addStore(38.7739519, -121.2611127, 'Best Buy', '1236 Galleria Boulevard Roseville', '#f39c12', 5, 'Unnamed Retail Center', true);
+addStore(38.7730234, -121.2637883, 'Buca di Beppo', '1212 Galleria Boulevard', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7720174, -121.263399, 'Bank of America', '1188 Galleria Boulevard', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7722599, -121.2639677, 'Red Robin', '1184 Galleria Boulevard', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7466283, -121.2672726, 'Best Western Plus Orchid Hotel & Suites', '130 North Sunrise Avenue Roseville', '#3498db', 31, 'Unnamed Retail Center', false);
+addStore(38.7535216, -121.2631595, 'The Home Depot', '324 North Sunrise Avenue Roseville', '#f39c12', 28, 'Unnamed Retail Center', true);
+addStore(38.752782, -121.263543, 'Pet Club', 'Roseville', '#3498db', 28, 'Unnamed Retail Center', false);
+addStore(38.752467, -121.2638556, 'Goodwill', '312 North Sunrise Avenue Roseville', '#3498db', 28, 'Unnamed Retail Center', false);
+addStore(38.7519401, -121.2644236, 'Airport Home Appliance', '1251 Lead Hill Blvd. Roseville', '#3498db', 28, 'Unnamed Retail Center', false);
+addStore(38.7732977, -121.2599867, 'Homewood Suites Hilton', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7732684, -121.2590175, 'Courtyard', '301 Creekside Ridge Court Roseville', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7839646, -121.2707283, 'Wayback Burgers', '9250 Fairway Drive Roseville', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(38.7896493, -121.2831678, 'In-N-Out Burger', '10309 Fairway Drive Roseville', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(38.7887158, -121.2830896, 'Krispy Kreme', '10317 Fairway Drive', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(38.7885579, -121.2814968, 'ExtraMile', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(38.7524828, -121.2597481, 'Autonation Honda', '100', '#3498db', 28, 'Unnamed Retail Center', false);
+addStore(38.7522996, -121.2603323, 'John L. Sullivan\'s Roseville KIA', '-', '#3498db', 28, 'Unnamed Retail Center', false);
+addStore(38.751322, -121.26169, 'Niello Acura', '150 Automall Drive Roseville', '#3498db', 28, 'Unnamed Retail Center', false);
+addStore(38.753685, -121.2589997, 'Shane Co.', '-', '#3498db', 28, 'Unnamed Retail Center', false);
+addStore(38.7534769, -121.2597547, 'Wendy\'s', '348 North Sunrise Avenue Roseville', '#3498db', 28, 'Unnamed Retail Center', false);
+addStore(38.7533556, -121.2603702, 'Taco Bell', '342 North Sunrise Avenue Roseville', '#3498db', 28, 'Unnamed Retail Center', false);
+addStore(38.753958, -121.2610623, '24 Hour Fitness', '-', '#f39c12', 28, 'Unnamed Retail Center', true);
+addStore(38.7769536, -121.2608072, 'Harbor Freight Tools', '6860 Five Star Boulevard Rocklin', '#f39c12', 51, 'Unnamed Retail Center', true);
+addStore(38.7763909, -121.2612642, 'American Furniture Superstore', '-', '#3498db', 49, 'Unnamed Retail Center', false);
+addStore(38.7813699, -121.2647515, 'Rocket', '-', '#3498db', 32, 'Unnamed Retail Center', false);
+addStore(38.7809649, -121.2651381, 'Carl\'s Jr.', '6741 Stanford Ranch Road Rocklin', '#3498db', 32, 'Unnamed Retail Center', false);
+addStore(38.7803986, -121.2650012, 'IHOP', '6751 Stanford Ranch Road Rocklin', '#3498db', 32, 'Unnamed Retail Center', false);
+addStore(38.7446194, -121.2740439, 'ampm', '1139 Douglas Boulevard Roseville', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(38.7443074, -121.2761861, 'Rite Aid', '-', '#f39c12', 6, 'Unnamed Retail Center', true);
+addStore(38.7463015, -121.2749321, 'Trader Joe\'s', '1117 Roseville Square Roseville', '#f39c12', 6, 'Unnamed Retail Center', true);
+addStore(38.7450757, -121.2727177, 'Roseville Ace Hardware', '-', '#f39c12', 6, 'Unnamed Retail Center', true);
+addStore(38.7479403, -121.2689454, 'Big Lots', '212 Harding Boulevard', '#f39c12', 31, 'Unnamed Retail Center', true);
+addStore(38.748414, -121.2710269, 'Oriental Market', '203 Harding Boulevard Roseville', '#3498db', 31, 'Unnamed Retail Center', false);
+addStore(38.7495262, -121.2685106, 'Best Western Roseville Inn', '220 Harding Boulevard Roseville', '#3498db', 31, 'Unnamed Retail Center', false);
+addStore(38.7679679, -121.2651913, 'BJ\'s', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.769165, -121.2651642, 'Fogo de Chão', '1104 Galleria Boulevard Roseville', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.7697919, -121.262911, 'David\'s Bridal', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7446245, -121.2665705, 'IHOP', '100 North Sunrise Avenue Roseville', '#3498db', 46, 'Unnamed Retail Center', false);
+addStore(38.8149539, -121.2584164, 'Starbucks', '3091 Stanford Ranch Road Rocklin', '#3498db', 63, 'Unnamed Retail Center', false);
+addStore(38.8161848, -121.259349, 'Save Mart', '-', '#f39c12', 63, 'Unnamed Retail Center', true);
+addStore(38.7698788, -121.3321333, 'Raley\'s', '4051 Woodcreek Oaks Boulevard', '#f39c12', 29, 'Unnamed Retail Center', true);
+addStore(38.7489537, -121.2705414, 'Rose Food & Liquor', '215 Harding Boulevard', '#3498db', 31, 'Unnamed Retail Center', false);
+addStore(38.6780406, -121.2675381, 'Goodyear', '-', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(38.6779742, -121.2709782, 'U.S. Bank', '-', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(38.6806139, -121.2960284, 'Sam\'s Club', '7147 Greenback Lane Citrus Heights', '#f39c12', 54, 'Unnamed Retail Center', true);
+addStore(38.7310596, -121.2712742, 'Safeway', '989 Sunrise Avenue Roseville', '#f39c12', 17, 'Unnamed Retail Center', true);
+addStore(38.728615, -121.2708192, 'Bel Air', '1039 Sunrise Avenue Roseville', '#f39c12', 17, 'Unnamed Retail Center', true);
+addStore(38.7512399, -121.3085997, 'Walgreens', '3999 Foothills Boulevard Roseville', '#f39c12', 7, 'Unnamed Retail Center', true);
+addStore(38.7532952, -121.3113513, 'Raley\'s Bel Air', '4008 Foothills Boulevard Roseville', '#f39c12', 7, 'Unnamed Retail Center', true);
+addStore(38.7522725, -121.3113428, 'Rite Aid', '4004 Foothills Boulevard Roseville', '#f39c12', 7, 'Unnamed Retail Center', true);
+addStore(38.7501472, -121.3098619, 'McDonald\'s', '3994 Foothills Boulevard Roseville', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.7537656, -121.3099961, 'Bank of America', '4012 Foothills Boulevard Roseville', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.7527543, -121.3098816, 'Carl\'s Jr.', '4002 Foothills Boulevard Roseville', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.7600648, -121.3105236, 'Taco Bell', '5002 Foothills Boulevard Roseville', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(38.7602865, -121.312664, 'Save Mart', '5060 Foothills Boulevard', '#f39c12', 11, 'Unnamed Retail Center', true);
+addStore(38.7615198, -121.3125711, 'Goodwill', '5110 Foothills Boulevard', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(38.7609299, -121.309624, 'Wells Fargo', '5007 Foothills Boulevard', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(38.7616066, -121.3097853, 'Burger King', '5121 Foothills Boulevard Roseville', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(38.7622496, -121.3101922, 'Denny\'s', '5586 Foothills Boulevard', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(38.7513121, -121.307784, 'O\'Reilly Auto Parts', '3993 Foothills Boulevard', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.7503731, -121.3112957, 'Trojan Storage', '1299 Baseline Road Roseville', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.799573, -121.2936785, 'Chevys', '-', '#3498db', 34, 'Unnamed Retail Center', false);
+addStore(38.8004145, -121.2940484, 'Starbucks', '6612 Lone Tree Boulevard Rocklin', '#3498db', 34, 'Unnamed Retail Center', false);
+addStore(38.7997681, -121.2937666, 'Carl\'s Jr.', '6608 Lonetree Boulevard Rocklin', '#3498db', 34, 'Unnamed Retail Center', false);
+addStore(38.7731299, -121.2700598, 'Westfield', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.7454467, -121.2650352, 'Office Depot', '1607 Douglas Boulevard Roseville', '#f39c12', 46, 'Unnamed Retail Center', true);
+addStore(38.771581, -121.2621732, 'Michaels', '1192 Galleria Boulevard Roseville', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7719314, -121.2618259, 'Nordstrom Rack', '1196 Galleria Boulevard Roseville', '#f39c12', 5, 'Unnamed Retail Center', true);
+addStore(38.7722464, -121.2614741, 'Marshalls', '1200 Galleria Boulevard', '#f39c12', 5, 'Unnamed Retail Center', true);
+addStore(38.7906502, -121.2801742, 'Golden 1 Credit Union', '741 Pleasant Grove Boulevard', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(38.7890625, -121.2867241, 'Kohl\'s', '10375 Fairway Drive Roseville', '#f39c12', 43, 'Unnamed Retail Center', true);
+addStore(38.7774855, -121.2628008, 'Scandinavian Designs', '-', '#3498db', 51, 'Unnamed Retail Center', false);
+addStore(38.7407319, -121.3060828, 'Builders Showcase', '2017 Opportunity Drive', '#3498db', 56, 'Unnamed Retail Center', false);
+addStore(38.7511908, -121.3127544, 'Sundance Self Storage', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.6899047, -121.3833875, 'McDonald\'s', '6749 Watt Avenue North Highlands', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(38.8046985, -121.2737216, 'McDonald\'s', '2172 Sunset Boulevard Rocklin', '#3498db', 57, 'Unnamed Retail Center', false);
+addStore(38.7436292, -121.2758946, 'Auto Service of Roseville', '1080 Douglas Boulevard', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(38.7446706, -121.2577594, 'Big 5 Sporting Goods', '1909 Douglas Boulevard', '#f39c12', 1, 'Unnamed Retail Center', true);
+addStore(38.7461871, -121.2540606, 'Target', '1925 Douglas Boulevard Roseville', '#f39c12', 42, 'Unnamed Retail Center', true);
+addStore(38.7472929, -121.2569366, 'Walmart Supercenter', '1400 Lead Hill Boulevard Roseville', '#f39c12', 42, 'Unnamed Retail Center', true);
+addStore(38.7492225, -121.2661748, 'Echo Park Automotive', '180 North Sunrise Avenue', '#3498db', 31, 'Unnamed Retail Center', false);
+addStore(38.7438339, -121.251233, 'Romano\'s Macaroni Grill', '2010 Douglas Boulevard', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(38.7290566, -121.2725258, 'McDonald\'s', '1190 Cirby Way Roseville', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(38.7446264, -121.2627845, 'First Bank', '1625 Douglas Boulevard Roseville', '#3498db', 27, 'Unnamed Retail Center', false);
+addStore(38.7479116, -121.2646891, 'Outback Steakhouse', '-', '#3498db', 46, 'Unnamed Retail Center', false);
+addStore(38.7512373, -121.3097829, 'Shell', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.7445912, -121.2634976, 'Del Taco', '1619', '#3498db', 46, 'Unnamed Retail Center', false);
+addStore(38.744556, -121.2645785, 'Carl\'s Jr.', '1701 Douglas Boulevard Roseville', '#3498db', 46, 'Unnamed Retail Center', false);
+addStore(38.7414943, -121.3083361, 'Walgreens', '3999 Foothills Boulevard Roseville', '#f39c12', 56, 'Unnamed Retail Center', true);
+addStore(38.7446759, -121.256152, 'Chevys', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7446727, -121.2552551, 'Jack in the Box', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(38.7447118, -121.2677536, 'Hampton Inn & Suites Roseville', '110 North Sunrise Avenue Roseville', '#3498db', 46, 'Unnamed Retail Center', false);
+addStore(38.6788959, -121.2688763, 'Wendy\'s', '7983 Greenback Lane Citrus Heights', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(38.7430745, -121.3098089, 'Arco', '-', '#3498db', 56, 'Unnamed Retail Center', false);
+addStore(38.8727373, -121.297775, 'Chase', '45 Lincoln Boulevard', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8731576, -121.2976157, 'Bank of America', '47 Lincoln Boulevard', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.6864897, -121.3394089, 'Safeway', '5345 Elkhorn Boulevard Sacramento', '#f39c12', 30, 'Unnamed Retail Center', true);
+addStore(38.7773406, -121.2915953, 'Safeway', '1080 Pleasant Grove Boulevard Roseville', '#f39c12', 35, 'Unnamed Retail Center', true);
+addStore(38.7418555, -121.2284867, 'Safeway', '8640 Sierra College Boulevard Roseville', '#f39c12', 45, 'Unnamed Retail Center', true);
+addStore(38.7900681, -121.2221978, 'Safeway', '4805 Granite Drive Rocklin', '#f39c12', 36, 'Unnamed Retail Center', true);
+addStore(38.802903, -121.2742949, 'Safeway', '2220 Sunset Boulevard Rocklin', '#f39c12', 57, 'Unnamed Retail Center', true);
+addStore(38.6895337, -121.295186, 'Walmart Supercenter', '7010 Auburn Boulevard Citrus Heights', '#f39c12', 64, 'Unnamed Retail Center', true);
+addStore(38.6894898, -121.2971874, 'Costco', '7000 Auburn Boulevard Citrus Heights', '#f39c12', 64, 'Unnamed Retail Center', true);
+addStore(38.6652051, -121.3071342, 'Safeway', '5450 Dewey Drive Fair Oaks', '#f39c12', 58, 'Unnamed Retail Center', true);
+addStore(38.6799016, -121.2942364, 'Safeway', '7301 Greenback Lane Citrus Heights', '#f39c12', 54, 'Unnamed Retail Center', true);
+addStore(38.8683378, -121.3031636, 'The Home Depot', '1000 Groveland Lane Lincoln', '#f39c12', 39, 'Unnamed Retail Center', true);
+addStore(38.870745, -121.3043747, 'TJ Maxx', '930 Groveland Lane Lincoln', '#f39c12', 39, 'Unnamed Retail Center', true);
+addStore(38.8713727, -121.3051447, 'Holiday Inn Express', '155 Ferrari Ranch Road Lincoln', '#3498db', 39, 'Unnamed Retail Center', false);
+addStore(38.8741428, -121.3020781, 'Ross', '113 Ferrari Ranch Road Lincoln', '#f39c12', 18, 'Unnamed Retail Center', true);
+addStore(38.8710811, -121.3045391, 'PetSmart', '920 Groveland Lane Lincoln', '#3498db', 39, 'Unnamed Retail Center', false);
+addStore(38.871546, -121.3032034, 'O\'Reilly Auto Parts', '900 Groveland Lane Lincoln', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(38.8737469, -121.3021338, 'Sprouts Farmers Market', '115 Ferrari Ranch Road Lincoln', '#f39c12', 18, 'Unnamed Retail Center', true);
+addStore(38.8733977, -121.3023857, 'Ulta Beauty', '117 Ferrari Ranch Road Lincoln', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(38.6787753, -121.2918564, 'The UPS Store', '-', '#3498db', 54, 'Unnamed Retail Center', false);
+addStore(38.6786379, -121.2918559, 'Verizon', '-', '#3498db', 54, 'Unnamed Retail Center', false);
+addStore(38.6778973, -121.2919538, 'Carl\'s Jr.', '7400 Greenback Lane Citrus Heights', '#3498db', 24, 'Unnamed Retail Center', false);
+addStore(38.802706, -121.2018978, 'Walmart Supercenter', '5454 Crossings Drive Rocklin', '#f39c12', 19, 'Unnamed Retail Center', true);
+addStore(38.7969587, -121.2177927, 'California Family Fitness', '2511 Warren Drive', '#f39c12', 66, 'Unnamed Retail Center', true);
+addStore(38.7435369, -121.2256093, 'Chick Fil A', '-', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(38.6757278, -121.2754479, 'Best Buy', '6110 Birdcage Center Lane Citrus Heights', '#f39c12', 21, 'Unnamed Retail Center', true);
+addStore(38.676973, -121.2755631, 'Hobby Lobby', '7800 Greenback Lane Citrus Heights', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(38.6769141, -121.2738151, 'Lowe\'s', '7840 Greenback Lane Citrus Heights', '#f39c12', 21, 'Unnamed Retail Center', true);
+addStore(38.6756892, -121.274845, 'Michaels', '6120 Birdcage Centre Lane Citrus Heights', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(38.6779095, -121.2722173, 'SKECHERS Warehouse Outlet', '6199 Sunrise Boulevard Citrus Heights', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(38.6757292, -121.273372, 'Walmart Neighborhood Market', '6197 Sunrise Boulevard Citrus Heights', '#f39c12', 21, 'Unnamed Retail Center', true);
+addStore(38.6728444, -121.2748577, 'Target', '5837 Sunrise Boulevard Citrus Heights', '#f39c12', 38, 'Unnamed Retail Center', true);
+addStore(38.6737662, -121.2722058, 'Golden 1 Credit Union', '5901 Sunrise Boulevard Citrus Heights', '#3498db', 38, 'Unnamed Retail Center', false);
+addStore(38.6750115, -121.2721184, 'The Vitamin Shoppe', '6147 Sunrise Boulevard Citrus Heights', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(38.6743574, -121.2722361, 'Wells Fargo', 'Citrus Heights', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(38.8749646, -121.303258, 'Panda Express', '105 Ferrari Ranch Road Lincoln', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(38.6790748, -121.3214714, 'ampm', '6140 Greenback Lane Citrus Heights', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(38.6791659, -121.3213541, 'Arco', '6140 Greenback Lane Citrus Heights', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(38.6789703, -121.2720104, 'Shell', '7899 Greenback Lane Citrus Heights', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(38.671435, -121.272341, 'Chase', '5801 Sunrise Boulevard Citrus Heights', '#3498db', 38, 'Unnamed Retail Center', false);
+addStore(38.679541, -121.2720525, 'Red Lobster', '-', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(38.6805839, -121.272049, 'Texas Roadhouse', '6309 Sunrise Boulevard Citrus Heights', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(38.6817925, -121.270741, 'Staples', '6330 Sunrise Boulevard Citrus Heights', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(38.6870315, -121.3419813, 'Western Dental', '5261 Elkhorn Boulevard Sacramento', '#3498db', 30, 'Unnamed Retail Center', false);
+addStore(38.686862, -121.3415418, 'McDonald\'s', '5301 Elkhorn Boulevard Sacramento', '#3498db', 30, 'Unnamed Retail Center', false);
+addStore(38.6880683, -121.3417451, 'Dollar General', '5245 Elkhorn Boulevard Sacramento', '#3498db', 30, 'Unnamed Retail Center', false);
+addStore(38.6742887, -121.2753242, 'Old Navy', '5985 Birdcage Center Lane Citrus Heights', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(38.8726451, -121.3039494, 'In-N-Out Burger', '850 Groveland Lane Lincoln', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(38.6854155, -121.3395434, 'Starbucks', '5411 Diablo Drive Sacramento', '#3498db', 30, 'Unnamed Retail Center', false);
+addStore(38.7042594, -121.3319355, 'Walmart Supercenter', '5821 Antelope Road Sacramento', '#f39c12', 41, 'Unnamed Retail Center', true);
+addStore(38.704702, -121.3290919, 'The Home Depot', '5859 Antelope Road Sacramento', '#f39c12', 41, 'Unnamed Retail Center', true);
+addStore(38.6783205, -121.3207778, '7-Eleven', '-', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(38.6795417, -121.3208728, 'Shell', '6141 Greenback Lane Citrus Heights', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(38.6805672, -121.3219531, 'Taco Bell', '6031 Greenback Lane Citrus Heights', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(38.6790239, -121.3199662, 'Chevron', '-', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(38.6794146, -121.3194353, 'McDonald\'s', '6212 Auburn Boulevard Citrus Heights', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(38.6798642, -121.3210369, 'Jack in the Box', '6131 Greenback Lane Citrus Heights', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(38.6801964, -121.3199083, 'Dollar Tree', '6085 Greenback Lane Citrus Heights', '#f39c12', 22, 'Unnamed Retail Center', true);
+addStore(38.6804327, -121.3202166, 'B Liquor', '-', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(38.6806317, -121.3204375, 'Petco', '6067 Greenback Lane Citrus Heights', '#f39c12', 22, 'Unnamed Retail Center', true);
+addStore(38.6809296, -121.3208566, 'Grocery Outlet', '6059 Greenback Lane Citrus Heights', '#f39c12', 22, 'Unnamed Retail Center', true);
+addStore(38.7141148, -121.3663765, 'Starbucks', '4241 Elverta Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7140773, -121.3652703, 'ampm', '7969 Walerga Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7156458, -121.3672848, 'WinCo Foods', '4137 Elverta Road Antelope', '#f39c12', 37, 'Unnamed Retail Center', true);
+addStore(38.8019613, -121.2045078, 'In-N-Out Burger', '5490 Crossings Drive Rocklin', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(38.801063, -121.201772, 'TJ Maxx', '5440 Crossings Drive Rocklin', '#f39c12', 19, 'Unnamed Retail Center', true);
+addStore(38.8017732, -121.2022246, 'PetSmart', '5450 Crossings Drive Rocklin', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(38.8014378, -121.2019833, 'HomeGoods', '5446 Crossings Drive Rocklin', '#f39c12', 19, 'Unnamed Retail Center', true);
+addStore(38.6906462, -121.3838028, 'Starbucks', '3535 Elkhorn Boulevard North Highlands', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(38.75156, -121.3103914, 'Dutch Bros. Coffee', '1225 Baseline Road Roseville', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.7839896, -121.2395657, 'Walmart Neighborhood Market', '5609 Pacific Street Rocklin', '#f39c12', 68, 'Unnamed Retail Center', true);
+addStore(38.7147879, -121.3928643, '76', '-', '#3498db', 25, 'Unnamed Retail Center', false);
+addStore(38.7138571, -121.3933929, 'Jack in the Box', '7949 Watt Avenue Antelope', '#3498db', 25, 'Unnamed Retail Center', false);
+addStore(38.7139743, -121.3929047, 'Shell', '-', '#3498db', 25, 'Unnamed Retail Center', false);
+addStore(38.712851, -121.3946154, 'Walmart Supercenter', '7901 Watt Avenue Antelope', '#f39c12', 25, 'Unnamed Retail Center', true);
+addStore(38.7115425, -121.3645661, 'McDonald\'s', '7899 Walerga Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7130276, -121.3650066, 'Umpqua Bank', '7921 Walerga Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7127751, -121.3633237, 'Rite Aid', '4300 Elverta Road Antelope', '#f39c12', 3, 'Unnamed Retail Center', true);
+addStore(38.707033, -121.3134569, 'Taco Bell', '6440 Antelope Road Citrus Heights', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(38.6639172, -121.3077138, 'Starbucks', '6711 Madison Avenue Fair Oaks', '#3498db', 58, 'Unnamed Retail Center', false);
+addStore(38.7881685, -121.2209321, 'Arco', '-', '#3498db', 36, 'Unnamed Retail Center', false);
+addStore(38.711635, -121.3632585, 'Les Schwab Tire Center', '7880 Walerga Road Antelope', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.7118461, -121.3662885, 'Bel Air', '7901 Walerga Road Antelope', '#f39c12', 3, 'Unnamed Retail Center', true);
+addStore(38.7124956, -121.3663246, '24 Hour Fitness', '7905 Walerga Road Antelope', '#f39c12', 3, 'Unnamed Retail Center', true);
+addStore(38.6753675, -121.2928483, 'Daylight Produce', '6021 San Juan Avenue Citrus Heights', '#3498db', 24, 'Unnamed Retail Center', false);
+addStore(38.6763928, -121.2931814, 'Twisted', '6093 San Juan Avenue Citrus Heights', '#3498db', 24, 'Unnamed Retail Center', false);
+addStore(38.798146, -121.2646658, 'Bel Air', '-', '#f39c12', 59, 'Unnamed Retail Center', true);
+addStore(38.7892284, -121.2246734, 'The Piano Store', '-', '#3498db', 36, 'Unnamed Retail Center', false);
+addStore(38.8717973, -121.2950761, 'Quick Quack Car Wash', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.7734692, -121.2711384, 'Ruth\'s Chris Steak House', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.772861, -121.2684966, 'The Cheesecake Factory', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.773881, -121.2695601, 'Westfield Galleria at Roseville', '1151 Galleria Boulevard Roseville', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.771692, -121.2664688, 'Mansour\'s Oriental Rug Gallery', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(38.6896387, -121.3832843, 'Taco Bell', '6741 Watt Avenue North Highlands', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(38.6888067, -121.383341, 'Jiffy Lube', '-', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(38.6882121, -121.3832872, 'Popeyes', '6631 Watt Avenue North Highlands', '#3498db', 50, 'Unnamed Retail Center', false);
+addStore(38.6909154, -121.3824963, '7-Eleven', '3601 Elkhorn Boulevard North Highlands', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(38.690767, -121.382062, 'Long John Silver\'s', '-', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(38.704635, -121.3629055, 'Walgreens', '4331 Antelope Road Antelope', '#f39c12', 48, 'Unnamed Retail Center', true);
+addStore(38.8724529, -121.2966684, 'Raley\'s', '39 Lincoln Boulevard Lincoln', '#f39c12', 4, 'Unnamed Retail Center', true);
+addStore(38.8745375, -121.29691, 'ampm', '49 Lincoln Boulevard Lincoln', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.874271, -121.2970175, 'Arco', '49 Lincoln Boulevard Lincoln', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.8742428, -121.3033601, 'Carl\'s Jr.', '-', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(38.8730995, -121.293893, 'Big 5 Sporting Goods', '741 East Joiner Parkway Lincoln', '#f39c12', 4, 'Unnamed Retail Center', true);
+addStore(38.8044879, -121.2092197, 'Target', '5104 Commons Drive Rocklin', '#f39c12', 23, 'Unnamed Retail Center', true);
+addStore(38.8024078, -121.2752603, 'Prime Storage', '6025 Park Drive', '#3498db', 57, 'Unnamed Retail Center', false);
+addStore(38.7970057, -121.2644615, 'Taco Bell', '-', '#3498db', 59, 'Unnamed Retail Center', false);
+addStore(38.7976211, -121.2658608, '76', '-', '#3498db', 59, 'Unnamed Retail Center', false);
+addStore(38.7982431, -121.2635183, 'La Petite Academy', '-', '#3498db', 59, 'Unnamed Retail Center', false);
+addStore(38.6639192, -121.3095086, 'Rocki\'s Chicken', '6635 Madison Avenue Carmichael', '#3498db', 58, 'Unnamed Retail Center', false);
+addStore(38.7795213, -121.2650572, 'Five Star Auto Repair', '-', '#3498db', 32, 'Unnamed Retail Center', false);
+addStore(38.7980326, -121.267589, 'The Human Bean', '2401 Coppervale Drive Rocklin', '#3498db', 59, 'Unnamed Retail Center', false);
+addStore(38.7814409, -121.2651923, '76', '-', '#3498db', 32, 'Unnamed Retail Center', false);
+addStore(38.6647191, -121.3072906, 'Kaur Beauty Bar', '5450 Dewey Drive', '#3498db', 58, 'Unnamed Retail Center', false);
+addStore(38.6757894, -121.2928969, '7-Eleven', '6035 San Juan Avenue Citrus Heights', '#3498db', 24, 'Unnamed Retail Center', false);
+addStore(38.6757407, -121.2918093, 'Vilo Spa & Massage', '6028-A San Juan Avenue Citrus Heights', '#3498db', 24, 'Unnamed Retail Center', false);
+addStore(38.6669894, -121.3388629, 'Tony\'s Haircut', '5354 Auburn Boulevard Sacramento', '#3498db', 52, 'Unnamed Retail Center', false);
+addStore(38.6668685, -121.3390026, 'Tienda La Bendicion', '5346 Auburn Boulevard Sacramento', '#3498db', 52, 'Unnamed Retail Center', false);
+addStore(38.7958975, -121.3250488, 'Dutch Bros. Coffee', '1478 Blue Oaks Boulevard Roseville', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(38.795861, -121.3268676, 'Chick-fil-A', '1490 Blue Oaks Boulevard Roseville', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(38.7700779, -121.2628094, 'REI', '1148 Galleria Boulevard Roseville', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.7736795, -121.2681705, 'JCPenney', '1125 Galleria Boulevard Roseville', '#f39c12', 0, 'Unnamed Retail Center', true);
+ 
+  // ---- Tenant name filter ----
+  var allTenantNames = ['24 Hour Fitness', '3 Monkeys', '7-Eleven', '76', '7th Avenue', 'A Classic Touch Salon', 'A&W', 'AAA Insurance', 'Aaron Brothers', 'Aaron\'s', 'Abercrombie & Fitch', 'Adam\'s Jewelers', 'Advance America', 'Advance America Cash Advance', 'Aerie', 'Aeropostale', 'Airport Home Appliance', 'Aldo', 'Alien Vape & Smoke Shop', 'All Seasons Pool & Spa', 'Allen Edmonds', 'Alo Yoga', 'Alterations', 'Amazon Locker', 'America\'s Best', 'America\'s Tire', 'American Automobile Association', 'American Eagle Outfitters', 'American Furniture Superstore', 'AmeriGas', 'ampm', 'Ancient Inc Tattoos', 'Angel Beauty Brows', 'Antelope Liquors', 'Antelope Self Storage', 'Antelope Tires and Wheels', 'Anthropologie', 'Anytime Fitness', 'Apple Store', 'Aqua-Tots Swim Schools', 'Arco', 'Arhaus', 'Aritzia', 'Artistic Nails', 'AT&T', 'Athleta', 'AuAdore Jewelry', 'Auntie Anne\'s', 'Auto Service of Roseville', 'Autonation Honda', 'AutoZone', 'Ava Nails & Spa', 'Awesome Nails Spa', 'B Liquor', 'B. B. Nail Spa', 'Bacio di Latte', 'BAM Hair Nails Salon', 'Bambu', 'Banfield Pet Hospital', 'Bank of America', 'Barnes & Noble', 'Baskin-Robbins', 'Bath & Body Works', 'Batteries Plus', 'Batteries Plus Bulbs', 'Beach Hut Deli', 'Beauty Bungalows', 'Beauty By Thread', 'Beauty by Thread', 'Beauty Concepts', 'Beauty Hair & Nails', 'Beauty Solutions', 'Bel Air', 'Ben Bridge', 'Beryozka European Food Market', 'Best Buy', 'Best Western Plus Orchid Hotel & Suites', 'Best Western Roseville Inn', 'BevMo!', 'Bianca\'s Fine Jewelry', 'Big 5 Sporting Goods', 'Big Lots', 'Big O Check Cashing', 'Big O Tires', 'BJ\'s', 'Black Angus', 'Black Bear Diner', 'Black Widow Tattoo Studio', 'Blue Nile', 'BlueZone Sports', 'BMO', 'Bob\'s Discount Furniture', 'Body n Mind Massage Spa', 'Boost Mobile', 'Boss Liquor', 'Boutique Hair Parlor', 'Brighton Collectibles', 'Brilliant Earth', 'Buca di Beppo', 'Buckle', 'Buffalo Wild Wings', 'Build-A-Bear Workshop', 'Builders Showcase', 'Burger King', 'Burger Lounge', 'Burlington', 'Button Up Boutique', 'Caitlyn Minimalist', 'California Basics', 'California Closets', 'California Family Fitness', 'California Sun', 'Capital Cabinets & Floors, Inc.', 'Capital One', 'Carl\'s Jr.', 'Carniceria Atoyac Meat Market', 'Carter\'s', 'Cartridge World', 'Cell Phone Repair', 'Champ Cuts', 'Champs Sports', 'Chanel', 'ChargePoint', 'Charles Schwab', 'Chase', 'Chevron', 'Chevys', 'Chick Fil A', 'Chick-fil-A', 'Chico\'s', 'Chipotle', 'Chuck E. Cheese', 'Cinemark', 'Cinnabon', 'Citibank', 'claire\'s', 'Cleaners', 'Club Champion', 'Club Pilates', 'Coinstar', 'Cold Stone Creamery', 'Coldwell Banker', 'Columbia Bank', 'Comfort Western and Workwear', 'Continental Cleaners', 'Costco', 'Costco Tire Service Center', 'Cotton On', 'Courtyard', 'Cozy Nails', 'Crate & Barrel', 'Creamy\'s', 'Creative Nails & Spa', 'Creekside Coin Wash', 'Cricket Wireless', 'Crocs', 'Crossroads Trading Co', 'Crown Nails', 'Crown Wig & Beauty Supply', 'Crumbl Cookies', 'Crunch Fitness', 'Crystal Nails', 'Curves', 'Custom Cleaners', 'Daiso Japan', 'Dave & Buster\'s', 'David Yurman', 'David\'s Bridal', 'Daylight Produce', 'Dazzling Nails and Spa', 'dd\'s Discounts', 'Del Taco', 'Denny\'s', 'Derrel\'s Mini Storage', 'Design Within Reach', 'Dick\'s Sporting Goods', 'Dickey\'s Barbecue Pit', 'Dimple Records', 'Discovery Shop', 'DMV Now', 'Dog & Cat Health Food', 'Doggie Style Grooming Salon', 'Dollar General', 'Dollar Tree', 'Domino\'s', 'Donut King', 'Dorian\'s Barber Studio', 'Dry Clean Today', 'Dunn-Edwards Paints', 'Durango Western Wear', 'Dutch Bros. Coffee', 'Echo Park Automotive', 'Ecothrift', 'Eileen Fisher', 'Electrify America', 'Engel & Völkers', 'Enterprise', 'Epic Sports Cards', 'Era Salon', 'Erik\'s DeliCafé', 'Escapology', 'Ethan Allen', 'European Wax Center', 'Evereve', 'Everlasting Gifts', 'EVgo', 'Express', 'ExtraMile', 'Extreme Soccer', 'Fabletics', 'Family Massage', 'Famous Footwear', 'Fast-Fix', 'Fastsigns', 'FedEx Office', 'Finish Line', 'Firestone', 'First American Self Storage', 'First Bank', 'First Response Phone Repair', 'Five Below', 'Five Guys', 'Five Star Auto Repair', 'Fleet Feet', 'Fogo de Chão', 'Food Mart', 'FoodMaxx', 'Foot Locker', 'FP Movement', 'Fred Loya Insurance', 'Free People', 'FreeStyle Clothing Exchange', 'FreeWire', 'Fresh Cleaners', 'Fringes Salon', 'Frozen Yogurt', 'Fuzz Monsters Pet Grooming', 'Galleria Vape & Smoke', 'GameStop', 'Gap', 'Garage', 'Gentle Dental', 'Get Nailed Salon', 'GNC', 'Gold\'s Gym', 'Golden 1 Credit Union', 'Golf Galaxy', 'Goodwill', 'Goodwill Donation Express', 'Goodyear', 'Gorjana', 'Great Clips', 'Great Cuts', 'Grocery Outlet', 'Gucci', 'Guitar Center', 'H&M', 'H&R Block', 'Habit Burger & Grill', 'Hair Cuts & Facials', 'Hair Extensions', 'Half Price Books', 'Hallmark', 'Hampton Inn & Suites Roseville', 'Handel\'s Homemade Ice Cream', 'Harbor Freight Tools', 'Harmony Spa', 'Hawaii Massage', 'HD Supply Home Improvement Solutions', 'HearingLife', 'HearUSA', 'Hobby Lobby', 'Holiday Inn Express', 'Hollister', 'Home Consignment Center', 'HomeGoods', 'Homewood Suites Hilton', 'Hot Topic', 'Hotworx', 'Hugo Boss', 'Huntington Learning Center', 'IconiQ', 'IHOP', 'In the Mix Salon & Barber', 'In-N-Out Burger', 'India Spices', 'India Supermarket', 'Indian Bazaar', 'Indochino', 'Inkspire Beauty', 'Intimissimi', 'Ionna (planned)', 'Island Nails', 'J. Crew Factory', 'J.Jill', 'Jack in the Box', 'Jack\'s Urban Eats', 'Jackson Hewitt', 'Jamba', 'Janie & Jack', 'JCPenney', 'Jersey Mike\'s Subs', 'Ji Lang Xing', 'Jiffy Lube', 'Jimboy\'s Tacos', 'Jimmy John\'s', 'Jo Malone', 'John L. Sullivan\'s Roseville KIA', 'Joli Nail Spa', 'Jollibee', 'Journeys', 'Kajal Eyebrow Threading', 'Kaur Beauty Bar', 'Kay Jewelers', 'KB Home Design Studio', 'Kelly-Moore Paints', 'Kenny G & Company', 'KFC', 'Kids Foot Locker', 'Kohl\'s', 'Krispy Kreme', 'Krispy Krunchy Chicken', 'L&L Hawaiian Barbecue', 'L\'Occitane', 'La Belle Nails', 'La Petite Academy', 'LabCorp', 'Lakeshore Learning', 'LaserAway', 'Lavish Locks', 'Learning Express Toys', 'Lego', 'Lendmark', 'LensCrafters', 'Les Schwab Tire Center', 'Leslie\'s Pool Supplies', 'Level Posh Salon', 'Levi\'s', 'Liberty Tax', 'Lids', 'Lincoln Laundry', 'Lincoln Medical Supplies', 'Liquor & Wine', 'Little Caesars', 'Live-More', 'Lolli and Pops', 'London Nails', 'Long John Silver\'s', 'Louis Vuitton', 'LoveSac', 'Lowe\'s', 'Lululemon', 'Lush', 'Läderach', 'M&M Deli', 'MAC Cosmetics', 'Macy\'s', 'Madewell', 'Magma Vape and Smoke Shop', 'Mainland Surf & Skate', 'Mansour\'s Oriental Rug Gallery', 'Marine Layer', 'Mark’s Hallmark', 'Marshalls', 'Massage Envy', 'Massage Heights', 'Matthew\'s Sofa & Mattress Gallery', 'Mattress Express', 'Mattress Firm', 'Mattress Outlet', 'Maurices', 'Max Home Goods', 'McDonald\'s', 'Mei Mei Hair & Nails', 'Men\'s Wearhouse', 'Mendocino Farms', 'Metro by T-Mobile', 'Michaels', 'Michelle\'s Furniture & Mattress', 'Miniso', 'Minute Key', 'Mobil', 'MOD Pizza', 'Model Home Furniture and Consignment', 'Moschino Nails', 'Mountain Mike\'s', 'My Dog\'s Spot', 'Nail Spa 999', 'NAPA Auto Parts', 'Nespresso', 'Nick The Greek', 'Niello Acura', 'Nielson Fine Floors', 'Noah\'s Bagels', 'Noodles & Company', 'Nordstrom', 'Nordstrom Rack', 'North Highlands Mini Storage & Uhaul', 'Nugget Markets', 'NVision Sacramento (f/k/a Meister Eye & Laser Center)', 'O\'Reilly Auto Parts', 'Oakley', 'Oasis x HLND Salon And Barber', 'Odessa European Deli Store', 'Office Depot', 'Old Gold Exchange', 'Old Navy', 'Once Upon a Child', 'OneZo Tapioca', 'Orangetheory Fitness', 'Oriental Market', 'Outback Steakhouse', 'Pacific Coast Food', 'Pacific Thrift Store', 'PacSun', 'Palace Nails and Spa', 'Panda Express', 'Pandora', 'Panera Bread', 'Papa Murphy\'s', 'Paper Source', 'Paris Baguette', 'Party City', 'Peet\'s Coffee', 'Perfect Brows Ink', 'Perfumes Luxe', 'Pet Club', 'Pet Food Express', 'Petco', 'Petroglyph Pottery Painting Store', 'PetSmart', 'PetSmart Grooming', 'Philly Nail & Spa', 'Pick A Color', 'Pieology Pizzeria', 'Pizza Hut', 'PJ Mart', 'Planet Fitness', 'PNC Bank', 'Pop Mart', 'Popeyes', 'Posh Paws Grooming', 'Pottery Barn', 'Pottery World', 'Pressed Juicery', 'Pretzelmaker', 'Prime Storage', 'Pro Image Sports', 'Pro Massage', 'Psycho Bunny', 'Pushkin\'s Bakery', 'Quest Diagnostics', 'Quick Quack Car Wash', 'Quick Tag', 'Quickly', 'Quiznos', 'Raceday Cycle & Multisport', 'Raising Cane\'s', 'Raley\'s', 'Raley\'s Bel Air', 'Raley\'s O-N-E Market', 'Red Lobster', 'Red Robin', 'Red Wing', 'Redbox', 'REI', 'Removery', 'Restoration Hardware', 'Rite Aid', 'Rock Hill Boutique', 'Rocket', 'Rocki\'s Chicken', 'Rocklin Florist', 'Romano\'s Macaroni Grill', 'Rose Food & Liquor', 'Roseville Ace Hardware', 'Roseville Cleaners', 'Roseville Nail Spa', 'Ross', 'Rothy\'s', 'Round Table Pizza', 'Round1', 'Royal Spa & Massage', 'Rustic Mule Grazing', 'Ruth\'s Chris Steak House', 'S&L Gem Co.', 'Safeway', 'Saint Laurent', 'Saladworks', 'Salon Hermosa', 'Salt & Straw', 'Sam\'s Club', 'Save Mart', 'Scandinavian Designs', 'See\'s Candies', 'Sephora', 'Shake Shack', 'Shane Co.', 'Sharetea', 'Shell', 'Shell Recharge', 'Sherman Clay', 'Shoe Palace', 'Site for Sore Eyes', 'Skechers', 'SKECHERS Warehouse Outlet', 'SleepFirst', 'Smart & Final Extra!', 'Smashburger', 'Smoke Barn', 'Sole Desire Shoes', 'Soma', 'Sourdough & Co.', 'Speedway', 'Spencer\'s', 'Sport Clips', 'Sports Fever', 'Sportsman\'s Warehouse', 'Sprouts Farmers Market', 'SR Food & Liquor', 'Staples', 'Starbucks', 'Statewide Self Storage', 'STUDS', 'Subway', 'Sukoshi', 'Sundance Self Storage', 'Sunglass Hut', 'Sunrise Mall', 'Sunrise Natural Foods', 'Supercuts', 'Sur La Table', 'Sutter Walk-In Care', 'Swarovski', 'Sweetgreen', 'T-Mobile', 'Taco Bell', 'Tailpipes Smog Test Centers', 'Talbots', 'Target', 'Tempur-Pedic', 'Tesla Supercharger', 'Texas Roadhouse', 'The Bird Shop', 'The Cave Roseville', 'The Cheesecake Factory', 'The Doggie Bag', 'The Habit Burger Grill', 'The Home Depot', 'The Human Bean', 'The Joint Chiropractic', 'The Klubhouse Tattoo and Piercing', 'The North Face', 'The Piano Store', 'The Sandwich Spot', 'The Serpentarium', 'The Tools Vault', 'The UPS Store', 'The Vitamin Shoppe', 'Tienda La Bendicion', 'Tiffany & Company', 'Tillys', 'TJ Maxx', 'Tobacco Plus', 'Togo\'s', 'Tommy Bahama', 'Tommy\'s Express', 'Tony\'s Haircut', 'Top Cuts and Nails', 'Top Ten Nails', 'Tops Men\'s Fashion', 'Torrid', 'Tory Burch', 'Total Wine', 'TotalNutrition', 'Trader Joe\'s', 'TravisMathew', 'Trendy Nails', 'Trojan Storage', 'Tumi', 'Twisted', 'Twisted Eyebrow Threading', 'U.S. Bank', 'UFC Gym', 'Ulta Beauty', 'Umpqua Bank', 'Union Bank', 'Uniqlo', 'United States Post Office', 'Uptown Cheapskate', 'Urban Outfitters', 'US Nails & Beauty', 'USPS', 'V Max Cleaners', 'Vans', 'Verizon', 'Vibrance Medical Spa', 'Victoria\'s Secret', 'Vilo Spa & Massage', 'VINCE.', 'Visionworks', 'Vonne\'s Hair & Nails', 'Vuori', 'Walgreens', 'Walmart Neighborhood Market', 'Walmart Supercenter', 'Warby Parker', 'Waxing the City', 'Wayback Burgers', 'Wells Fargo', 'Wendy\'s', 'West Coast Nutrition', 'west elm', 'Western Dental', 'Western Union', 'Westfield', 'Westfield Galleria at Roseville', 'Wetzel\'s Pretzels', 'White House Black Market', 'Whole Foods Market', 'Wild Birds Unlimited', 'Williams-Sonoma', 'Willo', 'WinCo Foods', 'Windsor', 'Wingstop', 'Woodcreek Nails & Spa', 'World Market', 'Xfinity', 'Your CBD Store, Lincoln', 'Yum Tea House', 'Zales', 'Zara', 'Zumiez', 'Z’s Massage'];
+  var selectedNames = new Set(allTenantNames);
+ 
+  var plazaNameIndex = {};
+  storesData.forEach(function(s) {
+    if (s.plazaId === -1) return;
+    if (!plazaNameIndex[s.plazaId]) plazaNameIndex[s.plazaId] = new Set();
+    plazaNameIndex[s.plazaId].add(s.name);
+  });
+ 
+  var tenantControl = L.control({position: 'topleft'});
+  tenantControl.onAdd = function() {
+    var container = L.DomUtil.create('div', 'tenant-filter');
+    container.innerHTML =
+      '<button id="tenantToggleBtn" class="tenant-toggle-btn" type="button">'
+      + 'Tenants: All (' + allTenantNames.length + ')</button>'
+      + '<div id="tenantPanel" class="tenant-panel" style="display:none;">'
+      +   '<input id="tenantSearch" class="tenant-search" type="text" placeholder="Search tenants...">'
+      +   '<div class="tenant-actions">'
+      +     '<button id="tenantSelectAll" type="button">Select all</button>'
+      +     '<button id="tenantDeselectAll" type="button">Deselect all</button>'
+      +   '</div>'
+      +   '<div id="tenantList" class="tenant-list"></div>'
+      + '</div>';
+    L.DomEvent.disableClickPropagation(container);
+    L.DomEvent.disableScrollPropagation(container);
+    return container;
+  };
+  tenantControl.addTo(map);
+ 
+  function updateTenantToggleLabel() {
+    var btn = document.getElementById('tenantToggleBtn');
+    var n = selectedNames.size;
+    var total = allTenantNames.length;
+    var label;
+    if (n === total) {
+      label = 'Tenants: All (' + total + ')';
+    } else if (n === 0) {
+      label = 'Tenants: none selected';
+    } else {
+      label = 'Tenants: ' + n + ' of ' + total + ' selected';
+    }
+    btn.innerHTML = label;
+  }
+ 
+  var tenantRows = [];
+  var tenantListEl = document.getElementById('tenantList');
+  allTenantNames.forEach(function(name) {
+    var row = document.createElement('label');
+    row.className = 'tenant-item';
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = true;
+    cb.addEventListener('change', function() {
+      if (cb.checked) { selectedNames.add(name); } else { selectedNames.delete(name); }
+      updateTenantToggleLabel();
+      updateVisibility();
+    });
+    row.appendChild(cb);
+    row.appendChild(document.createTextNode(' ' + name));
+    tenantListEl.appendChild(row);
+    tenantRows.push({el: row, checkbox: cb, lower: name.toLowerCase()});
+  });
+ 
+  document.getElementById('tenantToggleBtn').addEventListener('click', function() {
+    var panel = document.getElementById('tenantPanel');
+    panel.style.display = (panel.style.display === 'none') ? 'block' : 'none';
+  });
+ 
+  document.getElementById('tenantSearch').addEventListener('input', function(e) {
+    var q = e.target.value.toLowerCase();
+    tenantRows.forEach(function(r) {
+      r.el.style.display = (r.lower.indexOf(q) !== -1) ? '' : 'none';
+    });
+  });
+ 
+  document.getElementById('tenantSelectAll').addEventListener('click', function() {
+    tenantRows.forEach(function(r) { r.checkbox.checked = true; });
+    selectedNames = new Set(allTenantNames);
+    updateTenantToggleLabel();
+    updateVisibility();
+  });
+ 
+  document.getElementById('tenantDeselectAll').addEventListener('click', function() {
+    tenantRows.forEach(function(r) { r.checkbox.checked = false; });
+    selectedNames = new Set();
+    updateTenantToggleLabel();
+    updateVisibility();
+  });
+  // ---- end tenant name filter ----
+ 
+  map.on('overlayadd overlayremove', updateVisibility);
+  updateVisibility();
+ 
+  var overlays = {
+    '🔴  Multi-anchor plazas (2+ anchors)': layerMultiAnchor,
+    '⭕  Single-anchor plazas': layerSingleAnchor,
+    '🟣  Plaza Center Points': layerPlazaCenters,
+    '🟡  Anchor Stores (in Plaza)': layerAnchors,
+    '🔵🔴  Tenants (In Plaza)': layerTenants,
+    '━━━━━━━━━━━━━━': L.layerGroup(),
+    '🔥  High Density Plazas (10+ tenants)': layerHighDensity,
+    '🔹  Lower Density (< 10 tenants)': layerLowDensity
+  };
+ 
+  var countyDivider = false;
+  for (var county in countyLayers) {
+    if (!countyDivider) {
+        overlays['━━━━━━━━━━━━━━ '] = L.layerGroup();
+        countyDivider = true;
+    }
+    overlays['📍 ' + county] = countyLayers[county];
+  }
+ 
+  L.control.layers(null, overlays, {
+    position: 'topright',
+    collapsed: false,
+  }).addTo(map);
+ 
+  var legend = L.control({position: 'bottomright'});
+  legend.onAdd = function() {
+    var div = L.DomUtil.create('div', 'legend');
+    div.innerHTML = '<b>Retail Centers – Roseville, CA</b><br>'
+      + '<span class="legend-dot" style="background:#e74c3c"></span> Named plaza<br>'
+      + '<span class="legend-dot" style="background:#3498db"></span> Unnamed plaza<br>'
+      + '<span class="legend-dot" style="background:#8e44ad"></span> Plaza center point<br>'
+      + '<span class="legend-dot" style="background:#f39c12"></span> Anchor store (in plaza)<br>'
+      + '<span class="legend-dot" style="background:#27ae60"></span> Standalone store<br>'
+      + '⚓ = anchor &nbsp; 🔥 = 10+ tenants<br>'
+      + '<span style="font-size:11px;color:#666;">Use the Tenants filter (top-left) to isolate specific names.</span>';
+    return div;
+  };
+  legend.addTo(map);
+
+  document.getElementById('legendHeader').addEventListener('click', function() {
+    var body = document.getElementById('legendBody');
+    var icon = document.getElementById('legendToggleIcon');
+    var collapsed = (body.style.display === 'none');
+    body.style.display = collapsed ? 'block' : 'none';
+    icon.textContent = collapsed ? '▾' : '▸';
+  });
+</script>
+</body>
+</html>
