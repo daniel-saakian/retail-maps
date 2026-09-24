@@ -272,18 +272,20 @@ export const api = {
     listSitePresentationBrands: () =>
         apiJson<SitePresentationBrand[]>("/api/site-presentations/brands"),
  
-    // Returns the generated .xlsx as a blob (no auto-download) so it can be
-    // loaded into the in-page Luckysheet editor for review/edits first.
-    previewSitePresentation: (brand: string, address: string, signal?: AbortSignal) =>
+    previewSitePresentation: (
+        brand: string, 
+        address: string, 
+        signal?: AbortSignal,
+        coords?: {lat: number, lon: number}
+    ) =>
         fetchBlobPost(
             "/api/site-presentations/generate",
-            { brand, address },
+            { brand, address, lat: coords?.lat, lon: coords?.lon },
             `${brand}_site_summary.xlsx`,
             signal
         ),
  
-    // Takes the edited grid (luckysheet.getAllSheets() output) and triggers
-    // a browser download of the rebuilt .xlsx.
+
     exportSitePresentation: (filename: string, sheets: unknown[]) =>
         downloadFilePost(
             "/api/site-presentations/export",

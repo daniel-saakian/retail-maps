@@ -10,7 +10,6 @@ from sklearn.model_selection import LeaveOneOut
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import r2_score, mean_absolute_error
  
-# ---------------- Config ----------------
 _DATA_DIR = Path(__file__).resolve().parent
 tgg_csv = str(_DATA_DIR / "existing_tgg.csv")
 competitor_csv = str(_DATA_DIR / "competitors_2.csv")

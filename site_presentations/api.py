@@ -14,6 +14,8 @@ class BrandOption(BaseModel):
 class SitePresentationRequest(BaseModel):
     brand: str
     address: str
+    lat: float | None = None
+    lon: float | None = None
 
 class ExportRequest(BaseModel):
     filename: str = "site_summary.xlsx"
@@ -37,7 +39,9 @@ def generate_site_presentation(req: SitePresentationRequest, user=Depends(requir
         raise HTTPException(404, f"unknown brand: '{brand}'")
 
     try:
-        data, filename = registry.generate(brand, address)
+        data, filename = registry.generate(
+            brand, address, manual_lat=req.lat, manual_lon=req.lon
+            )
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:

@@ -1,4 +1,5 @@
 import importlib
+import inspect
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,7 +46,13 @@ def _ensure_all_brand_paths() -> None:
         if child.is_dir() and not child.name.startswith((".", "_")):
             _ensure_on_path(child)
 
-def generate(code: str, address: str, used_names: set | None = None) -> tuple[bytes, str]:
+def generate(
+        code: str, 
+        address: str, 
+        used_names: set | None = None,
+        manual_lat: float | None = None,
+        manual_lon: float | None = None,
+        ) -> tuple[bytes, str]:
     _ensure_all_brand_paths()
     brand = get_brand(code)
     if not brand:
@@ -55,4 +62,16 @@ def generate(code: str, address: str, used_names: set | None = None) -> tuple[by
 
     report_mod = importlib.import_module(brand.report_module)
     report_fn = getattr(report_mod, brand.report_fn)
-    return report_fn(address, used_names=used_names)
+    report_fn = getattr(report_mod, brand.report_fn)
+
+    kwargs = {"used_names": used_names}
+    params = inspect.signature(report_fn).parameters
+    supports_manual_coords = "manual_lat" in params and "manual_lon" in params
+    if supports_manual_coords:
+        kwargs["manual_lat"] = manual_lat
+        kwargs["manual_lon"] = manual_lon
+    elif manual_lat is not None and manual_lon is not None:
+        raise ValueError(
+            f"coordinates are not working"
+        )
+    return report_fn(address, **kwargs)

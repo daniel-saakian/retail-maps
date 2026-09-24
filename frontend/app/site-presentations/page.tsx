@@ -23,6 +23,15 @@ export default function SitePresentationsPage() {
     const [brandsError, setBrandsError] = useState<string | null>(null);
     const [brand, setBrand] = useState("");
     const [address, setAddress] = useState("");
+
+
+
+
+
+
+    const [showAdvanced, setShowAdvanced] = useState(false);
+    const [manualLat, setManualLat] = useState("");
+    const [manualLon, setManualLon] = useState("");
  
     const [generating, setGenerating] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -95,6 +104,20 @@ export default function SitePresentationsPage() {
     async function handleGenerate(e: React.FormEvent) {
         e.preventDefault();
         if (!brand || !address.trim()) return;
+
+        const trimmedLat = manualLat.trim();
+        const trimmedLon = manualLon.trim();
+        let coords: { lat: number, lon: number } | undefined;
+        if (trimmedLat || trimmedLon) {
+            const lat = Number(trimmedLat);
+            const lon = Number(trimmedLon);
+            if (trimmedLat === "" || trimmedLon === "" || Number.isNaN(lat) || Number.isNaN(lon)) {
+                setError("Enter both latitude and longitude in Advanced Settings, or leave both empty");
+                return;
+            }
+            coords = {lat, lon};
+        }
+
         const controller = new AbortController();
         abortRef.current = controller;
         setGenerating(true);
@@ -107,7 +130,8 @@ export default function SitePresentationsPage() {
             const { blob, filename } = await api.previewSitePresentation(
                 brand,
                 address.trim(),
-                controller.signal
+                controller.signal,
+                coords
             );
             setProgress(100);
             await new Promise((resolve) => setTimeout(resolve, 220));
@@ -117,7 +141,15 @@ export default function SitePresentationsPage() {
             if ((e as Error).name === "AbortError") {
                 setCancelled(true);
             } else {
-                setError((e as Error).message);
+                const message = (e as Error).message;
+                setError(message);
+                // The backend sends this exact wording when geocoding fails
+                // and no fallback coordinates were provided -- reveal
+                // Advanced Settings automatically so the person doesn't
+                // have to go hunting for where to enter them.
+                if (message.includes("Advanced Settings")) {
+                    setShowAdvanced(true);
+                }
             }
         } finally {
             setGenerating(false);
@@ -187,6 +219,49 @@ export default function SitePresentationsPage() {
                             className="w-full rounded-lg border border-line bg-paper px-4 py-2.5 text-sm text-ink outline-none focus:border-sky focus:ring-1 focus:ring-sky"
                         />
                     </label>
+                </div>
+ 
+                <div className="mt-3">
+                    <button
+                        type="button"
+                        onClick={() => setShowAdvanced((v) => !v)}
+                        className="text-xs font-semibold text-charcoal/70 underline decoration-dotted underline-offset-2 hover:text-charcoal"
+                    >
+                        {showAdvanced ? "Hide" : "Show"} Advanced Settings
+                    </button>
+                    {showAdvanced && (
+                        <div className="mt-2 grid gap-3 rounded-lg border border-line bg-paper p-3 sm:grid-cols-2">
+                            <label className="text-sm">
+                                <span className="mb-1 block font-medium text-charcoal">
+                                    Latitude <span className="font-normal text-charcoal/60">(optional)</span>
+                                </span>
+                                <input
+                                    value={manualLat}
+                                    onChange={(e) => setManualLat(e.target.value)}
+                                    inputMode="decimal"
+                                    placeholder="e.g. 32.680396"
+                                    className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky focus:ring-1 focus:ring-sky"
+                                />
+                            </label>
+                            <label className="text-sm">
+                                <span className="mb-1 block font-medium text-charcoal">
+                                    Longitude <span className="font-normal text-charcoal/60">(optional)</span>
+                                </span>
+                                <input
+                                    value={manualLon}
+                                    onChange={(e) => setManualLon(e.target.value)}
+                                    inputMode="decimal"
+                                    placeholder="e.g. -97.105358"
+                                    className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink outline-none focus:border-sky focus:ring-1 focus:ring-sky"
+                                />
+                            </label>
+                            <p className="text-xs text-charcoal/60 sm:col-span-2">
+                                Only used as a fallback if the address above can&apos;t be geocoded.
+                                Keep the address filled in either way -- it&apos;s still what shows
+                                at the top of the report.
+                            </p>
+                        </div>
+                    )}
                 </div>
  
                 <div className="mt-5 flex items-center gap-3">

@@ -29,7 +29,7 @@ else:
     print(f"[warning] adjacent_estimation.py not found in {_candidates} - "
           f"traffic data will be unavailable.")
  
-from sourdough_demographics import geocode_address, profile_address
+from sourdough_demographics import geocode_address, profile_address, reverse_geocode_coords, profile_from_coords
 from my_proximity import nearest_madyolks_locations
 from my_model import load_madyolks_competitor, madyolks_primary_competitor_brands
 from my_model import haversine_miles
@@ -149,15 +149,32 @@ def find_co_tenants(lat, lon, comp, n=n_co_tenants):
     return co_tenants[:n], getattr(plaza, "label", None)
  
  
-def generate_site_report(address, used_names=None):
+def generate_site_report(address, used_names=None, manual_lat=None, manual_lon=None):
     print(f"Geocoding: {address}")
-    geo = geocode_address(address)
-    lat, lon = geo["lat"], geo["lon"]
-    matched_address = geo["matched_address"]
-    print(f"  Matched: {matched_address} ({lat:.5f}, {lon:.5f})")
- 
+    used_manual_coords = False
+    try:
+        geo = geocode_address(address)
+        lat, lon = geo["lat"], geo["lon"]
+        matched_address = geo["matched_address"]
+        print(f"  Matched: {matched_address} ({lat:.5f}, {lon:.5f})")
+    except Exception as e:
+        if manual_lat is None or manual_lon is None:
+            raise ValueError(
+                f"Geocoding failed for '{address}' ({e}). Please enter coordinates in "
+                f"Advanced Settings, and leave the address typed in as well."
+            ) from e
+        lat, lon = manual_lat, manual_lon
+        matched_address = address
+        used_manual_coords = True
+        print(f"  Geocoding failed ({e}) - falling back to manually entered coordinates "
+              f"({lat}, {lon}); '{address}' will still be used as the report's display address.")
+
     print("Pulling demographics...")
-    demo = profile_address(address)
+    if used_manual_coords:
+        rgeo = reverse_geocode_coords(lat, lon)
+        demo = profile_from_coords(lat, lon, rgeo["state_fips"], rgeo["county_fips"])
+    else:
+        demo = profile_address(address)
     profile = {
         "address": matched_address,
         "ring_1mi": demo.get("ring_1mi", {}),
@@ -212,11 +229,11 @@ def generate_site_report(address, used_names=None):
  
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print('usage: python madyolks_site_report.py "<address>"')
+        print('usage: python my_site_report.py "<address>" [manual_lat manual_lon]')
         sys.exit(1)
- 
     address = sys.argv[1]
-    data, filename = generate_site_report(address, used_names=set())
-    out = Path.home() / "Downloads" / filename
-    out.write_bytes(data)
-    print(f"\nWrote {out}")
+    manual_lat = float(sys.argv[2]) if len(sys.argv) > 2 else None
+    manual_lon = float(sys.argv[3]) if len(sys.argv) > 3 else None
+    data, filename = generate_site_report(
+        address, used_names=set(), manual_lat=manual_lat, manual_lon=manual_lon
+    )
