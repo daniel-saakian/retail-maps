@@ -1,14 +1,12 @@
 import requests
 import json
 import sys
+import re
 from pathlib import Path
 from functools import lru_cache
 import numpy as np
 from geopy.distance import geodesic
- 
-# these modules may live in a different folder than this file, based on
-# where things have actually ended up during setup - check a few plausible
-# locations rather than assuming one fixed layout
+
 _this_dir = Path(__file__).resolve().parent
 _candidates = (_this_dir, _this_dir.parent, _this_dir.parent.parent, _this_dir / "TGG", _this_dir / "Sourdough")
 for _candidate in _candidates:
@@ -52,6 +50,18 @@ _FHWA_CLASS_TO_HIGHWAY = {
     4: "secondary", 5: "tertiary", 6: "unclassified", 7: "residential",
 }
  
+def _safe_str(v):
+    """Some state ArcGIS layers type their route/name fields as numbers
+    (int/float) instead of strings -- .strip() blows up on those. Coerce
+    to string first so every caller can treat these fields uniformly.
+    """
+    if v is None:
+        return ""
+    if isinstance(v, float) and v != v:  # NaN
+        return ""
+    return str(v).strip()
+ 
+ 
 def _fhwa_class_to_highway(code):
     try:
         code = int(code) % 10
@@ -81,6 +91,63 @@ TIGERWEB_ROAD_LAYERS = [
 ]
  
  
+_DIVIDED_TRUE_VALUES = {"y", "yes", "true", "1", "d", "divided"}
+ 
+ 
+def _is_divided(value):
+    """Loosely interpret a state's own divided-highway flag field (e.g.
+    Arizona ATIS_Roads' ISDIVIDED) -- states encode this differently
+    (Y/N, true/false, 1/0, "Divided"/"Undivided"), so match common
+    spellings case-insensitively rather than assuming one exact format.
+    """
+    if value is None:
+        return False
+    return str(value).strip().lower() in _DIVIDED_TRUE_VALUES
+ 
+ 
+def _feature_point(feat):
+    """A representative (lat, lon) for one ArcGIS feature's own geometry --
+    point geometry directly, or the midpoint of the first path for a
+    polyline (road segments are usually lines, not points). Returns None
+    if the feature has no usable geometry, so callers can fall back to the
+    original query point.
+    """
+    geom = feat.get("geometry") or {}
+    x, y = geom.get("x"), geom.get("y")
+    if x is not None and y is not None:
+        return y, x
+    paths = geom.get("paths")
+    if paths and paths[0]:
+        pts = paths[0]
+        mid = pts[len(pts) // 2]
+        return mid[1], mid[0]
+    return None
+ 
+ 
+def _tiger_lookup_at(lat, lon, radius_m=100):
+    """Best-effort road name + classification from Census TIGER, used to
+    fill in whatever a DOT roadway match is missing:
+      - no usable functional-class (true for ~19 of the configured states,
+        including CA and TX) -- without this, every such match defaulted
+        to "unclassified" (rank 2) regardless of whether it's actually an
+        interstate, which is what wrecked the first nationwide calibration
+        run: a majority of training points all landing on the same
+        flattened class, decorrelating the model's single most informative
+        feature from real traffic volume.
+      - no real street name (true for 21 of the configured states) -- the
+        old fallback was the raw route/LRS field, which for a state like
+        this isn't a name at all: Arizona's ROUTE is a packed fixed-width
+        string ("07  6TH  AVE  01 SCOTTSDALE"), Texas' RTE_NM is an opaque
+        internal control-section id ("CS1262366-KG"). Neither is something
+        a person reading a site report would recognize as a street.
+    One call covers a whole batch of nearby DOT features (they're all
+    within radius_m of the same query point), so callers should fetch this
+    once per point rather than once per feature.
+    """
+    tiger = find_nearby_roads_tiger(lat, lon, n=1, radius_m=radius_m)
+    return tiger[0] if tiger else None
+ 
+ 
 def dot_road_candidates_near(state_abbr, lat, lon, radius_m=road_search_rad):
     """Ask the state DOT's own roadway layer for nearby roads, in the same
     {name, highway, lanes, maxspeed, ref} shape find_nearby_roads (OSM/
@@ -96,19 +163,60 @@ def dot_road_candidates_near(state_abbr, lat, lon, radius_m=road_search_rad):
     features = _fetch_layer_features(
         roadway["url"], roadway.get("where"), roadway["out_fields"], lat, lon, radius_m
     )
+    if not features:
+        return []
+ 
+    needs_tiger = not roadway.get("name_field") or not roadway.get("class_field")
+ 
     roads, seen = [], set()
     for feat in features:
         a = feat.get("attributes", {})
-        route = (a.get(roadway["route_field"]) or "").strip() if roadway.get("route_field") else ""
-        name = (a.get(roadway.get("name_field")) or "").strip() if roadway.get("name_field") else ""
-        label = name or route
-        if not label or label in seen:
-            continue
-        seen.add(label)
+        route = _safe_str(a.get(roadway["route_field"])) if roadway.get("route_field") else ""
+        name = _safe_str(a.get(roadway.get("name_field"))) if roadway.get("name_field") else ""
  
         highway = None
         if roadway.get("class_field"):
             highway = _fhwa_class_to_highway(a.get(roadway["class_field"]))
+ 
+        if needs_tiger and (not name or highway is None):
+            # Look up TIGER at THIS feature's own geometry, not the shared
+            # site coordinate -- a single point-level lookup reused across
+            # every candidate made two genuinely different streets (e.g.
+            # Arizona has no name/class/lanes/speed fields at all, so
+            # everything fell back to TIGER) collapse onto the identical
+            # borrowed name+class, which then produced identical fallback
+            # lanes/speed, which produced identical predicted AADT for two
+            # different roads. Querying each feature's own location keeps
+            # distinct roads distinct.
+            feat_lat, feat_lon = _feature_point(feat) or (lat, lon)
+            tiger_road = _tiger_lookup_at(feat_lat, feat_lon, radius_m=min(radius_m, 100))
+            if not name and tiger_road:
+                # Don't fall back to the raw route/LRS field as the display
+                # name -- see _tiger_lookup_at's docstring for why that's
+                # often not a name at all.
+                name = tiger_road.get("name") or ""
+            if highway is None and tiger_road:
+                highway = tiger_road.get("highway")
+ 
+        feat_point = _feature_point(feat)
+        distance_m = _distance_m(lat, lon, feat_point)
+ 
+        if roadway.get("divided_field") and _is_divided(a.get(roadway["divided_field"])):
+            # A divided road (physical median) is essentially always at
+            # least a secondary arterial in practice, whatever TIGER's own
+            # coarse local-road bucket guessed -- and this comes straight
+            # from the state's own roadway layer, not a borrowed nationwide
+            # approximation. Arizona's ATIS_Roads carries ISDIVIDED but
+            # nothing was reading it before, which is exactly the field
+            # that would tell "N Marshall Way" (a divided arterial) apart
+            # from an ordinary undivided side street.
+            if _class_rank(highway or "residential") < _class_rank("secondary"):
+                highway = "secondary"
+ 
+        label = name or route
+        if not label or label in seen:
+            continue
+        seen.add(label)
  
         roads.append({
             "name": label,
@@ -116,8 +224,23 @@ def dot_road_candidates_near(state_abbr, lat, lon, radius_m=road_search_rad):
             "lanes": a.get(roadway["lanes_field"]) if roadway.get("lanes_field") else None,
             "maxspeed": a.get(roadway["speed_field"]) if roadway.get("speed_field") else None,
             "ref": route,
+            "distance_m": distance_m,
         })
     return roads
+ 
+ 
+def _distance_m(lat, lon, point):
+    """Distance in meters from the query point to a feature's own point,
+    or None if the feature had no usable geometry -- used only to decide
+    which of two functionally-tied roads is physically closer to the site,
+    never fed into the AADT model itself.
+    """
+    if point is None:
+        return None
+    try:
+        return geodesic((lat, lon), point).meters
+    except Exception:
+        return None
  
  
 def find_nearby_roads_tiger(lat, lon, n=num_roads, radius_m=road_search_rad):
@@ -132,12 +255,16 @@ def find_nearby_roads_tiger(lat, lon, n=num_roads, radius_m=road_search_rad):
         features = _fetch_layer_features(layer_url, None, "NAME,MTFCC,RTTYP", lat, lon, radius_m)
         for feat in features:
             a = feat.get("attributes", {})
-            name = (a.get("NAME") or "").strip()
+            name = _safe_str(a.get("NAME"))
             if not name or name in seen:
                 continue
             seen.add(name)
             highway = _MTFCC_TO_HIGHWAY.get(a.get("MTFCC"), "unclassified")
-            roads.append({"name": name, "highway": highway, "lanes": None, "maxspeed": None, "ref": None})
+            distance_m = _distance_m(lat, lon, _feature_point(feat))
+            roads.append({
+                "name": name, "highway": highway, "lanes": None, "maxspeed": None,
+                "ref": None, "distance_m": distance_m,
+            })
         if len(roads) >= n:
             break
  
@@ -148,19 +275,215 @@ def find_nearby_roads_tiger(lat, lon, n=num_roads, radius_m=road_search_rad):
     return roads[:n]
  
  
-def find_nearby_roads_no_overpass(state_abbr, lat, lon, n=num_roads, radius_m=road_search_rad):
-    """Replaces the OSM/Overpass lookup entirely: try the state DOT's own
-    roadway layer first (best -- same system as the AADT layer, sometimes
-    with real lanes/speed like Ohio's), then top up with Census TIGER
-    roads if that didn't return enough candidates.
+def _roads_tied(roads):
+    """True if 2+ of the final roads would feed build_feature_vector an
+    identical (highway, lanes, maxspeed) -- the exact case that produces
+    two different streets showing the identical "estimated" AADT, e.g.
+    Arizona and Texas: neither state's DOT roadway layer publishes class,
+    lanes or speed for city streets, so both fall back to the same coarse
+    TIGER bucket with no lanes/speed at all.
+    """
+    seen = set()
+    for r in roads:
+        key = (r["highway"], r.get("lanes"), r.get("maxspeed"))
+        if key in seen:
+            return True
+        seen.add(key)
+    return False
+ 
+ 
+def _name_search_pattern(name):
+    """Loosen a road name into a regex core for an Overpass name-tag match.
+    DOT/TIGER and OSM don't always agree on abbreviation vs. full word for
+    the suffix (Ave/Avenue, Blvd/Boulevard, Way, ...), so drop the last
+    token and match on the distinctive part of the name instead.
+    """
+    tokens = name.strip().split()
+    core = " ".join(tokens[:-1]) if len(tokens) > 1 else name
+    return re.escape(core.strip() or name.strip())
+ 
+ 
+# The DOT/TIGER point a tied road is keyed off of is often not ON that
+# road -- it's the site's own coordinate, or a TIGER segment's midpoint,
+# which can easily be 100-200m from the actual centerline. Confirmed live:
+# an 80m Overpass search around such a point came back with 0 elements for
+# a real, correctly-named road ("Arlington Highlands Blvd") that a wider
+# radius would have caught. Enrichment radius is intentionally independent
+# of (and floors above) the DOT-layer search radius that triggered it.
+_ENRICH_RADIUS_MIN_M = 300
+ 
+ 
+def _enrich_road_via_overpass(road, lat, lon, radius_m):
+    """Best-effort ONLY: ask OSM/Overpass for finer lanes/speed/class data
+    for one SPECIFIC named road, used solely to break a tie DOT+TIGER
+    couldn't resolve on their own (see _roads_tied). Never on the critical
+    path -- tries up to 2 mirrors with a short per-request timeout, wrapped
+    so any failure (both mirrors down/timing out, no match) just returns
+    the road unchanged. Making Overpass required is exactly what caused
+    the site-presentations 500s earlier in this project; as a pure
+    enrichment step that only runs when there's already a tie to fix, it
+    can't break a report even if every public mirror is down.
+    """
+    if not road.get("name"):
+        return road
+ 
+    search_radius = max(radius_m, _ENRICH_RADIUS_MIN_M)
+    pattern = _name_search_pattern(road["name"])
+    query = f"""
+    [out:json][timeout:8];
+    way(around:{search_radius},{lat},{lon})
+        ["name"~"{pattern}", i]
+        [highway];
+    out tags;
+    """
+    tag = f"[overpass-enrich] '{road['name']}' (pattern={pattern!r}, radius={search_radius}m)"
+ 
+    elements = None
+    for mirror in OVERPASS_MIRRORS[:2]:
+        try:
+            r = requests.post(
+                mirror,
+                data=query.encode("utf-8"),
+                headers={
+                    "Content-Type": "text/plain; charset=utf-8",
+                    "Accept": "application/json",
+                    "User-Agent": "site-scoring-tool/0.1",
+                },
+                timeout=9,
+            )
+            r.raise_for_status()
+            elements = r.json().get("elements", [])
+            print(f"{tag}: {mirror} -> HTTP {r.status_code}, {len(elements)} element(s) matched")
+            if elements:
+                break
+            # 0 elements from this mirror isn't necessarily wrong (OSM data
+            # is the same across mirrors), but a second mirror is cheap
+            # insurance against a stale/lagging replica -- keep trying.
+        except Exception as e:
+            print(f"{tag}: {mirror} FAILED - {type(e).__name__}: {e}")
+            continue
+ 
+    if not elements:
+        return road  # best-effort only -- both mirrors failed or found nothing
+ 
+    best_tags, best_rank = None, _class_rank(road["highway"])
+    for el in elements:
+        tags = el.get("tags", {})
+        hw = tags.get("highway")
+        if not hw:
+            continue
+        rank = _class_rank(hw)
+        if rank > best_rank or (rank == best_rank and (tags.get("lanes") or tags.get("maxspeed"))):
+            best_rank, best_tags = rank, tags
+ 
+    if not best_tags:
+        print(f"{tag}: no element had a usable highway tag beating rank {best_rank} "
+              f"-> leaving road unchanged (raw elements: "
+              f"{[el.get('tags', {}) for el in elements][:5]})")
+        return road
+ 
+    enriched = dict(road)
+    if road.get("lanes") is None and best_tags.get("lanes"):
+        enriched["lanes"] = best_tags["lanes"]
+    if road.get("maxspeed") is None and best_tags.get("maxspeed"):
+        enriched["maxspeed"] = best_tags["maxspeed"]
+    if best_tags.get("highway") and _class_rank(best_tags["highway"]) > _class_rank(road["highway"]):
+        enriched["highway"] = best_tags["highway"]
+    print(f"{tag}: enriched {road} -> {enriched} (best_tags={best_tags})")
+    return enriched
+ 
+ 
+def find_nearby_roads_no_overpass(state_abbr, lat, lon, n=num_roads, radius_m=road_search_rad, max_radius_m=640):
+    """Replaces the OSM/Overpass lookup as the REQUIRED path: try the state
+    DOT's own roadway layer first (best -- same system as the AADT layer,
+    sometimes with real lanes/speed like Ohio's), then top up with Census
+    TIGER roads if that didn't return enough candidates.
+ 
+    Widens the search radius (doubling, up to max_radius_m) when there
+    still aren't n distinct roads -- dot_road_candidates_near has no
+    widening of its own, and a fixed 80m radius routinely misses the
+    actual major cross streets a plaza sits between: a shopping center's
+    parking lot commonly sets the building/address point 100-300m+ back
+    from the real bounding arterials, so without this a report was
+    finding one minor access road and stopping instead of the two major
+    streets a person would actually describe the site by. (The retired
+    Overpass-based find_nearby_roads() below had this same escalation --
+    it was dropped when this function replaced it.)
+ 
+    Finally, if the resulting roads would tie (identical class/lanes/
+    speed -- happens in states like AZ/TX whose DOT data doesn't cover
+    city streets and whose TIGER classification is too coarse to tell two
+    local streets apart), makes one best-effort Overpass enrichment pass
+    per road to see if OSM has something finer. See _enrich_road_via_
+    overpass's docstring for why this can't reintroduce the reliability
+    problems that got Overpass removed from the required path.
     """
     roads = dot_road_candidates_near(state_abbr, lat, lon, radius_m) if state_abbr else []
     if len(roads) < n:
         seen_names = {r["name"] for r in roads}
         extra = find_nearby_roads_tiger(lat, lon, n=n - len(roads), radius_m=radius_m)
         roads.extend(r for r in extra if r["name"] not in seen_names)
+ 
+    if len(roads) < n and radius_m < max_radius_m:
+        return find_nearby_roads_no_overpass(
+            state_abbr, lat, lon, n=n, radius_m=radius_m * 2, max_radius_m=max_radius_m
+        )
+ 
     roads.sort(key=lambda r: _class_rank(r["highway"]), reverse=True)
-    return roads[:n]
+    roads = roads[:n]
+ 
+    if _roads_tied(roads):
+        print(f"[adjacent_est] tie detected near ({lat},{lon}) state={state_abbr}: "
+              f"{[(r['name'], r['highway'], r.get('lanes'), r.get('maxspeed')) for r in roads]} "
+              f"-> attempting Overpass enrichment")
+        roads = [_enrich_road_via_overpass(r, lat, lon, radius_m) for r in roads]
+        print(f"[adjacent_est] post-enrichment: "
+              f"{[(r['name'], r['highway'], r.get('lanes'), r.get('maxspeed')) for r in roads]}")
+ 
+        if _roads_tied(roads):
+            # DOT data, TIGER, and a best-effort OSM lookup all failed to
+            # tell these roads apart -- there's no real basis to report them
+            # as two separate numbers, so keep only the one physically
+            # closest to the site and drop the other(s) in the tied group,
+            # rather than showing duplicate "independent" estimates.
+            print(f"[adjacent_est] tie UNRESOLVED after enrichment near ({lat},{lon}) "
+                  f"state={state_abbr}: {[r['name'] for r in roads]} -> keeping closest only")
+            roads = _collapse_tied_roads(roads)
+            print(f"[adjacent_est] after collapsing tie: {[r['name'] for r in roads]}")
+ 
+    return roads
+ 
+ 
+def _collapse_tied_roads(roads):
+    """For each group of roads sharing an identical (highway, lanes,
+    maxspeed) -- i.e. a tie that survived Overpass enrichment -- keep only
+    the one physically closest to the query point (distance_m) and drop the
+    rest. A road with unknown distance (no usable geometry) is treated as
+    farthest, so a road we can actually measure is always preferred.
+    """
+    groups = {}
+    order = []
+    for r in roads:
+        key = (r["highway"], r.get("lanes"), r.get("maxspeed"))
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(r)
+ 
+    kept = []
+    for key in order:
+        group = groups[key]
+        if len(group) == 1:
+            kept.append(group[0])
+        else:
+            original_best = min(group, key=lambda r: r["distance_m"] if r.get("distance_m") is not None else float("inf"))
+            # Note that this road was kept over an indistinguishable
+            # neighbor, so the report can say why only one road shows up
+            # here instead of the usual two.
+            best = dict(original_best)
+            best["_tie_resolved_by_proximity"] = [r["name"] for r in group if r is not original_best]
+            kept.append(best)
+    return kept
  
  
 # Kept for manual/CLI use only -- nothing in the live site-presentations
@@ -320,7 +643,7 @@ def _state_counts_near_cached(state_abbr,lat,lon,radius_m):
                     break
             if aadt is None or aadt <= 0:
                 continue
-            route = (a.get(route_field) or "").strip() if route_field else ""
+            route = _safe_str(a.get(route_field)) if route_field else ""
             out.append((aadt,gy,gx,route))
  
     out = tuple(out)
@@ -353,7 +676,7 @@ def route_candidates_near(state_abbr, lat, lon, radius_m=road_search_rad):
     routes, seen = [], set()
     for feat in features:
         a = feat.get("attributes", {})
-        route = (a.get(roadway["route_field"]) or "").strip()
+        route = _safe_str(a.get(roadway["route_field"]))
         if not route or route in seen:
             continue
         seen.add(route)
@@ -568,12 +891,29 @@ def _traffic_results_for(lat, lon, state_abbr, n_roads):
                     no_measured_reason = f"No DOT source configured for {state_abbr or 'this state'}"
                 else:
                     no_measured_reason = f"No {src['label']} station nearby"
+ 
+                dropped = road.get("_tie_resolved_by_proximity")
+                if dropped:
+                    # DOT/TIGER/OSM all failed to distinguish this road from
+                    # one or more nearby candidates -- rather than show
+                    # duplicate "independent" numbers, only the closest of
+                    # the tied roads is reported here; say so explicitly.
+                    others = ", ".join(dropped)
+                    source_detail = (
+                        f"{no_measured_reason} - classification indistinguishable from nearby "
+                        f"{'road' if len(dropped) == 1 else 'roads'} ({others}); showing the "
+                        f"closer one only (±{medape:.0f}% typical error)"
+                    )
+                    confidence = "low"
+                else:
+                    source_detail = f"{no_measured_reason} - est. ±{medape:.0f}% typical error"
+ 
                 results.append({
                     "road_name": road["name"],
                     "road_class": road["highway"],
                     "aadt": est["aadt"],
                     "source": "estimated",
-                    "source_detail": f"{no_measured_reason} - est. ±{medape:.0f}% typical error",
+                    "source_detail": source_detail,
                     "confidence": confidence,
                     "range": est["range"],
                 })

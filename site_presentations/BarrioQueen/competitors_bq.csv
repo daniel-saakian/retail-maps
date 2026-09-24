@@ -1,0 +1,85 @@
+brand,address,city,state,zip,sales,lat,lon
+On The Border Mexican Grill & Cantina,298 E Via Rancho Parkway,Escondido,CA,92025,--,33.0687,-117.06168
+On The Border Mexican Grill & Cantina,5630 Centennial Center Blvd,Las Vegas,NV,89149,--,36.2646,-115.25645
+On The Border Mexican Grill & Cantina,10789 Westview Pkwy,San Diego,CA,92126,--,32.9168,-117.1213
+On The Border Mexican Grill & Cantina,9000 Airport Blvd,Orlando,FL,32827,--,28.4312,-81.3081
+Rosa Mexicano,44 W 63rd St,New York,NY,10023,--,40.7715,-73.9822
+Rosa Mexicano,251 E 52nd St,New York,NY,10022,--,40.7562,-73.9688
+Rosa Mexicano,9 E 18th St,New York,NY,10003,--,40.7383,-73.9918
+Rosa Mexicano,3663 S Las Vegas Blvd,Las Vegas,NV,89109,--,36.1097,-115.1709
+Rosa Mexicano,153 Waterfront St,National Harbor,MD,20745,--,38.7812,-77.0165
+Rosa Mexicano,155 Seaport Blvd,Boston,MA,02210,--,42.3496,-71.0408
+Rosa Mexicano,60 Riverside Square Mall,Hackensack,NJ,07601,--,40.9015,-74.0289
+Rosa Mexicano,105 Coulter Ave,Ardmore,PA,19003,--,40.0076,-75.2894
+Rosa Mexicano,1255 Epcot Resorts Blvd,Lake Buena Vista,FL,32830,--,28.3662,-81.5557
+Chuy's,12420 Tillgang Pass,Manor,TX,78653,--,30.3441,-97.5255
+Chuy's,570 Cross Creek Mall,Fayetteville,NC,28303,--,35.0682,-78.9631
+Chuy's,7811 Rivers Ave,Charleston,SC,29406,--,32.9348,-80.0219
+Chuy's,5002 Kinkleville Rd,Paducah,KY,42001,--,37.0784,-88.675
+Chuy's,1061 Market Way,Argyle,TX,76226,--,33.1189,-97.2346
+Chuy's,9297 Forest Bluffs View,Colorado Springs,CO,80920,--,38.9664,-104.7641
+Chuy's,8121 E Arapahoe Rd,Greenwood Village,CO,80112,--,39.5951,-104.8924
+Chuy's,6595 W 104th Ave,Westminster,CO,80020,--,39.8856,-105.0694
+Chuy's,8400 I-40 Pkwy,Amarillo,TX,79106,--,35.1884,-101.9392
+Chuy's,4805 South Loop 289 Suite 300,Lubbock,TX,79424,--,33.5413,-101.9215
+Chuy's,13621 North Blackwelder Ave,Oklahoma City,OK,73134,--,35.6094,-97.5348
+Chuy's,760 N Interstate Dr,Norman,OK,73072,--,35.2341,-97.4764
+Chuy's,4609 Loop 250 Frontage Rd,Midland,TX,79707,--,32.0315,-102.1274
+Chuy's,8120 S Olympia Avenue West,Tulsa,OK,74132,--,36.0504,-96.0125
+Chuy's,4104 S Clack St,Abilene,TX,79606,--,32.4116,-99.7719
+Chuy's,700 W Central Texas Expressway,Harker Heights,TX,76548,--,31.0601,-97.6614
+Chuy's,5501 Legendlake Parkway,Waco,TX,76712,--,31.5034,-97.2185
+Chuy's,4911 183A Toll Rd,Cedar Park,TX,78613,--,30.5638,-97.8183
+Chuy's,2320 North IH-35,Round Rock,TX,78681,--,30.5367,-97.6912
+Chuy's,724 W US 79,Hutto,TX,78634,--,30.5472,-97.5621
+Chuy's,2701 E Interstate 20,Hudson Oaks,TX,76087,--,32.7481,-97.6946
+Chuy's,11680 N Research Blvd,Austin,TX,78759,--,30.4184,-97.7479
+Chuy's,10520 North Lamar Blvd,Austin,TX,78753,--,30.3752,-97.6895
+Chuy's,4104 S Clack St,Abilene,TX,79606,--,32.4116,-99.7719
+Chuy's,2027 Aldrich St,Austin,TX,78723,--,30.3014,-97.7077
+Blanco Cocina + Cantina,12750 N tatum Blvd,Phoenix,AZ,85032,--,33.6021,-111.9774
+Blanco Cocina + Cantina,8191 W Paradise Ln,Peoria,AZ,85382,--,33.6361,-112.2359
+Blanco Cocina + Cantina,2502 E Camelback Rd #122,Phoenix,AZ,85016,--,33.5103,-112.0272
+Blanco Cocina + Cantina,123 E Washington St,Phoenix,AZ,85004,--,33.4484,-112.0722
+Blanco Cocina + Cantina,6166 N Scottsdale Road #601,Scottsdale,AZ,85253,--,33.5284,-111.9258
+Blanco Cocina + Cantina,717 S Novus Place,Tempe,AZ,85281,--,33.4225,-111.9254
+Blanco Cocina + Cantina,2905 E Skyline Dr #246,Tucson,AZ,85718,--,32.3253,-110.9298
+Blanco Cocina + Cantina,1301 Orange Ave,Coronado,CA,92118,--,32.6847,-117.1781
+Blanco Cocina + Cantina,7007 Friars Rd #901,San Diego,CA,92108,--,32.7681,-117.1688
+Blanco Cocina + Cantina,4177 E 9th St,Denver,CO,80220,--,39.7308,-104.9388
+Blanco Cocina + Cantina,2022 Spring Rd,Oak Brook,IL,60523,--,41.8443,-87.9547
+Blanco Cocina + Cantina,530 Broadway,Nashville,TN,37203,--,36.1601,-86.7785
+Sol Mexican Cocina,12775 Millenium Dr #160,Playa Vista,CA,90094,--,33.9781,-118.4217
+Sol Mexican Cocina,15323 N Scottsdale Rd,Scottsdale,AZ,85254,--,33.6262,-111.9248
+Sol Mexican Cocina,1910 Main St,Irvine,CA,92614,--,33.6874,-117.8615
+Sol Mexican Cocina,251 Pacific Coast Hwy,Newport Beach,CA,92660,--,33.6198,-117.9069
+Tocaya,12833 Ventura Blvd,Studio City,CA,91604,--,34.1432,-118.4128
+Tocaya,507 Wilshire Blvd,Santa Monica,CA,90401,--,34.0205,-118.4984
+Tocaya,4303 W Riverside Dr,Burbank,CA,91505,--,34.1517,-118.3475
+Tocaya,6550 Sunset Blvd,Los Angeles,CA,90028,--,34.0981,-118.3324
+Tocaya,801 S Olive St #B,Los Angeles,CA,90014,--,34.0458,-118.2588
+Tocaya,10250 Santa Monica Blvd #2300,Los Angeles,CA,90067,--,34.0563,-118.4194
+Tocaya,4712 N Goldwater Blvd Ste 1210,Scottsdale,AZ,85251,--,33.5049,-111.9295
+Javier's,7832 E Coast Hwy,Newport Beach,CA,92657,--,33.5684,-117.8341
+Javier's,536 Spectrum Center Dr,Irvine,CA,92618,--,33.6514,-117.7441
+Javier's,1200 Figueroa St unit C,Los Angeles,CA,90015,--,34.0416,-118.2676
+Javier's,10250 Santa Monica Blvd #105,Los Angeles,CA,90067,--,34.0563,-118.4194
+Javier's,24 W Union St,Pasadena,CA,91103,--,34.1472,-118.1504
+Javier's,4301 La Jolla Village Dr Ste 1000,San Diego,CA,92122,--,32.8719,-117.2115
+Javier's,3730 Las Vegas Blvd South,Las Vegas,NV,89158,--,36.1075,-115.1764
+Zocalo,1801 Capitol Ave,Sacramento,CA,95811,--,38.5746,-121.4828
+Zocalo,1182 Roseville Pkwy,Roseville,CA,95678,--,38.7718,-121.2674
+Zocalo,466 Howe Ave,Sacramento,CA,95825,--,38.5741,-121.4116
+Zocalo,2739 E Bidwell St,Folsom,CA,95630,--,38.6491,-121.1214
+Puesto,789 West Harbor Dr,San Diego,CA,92101,--,32.7095,-117.1706
+Puesto,5010 Mission Center Rd,San Diego,CA,92108,--,32.7661,-117.1539
+Puesto,1026 Wall St,La Jolla,CA,92037,--,32.8475,-117.2731
+Puesto,9955 Barnes Canyon Rd #110,San Diego,CA,92121,--,32.9026,-117.2024
+Puesto,8577 Irvine Center Dr,Irvine,CA,92618,--,33.6441,-117.7419
+Puesto,3311 Michelson Dr,Irvine,CA,92612,--,33.6708,-117.8425
+Puesto,1040 W Katella Avenue,Anaheim,CA,92802,--,33.8032,-117.9254
+Puesto,2752 Augustine Dr,Santa Clara,CA,95054,--,37.3821,-121.9778
+Puesto,2035 Diamond Blvd,Concord,CA,94520,--,37.9734,-122.0594
+Puesto,991 Exchange Lane,Nashville,TN,37203,--,36.1558,-86.7865
+Reposado,236 Hamilton Ave,Palo Alto,CA,94301,--,37.4452,-122.1611
+Reposado,311 Baldwin Ave,San Mateo,CA,94401,--,37.5672,-122.3274

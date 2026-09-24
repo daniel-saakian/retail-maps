@@ -1,0 +1,324 @@
+brand,address,city,state,zip,sales,lat,lon
+Salt & Straw,3150 E Ray Rd,Gilbert,AZ,85296,--,33.3221801,-111.723664
+Salt & Straw,690 S Novus Place 175,Tempe,AZ,85281,--,33.4242139,-111.9276367
+Salt & Straw,100 E Camelback Rd Suite 104,Phoenix,AZ,85012,--,33.5106697,-112.0732345
+Salt & Straw,6000 Bollinger Canyon Rd,San Ramon,CA,94583,--,37.7633237,-121.9594759
+Salt & Straw,1309 Burlingame Blvd,Burlingame,CA,94010,--,37.5781663,-122.3472065
+Salt & Straw,2201 Fillmore St,San Francisco,CA,94115,--,37.7899796,-122.4342051
+Salt & Straw,1005 Galleria Blvd,Roseville,CA,95678,--,38.7675202,-121.2675054
+Salt & Straw,586 Hayes St,San Francisco,CA,94102,--,37.776618,-122.4260455
+Salt & Straw,1710 R Street,Sacramento,CA,95811,--,38.5685267,-121.4869899
+Salt & Straw,50 University Ave,Los Gatos,CA,95030,--,37.2227,-121.9825016
+Salt & Straw,250 University Ave,Palo Alto,CA,94301,--,37.4452775,-122.1618767
+Salt & Straw,700 Village Ct,Santa Rosa,CA,95405,--,38.4442076,-122.6865205
+Salt & Straw,2855 Stevens Creek Blvd,Santa Clara,CA,95050,--,37.3267237,-121.9433972
+Salt & Straw,1357 Abbot Kinney Blvd,Los Angeles,CA,90021,--,33.9908646,-118.4660146
+Salt & Straw,767 Americana Way,Glendale,CA,91210,--,34.1437355,-118.2560199
+Salt & Straw,829 E 3rd St,Los Angeles,CA,90013,--,34.0460674,-118.2354717
+Salt & Straw,11640 San Vicente Blvd,Los Angeles,CA,90049,--,34.0534593,-118.462863
+Salt & Straw,9300 Culver Blvd,Culver City,CA,90232,--,34.02442873,-118.393618
+Salt & Straw,240 N Larchmont Blvd,Los Angeles,CA,90004,--,34.0758198,-118.3234379
+Salt & Straw,209 Manhattan Beach Blvd,Manhattan Beach,CA,90266,--,33.8850197,-118.4103989
+Salt & Straw,39 W Colorado Blvd,Pasadena,CA,91105,--,34.1459815,-118.1514339
+Salt & Straw,3823 Sunset Blvd,Los Angeles,CA,90026,--,34.0915086,-118.279155
+Salt & Straw,12180 1/2 Ventura Blvd,Studio City,CA,91604,--,34.1430976,-118.3978559
+Salt & Straw,8949 Santa Monica Blvd,West Hollywood,CA,90069,--,34.0841901,-118.3856133
+Salt & Straw,1550 Disneyland Dr,Anaheim,CA,92802,--,33.8090367,-117.9224401
+Salt & Straw,2001 Westcliff Drive,Newport Beach,CA,92660,--,33.6274541,-117.9080528
+Salt & Straw,1670 India St,San Diego,CA,92101,--,32.7228262,-117.1684566
+Salt & Straw,3705 Caminito Court,San Diego,CA,92130,--,32.9524883,-117.2349001
+Salt & Straw,4575 La Jolla Village Dr,San Diego,CA,92122,--,32.8725356,-117.2093221
+Salt & Straw,19505 Biscayne Blvd Suite 2155,Aventura,FL,33180,--,25.954833,-80.1428869
+Salt & Straw,3015 Grand Ave,Miami,FL,33133,--,25.728972,-80.241977
+Salt & Straw,749 Lincoln Rd,Miami,FL,33139,--,25.7908167,-80.1364276
+Salt & Straw,1502 E Buena Vista Dr,Lake Buena Vista,FL,32830,--,28.3701229,-81.5207051
+Salt & Straw,246 NW 25th St,Miami,FL,33127,--,25.8005386,-80.1999303
+Salt & Straw,3555 S Las Vegas Blvd,Las Vegas,NV,89109,--,36.1166349,-115.1703887
+Salt & Straw,3655 S Las Vegas Blvd,Las Vegas,NV,89109,--,36.1124356,-115.1707687
+Salt & Straw,6815 Tom Rodriguez St,Las Vegas,NV,89113,--,36.064418,-115.2772075
+Salt & Straw,200 Seaport Blvd Ste 102,Boston,MA,02210,--,42.3501614,-71.041582
+Salt & Straw,400 Artisan Dr Ste #1000,Salem,NH,03079,--,42.7718211,-71.2257726
+Salt & Straw,360 Amsterdam Ave,New York,NY,10024,--,40.782154,-73.979444
+Salt & Straw,540 Hudson St,New York,NY,10014,--,40.7346843,-74.0059122
+Salt & Straw,2035 NE Alberta St,Portland,OR,97211,--,45.5592856,-122.6441661
+Salt & Straw,7367 SW Bridgeport Rd,Tigard,OR,97224,--,45.397517,-122.7521684
+Salt & Straw,2735 SW Cedar Hills Blvd Unit 100,Beaverton,OR,97005,--,45.5002025,-122.807382
+Salt & Straw,3345 SE Division St,Portland,OR,97202,--,45.504966,-122.6305762
+Salt & Straw,139 Oakway Rd,Eugene,OR,97401,--,44.0641567,-123.0778354
+Salt & Straw,100 A Ave,Lake Oswego,OR,97034,--,45.4186456,-122.665118
+Salt & Straw,838 NW 23 Rd,Portland,OR,97210,--,45.528958,-122.6984342
+Salt & Straw,740 Waterfront Way,Vancouver,WA,98660,--,45.6243432,-122.6797818
+Salt & Straw,2323 N Henderson Ave Suite 107,Dallas,TX,75206,--,32.814177,-96.778272
+Salt & Straw,1305 W Magnolia Ave,Fort Worth,TX,76104,--,32.7304447,-97.33963
+Salt & Straw,5420 Ballard Ave NW,Seattle,WA,98107,--,47.6682977,-122.3853851
+Salt & Straw,10415 NE 4th St,Bellevue,WA,98004,--,47.6136365,-122.201282
+Salt & Straw,714 E Pike St,Seattle,WA,98122,--,47.6148461,-122.3232855
+Salt & Straw,102 Pike St,Seattle,WA,98101,--,47.6089767,-122.3399245
+Salt & Straw,2201 Queen Anne Ave N,Seattle,WA,98109,--,47.6385463,-122.3572098
+Salt & Straw,16595 Redmond Way #170,Redmond,WA,98052,--,47.672671,-122.1193839
+Salt & Straw,12620 120th Ave NE,Kirkland,WA,98034,--,47.7130221,-122.1794368
+Salt & Straw,740 Waterfront Way,Vancouver,WA,98660,--,45.6243432,-122.6797818
+Jeni's,4150 Campbell Ave,Arlington,VA,22206,--,38.8407486,-77.0894747
+Jeni's,1710 Lumpkin St,Athens,GA,30606,--,33.9373803,-83.3880991
+Jeni's,1230 Ashford Crossing #300-A,Atlanta,GA,30346,--,33.9294823,-84.3442516
+Jeni's,1208 S Congress Ave,Austin,TX,78704,--,30.2520982,-97.7490442
+Jeni's,4918 Elm St,Bethesda,MD,20814,--,38.9819833,-77.097021
+Jeni's,219th Street S,Birmingham,AL,35233,--,33.5909067,-86.6811833
+Jeni's,223 S Estes Dr,Chapel Hill,NC,27514,--,35.9268438,-79.0264087
+Jeni's,1242 Belk Dr #101,Mt Pleasant,SC,29464,--,32.8297394,-79.8309436
+Jeni's,1920 Camden Rd,Charlotte,NC,28203,--,35.2110885,-80.860279
+Jeni's,3917 St Elmo Ave,Chattanooga,TN,37409,--,35.0094232,-85.3287646
+Jeni's,5306 N Clark St,Chicago,IL,60640,--,41.978291,-87.6686503
+Jeni's,2755 Park Ave,Norwood,OH,45212,--,39.1589693,-84.4407141
+Jeni's,67 N Main St,Chagrin Falls,OH,44022,--,41.4314485,-81.3923468
+Jeni's,59 Spruce St,Columbus,OH,43215,--,39.9719061,-83.0043288
+Jeni's,2012 Greenville Ave,Dallas,TX,75206,--,32.8143857,-96.7698269
+Jeni's,908 W Main St,Durham,NC,27701,--,36.0007714,-78.9096446
+Jeni's,12 E Broad Street 6B,Greenville,SC,29601,--,34.8464473,-82.4001843
+Jeni's,1719 Westheimer Rd,Houston,TX,77098,--,29.7425208,-95.4029186
+Jeni's,114 Clinton Ave E,Huntsville,AL,35801,--,34.731396,-86.5861231
+Jeni's,445 N Beverly Dr,Beverly Hills,CA,90210,--,34.0706588,-118.4029583
+Jeni's,1892 Eastland Ave,Nashville,TN,37206,--,36.182425,-86.7355088
+Jeni's,510 Orlando Ave #102,Winter Park,FL,32789,--,28.6021767,-81.3622624
+Jeni's,1322 Frankford Ave Unit 101,Philadelphia,PA,19125,--,39.9708797,-75.1348079
+Jeni's,7051 East Fifth Ave,Scottsdale,AZ,85251,--,33.4976444,-111.9291048
+Jeni's,173 Bakery Square Blvd,Pittsburgh,PA,15206,--,40.456895,-79.91594
+Jeni's,2014 Cameron St,Raleigh,NC,27605,--,35.7913211,-78.659919
+Jeni's,3500 W Cary St #C150,Richmond,VA,23221,--,37.5555009,-77.486576
+Jeni's,15900 La Cantera Pkwy Suite 7751,San Antonio,TX,78256,--,29.5924062,-98.6117608
+Jeni's,2871 University Ave,San Diego,CA,92104,--,32.7482887,-117.1316933
+Jeni's,190 N Cattlemen Rd Unit 4,Sarasota,FL,34243,--,27.3858027,-82.4555467
+Jeni's,389 N Euclid Ave,St Louis,MO,63108,--,38.6481735,-90.261199
+Jeni's,615 Channelside Dr,Tampa,FL,33602,--,27.9427963,-82.4478558
+Jeni's,4150 Campbell Ave,Arlington,VA,22206,--,38.8407486,-77.0894747
+Handel's,1127 S Fremont Ave,Alhambra,CA,91803,--,34.081037,-118.1521698
+Handel's,38003 47th Street East Unit C,Palmdale,CA,93552,--,34.5732592,-118.04555
+Handel's,10530 Stockdale Hwy Suite 200,Bakersfield,CA,93311,--,35.3523536,-119.1199115
+Handel's,9723 Panama Lane Suite 200,Brentwood,CA,94513,--,35.2945828,-119.1103596
+Handel's,353 N Pass Ave Suite E,Burbank,CA,91505,--,34.1558418,-118.3462405
+Handel's,23369 Mulholland Dr,Los Angeles,CA,91364,--,34.1585926,-118.6345123
+Handel's,5225 Canyon Crest Dr Suite 7A,Riverside,CA,92507,--,33.9557041,-117.3304526
+Handel's,2825 State St,Carlsbad,CA,92008,--,33.161057,-117.3502463
+Handel's,11134 Rancho Carmel Dr Suite 200,San Diego,CA,92128,--,32.9797789,-117.0826749
+Handel's,11940 South Street,Cerritos,CA,90701,--,33.8581361,-118.0779632
+Handel's,1450 Eastlake Pkwy,Chula Vista,CA,91915,--,32.6291989,-116.9651051
+Handel's,4130 Sepulveda Blvd Suite A,Culver City,CA,90230,--,34.0066398,-118.4124587
+Handel's,12843 El Camino Real Suite 203,San Diego,CA,92130,--,32.9498379,-117.2332647
+Handel's,8855 Apollo Way,Downey,CA,90242,--,33.9231984,-118.1318057
+Handel's,12648 Limonite Ave 2-H,Eastvale,CA,92880,--,33.973976,-117.5594939
+Handel's,7701 Laguna Blvd Suite 400,Elk Grove,CA,95758,--,38.4239733,-121.4133413
+Handel's,16545 Ventura Blvd,Los Angeles,CA,91436,--,34.1585673,-118.493182
+Handel's,8055 Madison Ave,Citrus Heights,CA,95610,--,38.6643667,-121.263916
+Handel's,1011 E Bidwell,Folsom,CA,95630,--,38.6679109,-121.1561669
+Handel's,8472 North Friant Rd Suite 110,Fresno,CA,93720,--,36.8570217,-119.7825019
+Handel's,1343 E Gladstone Street Suite 100,Glendora,CA,91740,--,34.1167664,-117.8356172
+Handel's,1080 University Ave Suite H107,San Diego,CA,92103,--,32.7495659,-117.1536581
+Handel's,300 Pacific Coast Hwy,Huntington Beach,CA,92648,--,33.6571293,-118.0011464
+Handel's,42211 Jackson St,Indio,CA,92203,--,33.7437046,-116.2176868
+Handel's,5365H Alton Pkwy,Irvine,CA,92604,--,33.6715296,-117.789124
+Handel's,827 Spectrum Center Dr,Irvine,CA,92618,--,33.6486241,-117.7417126
+Handel's,13786 Jamboree Rd,Irvine,CA,92602,--,33.7225468,-117.7900057
+Handel's,711 Foothill Blvd,La Canada Filtridge,CA,91011,--,34.2023572,-118.1941817
+Handel's,8861 Villa La Jolla Dr #507,La Jolla,CA,92037,--,32.8695132,-117.2322908
+Handel's,79630 Highway 111 Suite 100,La Quinta,CA,92253,--,33.7079392,-116.2750268
+Handel's,28121 Crown Valley Parkway,Laguna Niguel,CA,92677,--,33.5549401,-117.6848985
+Handel's,23615 El Toro Road,Lake Forest,CA,92630,--,33.6208613,-117.7030362
+Handel's,2100 Kettner Blvd,San Diego,CA,92101,--,32.7263581,-117.1707731
+Handel's,1912 First Street Suite H,Livermore,CA,94550,--,37.6809871,-121.7719519
+Handel's,4201 McGowen St Suite 200,Long Beach,CA,90808,--,33.830672,-118.1444916
+Handel's,4531 Hollywood Blvd Unit 5,Los Angeles,CA,90027,--,34.0989999,-118.28806
+Handel's,3360 N Sepulveda Blvd,Manhattan Beach,CA,90266,--,33.8992508,-118.3949449
+Handel's,2434 Southport Way A,National City,CA,91950,--,32.6599102,-117.1059294
+Handel's,2820 Del Paso Road Bldg B Suite 500,Sacramento,CA,95834,--,38.6547013,-121.52438
+Handel's,2200 W Oceanfront,Newport Beach,CA,92663,--,33.6094517,-117.9292203
+Handel's,8850 Corbin Ave,Los Angeles,CA,91324,--,34.2316017,-118.5608715
+Handel's,228 N Coast Hwy,Oceanside,CA,92054,--,33.1967779,-117.3799858
+Handel's,751 Town Center Drive Suite 101,Oxnard,CA,93036,--,34.2419002,-119.1819613
+Handel's,4475 Mission Blvd,San Diego,CA,92109,--,32.7964196,-117.2549354
+Handel's,44489 Town Center Way Suite F,Palm Desert,CA,92260,--,33.7245821,-116.399424
+Handel's,39626 10th Street West Suite E,Palmdale,CA,93551,--,34.6027067,-118.1462623
+Handel's,3405 E Foothill Blvd,Pasadena,CA,91107,--,34.1519921,-118.079941
+Handel's,10842 Bear Hollow Dr,Rancho Cordova,CA,95670,--,38.5778455,-121.2825
+Handel's,6403 Haven Ave,Rancho Cucamonga,CA,91737,--,34.1372412,-117.5742561
+Handel's,27471 San Bernardino Avenue Suite 210,Redlands,CA,92374,--,34.0742695,-117.2063177
+Handel's,1882 S Pacific Coast Hwy,Redondo Beach,CA,90277,--,33.8168542,-118.3775301
+Handel's,1135 Renaissance Pkwy Suite 620,Rialto,CA,92376,--,34.1313865,-117.3928534
+Handel's,1164 Galleria Blvd Suite 100,Roseville,CA,95678,--,38.7714044,-121.2636649
+Handel's,30622 Santa Margarita Pkwy,Rancho Santa Margarita,CA,92688,--,33.6411348,-117.5957338
+Handel's,610 Camino de los Mares,San Clemente,CA,92673,--,33.4594861,-117.6542425
+Handel's,109 S Las Posas Rd Suite 102,San Marcos,CA,92078,--,33.1407449,-117.1923207
+Handel's,970 North Western Ave,San Pedro,CA,90732,--,33.7519961,-118.3083633
+Handel's,16360 Village Way Unit 107,Santa Clarita,CA,91387,--,34.4275497,-118.4214301
+Handel's,1701 Ocean Park Blvd,Santa Monica,CA,90405,--,34.0127393,-118.4667412
+Handel's,8980 Carlton Hills Blvd,Santee,CA,92071,--,32.8404723,-116.9965462
+Handel's,5824 Montezuma Rd Suite 130,San Diego,CA,92115,--,32.7709919,-117.0711566
+Handel's,25880 The Old Road,Stevenson Ranch,CA,91381,--,34.3918362,-118.5727353
+Handel's,41377 Margarita Rd Suite 108,Temecula,CA,92591,--,33.5231153,-117.1504713
+Handel's,166 W Hillcrest Dr,Thousand Oaks,CA,91360,--,34.1839206,-118.8867044
+Handel's,373 South Mountain Ave,Upland,CA,91786,--,34.0891304,-117.6715008
+Handel's,7880 Kew Ave,Rancho Cucamonga,CA,91739,--,34.1103459,-117.5313096
+Handel's,3301 South Mooney Blvd Suite #140,Visalia,CA,93277,--,36.3009609,-119.3141897
+Handel's,207 Main St,Vista,CA,92084,--,33.2020404,-117.2422486
+Handel's,1273 Locust St,Walnut Creek,CA,94596,--,37.8969238,-122.0616611
+Handel's,18210 Yorba Linda Blvd,Yorba Linda,CA,92886,--,33.8877932,-117.8147486
+Handel's,6491 N Durango Drive Suite 130,Las Vegas,NV,89149,--,36.2785604,-115.2879482
+Handel's,8975 W Charleston Blvd Suite 130,Las Vegas,NV,89117,--,36.1576785,-115.2906253
+Handel's,6180 N Decatur Blvd Suite 106,North Las Vegas,NV,89031,--,36.2725003,-115.2059703
+Handel's,1685 East Cactus Ave Suite 130,Henderson,NV,89183,--,35.9987758,-115.1288114
+Handel's,7345 Arroyo Crossing Pkwy #105,Las Vegas,NV,89113,--,36.063015,-115.2519743
+Handel's,13987 S Virginia St Suite 710,Reno,NV,89511,--,39.4042569,-119.7499474
+Handel's,10170 West Tropicana Ave,Las Vegas,NV,89147,--,36.1015549,-115.3142908
+Handel's,61165 S Hwy 97,Bend,OR,97702,--,44.0222192,-121.3163174
+Handel's,550 Pearl St Unit 110,Eugene,OR,97401,--,44.0536504,-123.089897
+Handel's,3307 SE Reed Dr,Hillsboro,OR,97123,--,45.4954205,-122.9042028
+Handel's,21300 SW Langer Farms Pkwy,Sherwood,OR,97140,--,45.3661467,-122.8348737
+Handel's,13539 NW Cornell Rd,Portland,OR,97229,--,45.5282597,-122.8148562
+Handel's,11521 FM 620 N,Austin,TX,78726,--,30.4540704,-97.8253833
+Handel's,4407 Little Road Suite 700,Arlington,TX,76016,--,32.6757106,-97.197271
+Handel's,4495 Riley Fuzzel Rd,Spring,TX,77386,--,30.1213875,-95.3757042
+Handel's,425 SW Wilshire Blvd,Burleson,TX,76028,--,32.5393425,-97.3316759
+Handel's,23660 Westheimer Pkwy Unit 660B,Katy,TX,77494,--,29.734823,-95.7769165
+Handel's,2717 Cross Timbers Rd Suite 500B,Flower Mound,TX,75028,--,33.0358576,-97.0727765
+Handel's,13600 Coit Rd,Frisco,TX,75035,--,33.1901455,-96.7669153
+Handel's,2200 Justin Rd,Highland Village,TX,75077,--,33.0719149,-97.0558512
+Handel's,3425 Ella Blvd,Houston,TX,77018,--,29.8184695,-95.4298392
+Handel's,6100 Precinct Line Rd Suite 100,Hurst,TX,76054,--,32.86006,-97.1855643
+Handel's,2721 Little Elm Pkwy Suite 220,Little Elm,TX,75068,--,33.170306,-96.8893879
+Handel's,4130 FM 1488,Magnolia,TX,77354,--,30.2269909,-95.5282675
+Handel's,4700 W El Dorado Pkwy Suite 210,McKinney,TX,75070,--,33.1740595,-96.6814018
+Handel's,4200 Legacy Dr,Plano,TX,75024,--,33.0705111,-96.7752627
+Handel's,201 W Frontier Pkwy Suite 50,Prosper,TX,75078,--,33.262065,-96.7861028
+Handel's,5311 N Loop 1604 W Acc Rd Suite 120,San Antonio,TX,78249,--,29.5928921,-98.5902973
+Handel's,2645 E Southlake Blvd,Grapevine,TX,76092,--,32.9388701,-97.1114781
+Handel's,8715 Spring Cypress Rd,Spring,TX,77379,--,30.0341268,-95.554035
+Handel's,20 Alexandria Blvd Suite 1700,Oviedo,FL,32765,--,28.6534965,-81.2077882
+Handel's,31309 N Scottsdale Rd Suite B-135,Scottsdale,AZ,85266,--,33.7685938,-111.9238371
+Handel's,3025 West Dove Valley Rd Suite 100,Phoenix,AZ,85085,--,33.783358,-112.1233947
+Handel's,1672 Guadalupe Suite 101,Gilbert,AZ,85234,--,33.3653006,-111.7547355
+Handel's,6137 N Scottsdale Rd Suite 102,Scottsdale,AZ,85250,--,33.5269952,-111.9245125
+Handel's,25738 N Lake Pleasant Pkwy Ste 110,Peoria,AZ,85383,--,33.7175896,-112.2716775
+Handel's,1361 S Signal Butte Rd Suite #105,Mesa,AZ,85209,--,33.391428,-111.596686
+Handel's,15681 N Hayden Rd Suite F113,Scottsdale,AZ,85260,--,33.6280495,-111.8933745
+Handel's,7315 N Oracle Rd Suite 108,Tucson,AZ,85704,--,32.3394697,-110.9783261
+Handel's,9784 W Northern Ave Ste 1235,Peoria,AZ,85345,--,33.5532182,-112.2699767
+Handel's,351 N Montezuma St Suite A,Prescott,AZ,86301,--,34.5465882,-112.4691861
+Handel's,21182 S Ellsworth Lp Rd Suite 104,Queen Creek,AZ,85142,--,33.2559837,-111.6397344
+Handel's,2015 N Power Rd Suite 106,Mesa,AZ,85215,--,33.4520905,-111.682954
+Handel's,3984 South Val vista Dr Suite 104,Gilbert,AZ,85297,--,33.2780542,-111.7565707
+Handel's,15240 N Cotton Ln,Surprise,AZ,85388,--,33.6229178,-112.4267771
+Handel's,2000 E Rio Salado Pkwy,Tempe,AZ,85288,--,33.4315592,-111.9030636
+Handel's,1505 N Verrado Way Suite 105,Buckeye,AZ,85396,--,33.4653374,-112.5016851
+Handel's,23955 E Plaza Ave Unit #111,Aurora,CO,80016,--,39.6062966,-104.708629
+Handel's,16689 Washington St,Thornton,CO,80023,--,39.9987987,-104.9773195
+Handel's,530 SE 192nd Ave Suite 100,Vancouver,WA,98683,--,45.617289,-122.4768338
+Menchie's,5194 Commons Drive Suite 103,Rocklin,CA,95677,--,38.8041,-121.2066
+Menchie's,3008 Green Valley Rd Unit F-1,Cameron Park,CA,95682,--,38.6823,-120.9904
+Menchie's,5450 Sunrise Blvd #C,Citrus Heights,CA,95610,--,38.6666,-121.2716
+Menchie's,2405 Iron Point Rd,Folsom,CA,95630,--,38.6475,-121.1219
+Menchie's,4060 Douglas Blvd Ste 102,Granite Bay,CA,95746,--,34.1436432,-118.4759808
+Menchie's,3230 Arena Blvd Suite 225,Sacramento,CA,95834,--,38.6375,-121.5208
+Menchie's,10933 Olson Dr,Rancho Cordova,CA,95670,--,38.5912,-121.2882
+Menchie's,484 Howe Ave,Sacramento,CA,95825,--,38.5746,-121.4172
+Menchie's,7740 Laguna Blvd,Elk Grove,CA,95758,--,38.4239,-121.419
+Menchie's,8124 Delta Shores Cir Suite 110,Sacramento,CA,95832,--,38.4682,-121.4885
+Menchie's,2188 Santa Rosa Ave,Santa Rosa,CA,95407,--,38.4116,-122.7153
+Menchie's,1358 Fitzgerald Dr,Pinole,CA,94564,--,37.9942,-122.2889
+Menchie's,2530 Sand Creek Rd Unit B-2,Brentwood,CA,94513,--,37.9157,-121.7144
+Menchie's,1862 Euclid Ave,Berkeley,CA,94709,--,37.8757,-122.2603
+Menchie's,3104 Crow Canyon Place Ste B,San Ramon,CA,94583,--,37.7749,-121.9774
+Menchie's,973 E Stanley Blvd,Livermore,CA,94550,--,37.6749,-121.7554
+Menchie's,1445 S Airport Way Unit #104,Manteca,CA,95336,--,37.7818,-121.2252
+Menchie's,2231 Claribel Rd Suite 1A,Riverbank,CA,95367,--,37.6974,-120.9525
+Menchie's,1888 W 11th St,Tracy,CA,95376,--,37.7402,-121.4589
+Menchie's,1200 El Camino Real Suite A3,Belmont,CA,94002,--,37.5147,-122.2741
+Menchie's,5030 Mowry Ave,Fremont,CA,94538,--,37.5524,-121.9803
+Menchie's,3710 G Street,Merced,CA,95340,--,37.3308,-120.4688
+Menchie's,113 Riverwalk Blvd S Suite #113,Madera,CA,93637,--,36.9822,-120.0321
+Menchie's,6611 N Riverside Dr,Fresno,CA,93722,--,36.8331,-119.8931
+Menchie's,8464 N Friant Rd Suite 104,Fresno,CA,93720,--,36.8585,-119.7844
+Menchie's,785 Herndon Ave #400,Clovis,CA,93612,--,36.8361,-119.7153
+Menchie's,3090 W Shaw Ave Suite 102,Fresno,CA,93711,--,36.8091,-119.8458
+Menchie's,3750 Shaw Ave Suite 103,Clovis,CA,93619,--,36.8082,-119.6841
+Menchie's,840 W Riggin Ave,Visalia,CA,93291,--,36.3571,-119.3245
+Menchie's,1229 East Grand Ave Ste 103,Arroyo Grande,CA,93420,--,35.1218,-120.5956
+Menchie's,4560-B Coffee Rd,Bakersfield,CA,93308,--,35.4194,-119.0617
+Menchie's,1301 Rancho Vista Blvd Suite F,Palmdale,CA,93551,--,34.6009,-118.1565
+Menchie's,12719 Main St Suite #410,Hesperia,CA,92345,--,34.4251,-117.2917
+Menchie's,28273 Newhall Ranch Rd,Valencia,CA,91355,--,34.4373,-118.5631
+Menchie's,24201 W Valencia Blvd Suite 3446,Valencia,CA,91355,--,34.4144,-118.5583
+Menchie's,26865 Sierra Hwy,Santa Clarita,CA,91321,--,34.4172,-118.4419
+Menchie's,5944 Telegraph Rd,Ventura,CA,93003,--,34.2751,-119.2223
+Menchie's,1201 Truman St Ste F,San Fernando,CA,91340,--,34.2818,-118.4452
+Menchie's,10386 Sepulveda Blvd,Mission Hills,CA,91345,--,34.2589,-118.4674
+Menchie's,17840 Chatsworth St,Granada Hills,CA,91344,--,34.2644,-118.5222
+Menchie's,6731 1/2 Fallbrook Ave,West Hills,CA,91307,--,34.1925,-118.6361
+Menchie's,19755 Vanowen St #A-2,Winnetka,CA,91306,--,34.1936,-118.5635
+Menchie's,20968 Ventura Blvd,Woodland Hills,CA,91364,--,34.1672,-118.5898
+Menchie's,17245 Ventura Blvd,Encino,CA,91316,--,34.1601,-118.5089
+Menchie's,13369 Ventura Blvd,Sherman Oaks,CA,91423,--,34.1472,-118.4239
+Menchie's,4849 Laurel Canyon Blvd,Valley Village,CA,91607,--,34.1583,-118.3961
+Menchie's,3808 West Verdugo Ave,Burbank,CA,91505,--,34.1623,-118.3442
+Menchie's,4929 Eagle Rock Blvd,Eagle Rock,CA,90041,--,34.1378,-118.2268
+Menchie's,5622 Sawtelle Blvd,Culver City,CA,90230,--,33.9922,-118.3968
+Menchie's,245 N Barranca St Suite 14,West Covina,CA,91791,--,34.0725,-117.8903
+Menchie's,1265 N Hacienda Blvd,La Puente,CA,91744,--,34.0381,-117.9331
+Menchie's,8880 Whittier Blvd,Pico Rivera,CA,90660,--,33.9961,-118.0772
+Menchie's,13595 Whittier Blvd #101,Whittier,CA,90605,--,33.9483,-118.0197
+Menchie's,12261 La Mirada Blvd,La Mirada,CA,90638,--,33.9216,-118.0102
+Menchie's,2515 Artesia Blvd,Redondo Beach,CA,90278,--,33.8722,-118.3614
+Menchie's,12263 Highland Ave Suite 100,Rancho Cucamonga,CA,91739,--,34.1332,-117.5312
+Menchie's,16645 Sierra Lake Pkwy Unit 100,Fontana,CA,92336,--,34.1481,-117.4789
+Menchie's,1310 S Riverside Ave Ste 3B,Rialto,CA,92376,--,34.0805,-117.3712
+Menchie's,510 Hidden Pkwy Suite #102,Corona,CA,92879,--,33.8966,-117.5458
+Menchie's,27130 Eucalyptus Ave Suite C,Moreno Valley,CA,92555,--,33.9272,-117.1856
+Menchie's,25280 Marguerite Pkwy Suite B-2,Mission Viejo,CA,92692,--,33.6166,-117.6743
+Menchie's,30211 Golden Lantern Suite A,Laguna Niguel,CA,92677,--,33.5186,-117.7051
+Menchie's,40557 California Oaks Rd H-3,Murrieta,CA,92562,--,33.5818,-117.1952
+Menchie's,943 Avenida Pico Bldg 5,San Clemente,CA,92673,--,33.4475,-117.5956
+Menchie's,2525C Vista Way,Oceanside,CA,92054,--,33.1818,-117.3323
+Menchie's,133 S Las Posas Rd Suite 144,San Marcos,CA,92078,--,33.1345,-117.1843
+Menchie's,2659 Gateway Rd #107,Carlsbad,CA,92009,--,33.1256,-117.2721
+Menchie's,7625 Via Campanile Suite 126,Carlsbad,CA,92009,--,33.0954,-117.2625
+Menchie's,349 West Felicita Ave,Escondido,CA,92025,--,33.1065,-117.0864
+Menchie's,3225 Sports Arena Blvd Suite 105,San Diego,CA,92110,--,32.7533,-117.2061
+Menchie's,1710 E Main St,El Cajon,CA,92021,--,32.8021,-116.9352
+Menchie's,8046 La Mesa Blvd,La Mesa,CA,91942,--,32.7712,-117.0223
+Menchie's,2471 Jamacha Rd Suite 101,El Cajon,CA,92019,--,32.7431,-116.9372
+Menchie's,1610 Millenia Ave Ste 104,Chula Vista,CA,91915,--,32.6105,-116.9634
+Menchie's,508 E Danengerg Dr Suite 7,El Centro,CA,92243,--,32.7915,-115.5412
+Menchie's,15678 N Frank Lloyd Wright Blvd,Scottsdale,AZ,85260,--,33.6288,-111.8906
+Menchie's,5022 S Power Rd Ste 108,Gilbert,AZ,85296,--,33.2642,-111.6853
+Menchie's,3131 S Market St Suite 111,Gilbert,AZ,85295,--,33.2944,-111.7511
+Menchie's,1128 E Baseline Rd,Tempe,AZ,85283,--,33.3785,-111.9212
+Menchie's,21295 S Ellsworth Loop Rd Suite 104,Queen Creek,AZ,85142,--,33.2458,-111.6356
+Menchie's,9810 W Skye Canyon Park Dr #110,Las Vegas,NV,89166,--,36.3121,-115.3094
+Menchie's,10965 Lavender Hill Dr Unit A,Las Vegas,NV,89135,--,36.1472,-115.3341
+Menchie's,1150 E Flamingo Rd Suite 105,Las Vegas,NV,89119,--,36.1147,-115.1382
+Menchie's,665 South Green Valley Pkwy Suite 100,Henderson,NV,89052,--,36.0194,-115.0841
+Menchie's,2543 172nd St NE,Marysville,WA,98271,--,48.1523,-122.1931
+Menchie's,1420 Seiner Dr,Everett,WA,98201,--,47.9942,-122.1794
+Menchie's,2902 164th St SW #B3,Lynnwood,WA,98087,--,47.8495,-122.2741
+Menchie's,21225 Bothell Everett Hwy Suite 102,Bothell,WA,98021,--,47.7958,-122.2152
+Menchie's,2101 Queen Anne Ave N,Seattle,WA,98109,--,47.6375,-122.3572
+Menchie's,2620 California Ave SW Ste 400,West Seattle,WA,98116,--,47.5818,-122.3853
+Menchie's,14865 Main St,Bellevue,WA,98007,--,47.6102,-122.1417
+Menchie's,830 N 10th St Suite M,Renton,WA,98057,--,47.4912,-122.2031
+Menchie's,14024 SE Petrovitsky Rd,Renton,WA,98058,--,47.4475,-122.1534
+Menchie's,4819 Point Fosdick Dr NW Suite 100,Gig Harbor,WA,98335,--,47.3056,-122.5694
+Menchie's,1186 Outlet Collection Road #101,Auburn,WA,98001,--,47.3031,-122.2389
+Menchie's,1409 S 348th St #D101,Federal Way,WA,98003,--,47.2882,-122.3156
+Menchie's,1408 Lake Tapps Parkway Suite 102,Auburn,WA,98092,--,47.2625,-122.1921
+Menchie's,4502 Steele St Suite 1505,Tacoma,WA,98371,--,47.2182,-122.4682
+Menchie's,21210 State Route 410 E,Bonney Lake,WA,98391,--,47.1685,-122.1523
+Menchie's,10306 156th St E Suite 101,Puyallup,WA,98374,--,47.1623,-122.2644
+Menchie's,625 Black Lake Blvd Space J20,Olympia,WA,98502,--,47.0421,-122.9268
+Menchie's,1214 SW Scotton Way Suite 107,Battle Ground,WA,98604,--,45.7724,-122.5512
+Menchie's,7902 NE 6th Ave Suite 108,Vancouver,WA,98665,--,45.6795,-122.6583
+Menchie's,19171 SE Mill Plain Blvd Suite 107,Vancouver,WA,98683,--,45.6186,-122.4741
+Menchie's,2387 NW 185th Ave,Hillsboro,OR,97124,--,45.5412,-122.8719
+Menchie's,12325 SW Horizon Blvd Suite 39,Beaverton,OR,97007,--,45.4385,-122.8589
+Menchie's,4811 Meadows Rd Suite 139,Lake Oswego,OR,97035,--,45.4144,-122.7252
+Menchie's,12901 SE 97th Ave,Clackamas,OR,97015,--,45.4272,-122.5635
+Menchie's,21430 SW Langer Farms Pkwy Suite 148,Sherwood,OR,97140,--,45.3611,-122.8423
+Menchie's,1408 Molalla Ave,Oregon City,OR,97045,--,45.3375,-122.5931
+Menchie's,2820 Gateway St Suite MT106,Springfield,OR,97477,--,44.0682,-123.0458
