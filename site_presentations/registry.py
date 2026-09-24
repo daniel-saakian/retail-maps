@@ -22,6 +22,8 @@ brands: list[BrandConfig] = [
     BrandConfig("PokeHouse", "Poke House", "PokeHouse", "ph_site_report"),
     BrandConfig("ShareTea", "Share Tea", "ShareTea", "st_site_report"),
     BrandConfig("SpikedRich", "Spiked Rich", "SpikedRich", "sr_site_report"),
+    BrandConfig("BarrioQueen", "Barrio Queen", "BarrioQueen", "bq_site_report"),
+    BrandConfig("Pinkberry", "Pinkberry", "Pinkberry", "pb_site_report"),
 ]
 
 _by_code = {b.code: b for b in brands}
