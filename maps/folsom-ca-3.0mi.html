@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8' />
+  <title>Retail Centers – Folsom, CA</title>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' />
+  <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
+  <style>
+    body { margin: 0; font-family: sans-serif; }
+    #map { height: 100vh; width: 100%; }
+    .legend {
+      background: white; padding: 10px 14px; border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); line-height: 1.8;
+      font-size: 13px;
+    }
+    .legend-dot { display: inline-block; width: 12px; height: 12px;
+                   border-radius: 50%; margin-right: 6px; }
+    .tenant-filter { font-size: 13px; }
+    .tenant-toggle-btn {
+      background: white; border: 2px solid rgba(0,0,0,0.2); border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); padding: 8px 12px; font-size: 13px;
+      font-family: sans-serif; cursor: pointer; min-width: 180px; text-align: left;
+    }
+    .tenant-toggle-btn:hover { background: #f4f4f4; }
+    .tenant-panel {
+      background: white; border-radius: 6px; box-shadow: 0 1px 5px rgba(0,0,0,0.3);
+      margin-top: 4px; padding: 10px; width: 260px; max-height: 380px;
+      display: flex; flex-direction: column;
+    }
+    .tenant-search {
+      width: 100%; box-sizing: border-box; padding: 6px 8px; margin-bottom: 8px;
+      border: 1px solid #ccc; border-radius: 4px; font-size: 13px;
+    }
+    .tenant-actions { display: flex; gap: 6px; margin-bottom: 8px; }
+    .tenant-actions button {
+      flex: 1; padding: 5px 6px; font-size: 12px; border: 1px solid #ccc;
+      border-radius: 4px; background: #f7f7f7; cursor: pointer;
+    }
+    .tenant-actions button:hover { background: #eaeaea; }
+    .tenant-list { overflow-y: auto; max-height: 260px; border-top: 1px solid #eee; padding-top: 6px; }
+    .tenant-item {
+      display: block; font-size: 12.5px; padding: 3px 2px; cursor: pointer;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .tenant-item:hover { background: #f4f4f4; }
+    .tenant-item input { margin-right: 6px; }
+  </style>
+</head>
+<body>
+<div id='map'></div>
+<script>
+  var map = L.map('map').setView([38.66286292063228, -121.14631866369767], 12);
+ 
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(map);
+ 
+  var plazasData = [];
+  var storesData = [];
+ 
+  var layerMultiAnchor = L.layerGroup().addTo(map);
+  var layerSingleAnchor = L.layerGroup().addTo(map);
+  var layerPlazaCenters = L.layerGroup().addTo(map);
+  var layerAnchors = L.layerGroup().addTo(map);
+  var layerTenants = L.layerGroup().addTo(map);
+  var layerStandalone = L.layerGroup().addTo(map);
+  var layerHighDensity = L.layerGroup().addTo(map);
+  var layerLowDensity = L.layerGroup().addTo(map);
+  var countyLayers = {};
+ 
+  function getOrCreateCountyLayer(county) {
+    if (!county || county === '-') county = 'Unknown';
+    if (!countyLayers[county]) {
+        countyLayers[county] = L.layerGroup().addTo(map);
+    }
+    return countyLayers[county];
+  }
+ 
+  function addPlaza(lat, lng, radius_m, plazaId, name, address, county, city, numAnchors, anchors, numTenants, tenants, color, leasingHtml) {
+    var popup = '<b>' + name + '</b><br>'
+      + (address !== '-' ? address + '<br>' : '')
+      + city + (county !== '-' ? ', ' + county + ' County' : '') + '<br>'
+      + leasingHtml
+      + '<br><b>' + numAnchors + ' anchor(s): </b><br>'
+      + anchors.split(', ').join('<br>')
+      + '<br><br><b>' + numTenants + ' other tenant(s):</b><br>'
+      + tenants.split(', ').join('<br>');
+    
+    var circle = L.circle([lat, lng], {
+      radius: radius_m,
+      color: color,
+      fillColor: color,
+      fillOpacity: 0.08,
+      weight: 2
+    });
+    if (numAnchors > 1) {
+      layerMultiAnchor.addLayer(circle);
+    } else {
+      layerSingleAnchor.addLayer(circle);
+    }
+ 
+    var center = L.circleMarker([lat,lng], {
+        radius: 9,
+        color: '#fff',
+        fillColor: '#8e44ad',
+        fillOpacity: 1,
+        weight: 2
+    }).bindPopup(popup, {maxHeight: 320, autoPanPadding: [20, 20]}).bindTooltip(name, {permanent: false, direction: 'top'});
+ 
+    var cleanCounty = (!county || county === '-') ? 'Unknown' : county;
+    getOrCreateCountyLayer(cleanCounty);
+ 
+    plazasData.push({
+        circle: circle,
+        center: center,
+        id: plazaId,
+        name: name,
+        county: cleanCounty,
+        numAnchors: numAnchors,
+        numTenants: numTenants
+    });
+  }
+ 
+  function addStore(lat, lng, name, address, color, plazaId, plaza, isAnchor) {
+    var size = isAnchor ? 11 : 9;
+    var icon = L.divIcon({
+      className: '',
+      html: '<div style="position:absolute;width:' + size + 'px;height:' + size + 'px;'
+          + 'border-radius:50%;background:' + color + ';border:2px solid white;'
+          + 'box-shadow:0 1px 3px rgba(0,0,0,0.4);top:50%;left:50%;'
+          + 'transform:translate(-50%,-50%)'
+          + (isAnchor ? ';outline:2px solid rgba(0,0,0,0.25)' : '')
+          + '"></div>',
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2]
+    });
+    var marker = L.marker([lat, lng], {icon: icon})
+      .bindPopup('<b>' + name + '</b>' + (isAnchor ? '⚓' : '')+ '<br>' 
+        + '<i>' + plaza + '</i><br>'
+        + address)
+      .bindTooltip(name, {direction: 'top'})
+    
+    storesData.push({
+      marker: marker,
+      plazaId: plazaId,
+      plazaLabel: plaza,
+      isAnchor: isAnchor,
+      name: name
+    });
+  }
+ 
+  function tenantFilterMatchesPlaza(plazaId) {
+    // Fast path: nothing deselected, every plaza passes.
+    if (selectedNames.size >= allTenantNames.length) return true;
+    var names = plazaNameIndex[plazaId];
+    if (!names) return false;
+    for (var n of names) {
+      if (selectedNames.has(n)) return true;
+    }
+    return false;
+  }
+ 
+  function updateVisibility() {
+    plazasData.forEach(function(p) {
+      var anchorMatch = (p.numAnchors > 1) ? map.hasLayer(layerMultiAnchor): map.hasLayer(layerSingleAnchor);
+      var densityMatch = (p.numTenants >= 10) ? map.hasLayer(layerHighDensity) : map.hasLayer(layerLowDensity);
+      var countyLayer = countyLayers[p.county];
+      var countyMatch = countyLayer ? map.hasLayer(countyLayer) : true;
+      var tenantMatch = tenantFilterMatchesPlaza(p.id);
+ 
+      var plazaVisible = anchorMatch && densityMatch && countyMatch && tenantMatch;
+      p.isActive = plazaVisible;
+ 
+      if (plazaVisible) {
+        // FIX 2: Changed map.has() to map.hasLayer()
+        if (!map.hasLayer(p.circle)) p.circle.addTo(map);
+      } else {
+        if (map.hasLayer(p.circle)) map.removeLayer(p.circle);
+      }
+ 
+      if (plazaVisible && map.hasLayer(layerPlazaCenters)) {
+        if (!map.hasLayer(p.center)) p.center.addTo(map);
+      } else {
+        if (map.hasLayer(p.center)) map.removeLayer(p.center);
+      }
+    });
+      
+    storesData.forEach(function(s) {
+        var storeVisible = false;
+        var nameMatch = selectedNames.has(s.name);
+ 
+        if (s.plazaId === -1) {
+            // Standalone store
+            storeVisible = map.hasLayer(layerStandalone) && nameMatch;
+ 
+        } else {
+            var parentPlaza = plazasData.find(function(p) {
+                return p.id === s.plazaId;
+            });
+ 
+            if (parentPlaza && parentPlaza.isActive) {
+                storeVisible = (s.isAnchor
+                    ? map.hasLayer(layerAnchors)
+                    : map.hasLayer(layerTenants)) && nameMatch;
+            }
+        }
+ 
+        if (storeVisible) {
+            if (!map.hasLayer(s.marker))
+                s.marker.addTo(map);
+        } else {
+            if (map.hasLayer(s.marker))
+                map.removeLayer(s.marker);
+        }
+    });
+  }
+ 
+  addPlaza(38.64795220338983, -121.11909487627119, 578.9, 0, 'Palladio at Broadstone', '270 Palladio Parkway Folsom', 'Sacramento County', 'Folsom', 5, 'Best Buy, BevMo!, H&M, Sam\'s Club, Whole Foods Market', 54, 'A&W, AT&T, Apricot Lane, Bag King, Bank of America, Barnes & Noble, Button Up Boutique, Carl\'s Jr., ChargePoint, Chevron, Chico\'s, Courtyard, DSW, Dr. Stacy\'s Optometry, East Side Ride, Electrify America, Eyeglass World, Gateway Nails & Spa, Grebitus Jewelers, Gymboree, IHOP, In-N-Out Burger, JoS. A. Bank, Johnny Rockets, KFC, Kirkland\'s, LensCrafters, Maribou, Massage Heights, Mattress Firm, Olive Garden, Panera Bread, Phenix Salon Suites, Pieology Pizzeria, Pinkberry, Pretty Sweet Bakery, REI, Red Robin, Residence Inn, Rod Works, Unique Home Décor, Roosters Men\'s Grooming Center, See\'s Candies, Sleep Number, Soma, Staples, Starbucks, T-Mobile, Taco Bell, Tesla Supercharger, Threading Place, Verizon, Wendy\'s, White House Black Market, claire\'s', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.643677141935484, -121.18751007419355, 289.7, 1, 'Folsom Premium Outlets', '13000 Folsom Boulevard Folsom', 'Sacramento County', 'Folsom', 2, 'Adidas, Nike', 29, 'Aeropostale, Banana Republic Factory Store, Bose, Calvin Klein, Clarks Bostonian, Converse, DC Shoes, Famous Footwear Outlet, Forever 21, G.H. Bass & Co., Gap Factory Store, Kenneth Cole, Levi’s Outlet Store, Loft Outlet, Merrell, Naturalizer, Nautica, Nine West Outlet, Papaya, Rocky Mountain Chocolate Factory, Saks Fifth Avenue Off 5th, Skechers, Sports Fever, Stride Rite Keds Sperry, The Children’s Place Outlet, Tommy Hilfiger, Toys\'R\'Us Express, Vans, Wispy Dream Lashes', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://business.simon.com/search?location=Folsom%2C+CA" target="_blank" rel="noopener">Simon Property Group — Simon Property Group Leasing team</a><br>');
+addPlaza(38.65480686111111, -121.12655594444443, 510.7, 2, 'Broadstone Plaza', '2745 East Bidwell Street Folsom', 'El Dorado County', 'Folsom', 4, 'Marshalls, Ross, The Home Depot, Walgreens', 14, 'Aaron Brothers, America\'s Tire Warehouse, Chick-fil-A, Del Taco, Famous Footwear, Hobby Town USA, Lane Bryant, McDonald\'s, Men\'s Wearhouse, Michaels, Old Navy, PetSmart, Tillys, Total Wine', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.66923197692308, -121.1551835153846, 289.7, 3, 'Unnamed Retail Center', '1003 East Bidwell Street Folsom', '-', 'Folsom', 1, 'Dick\'s Sporting Goods', 12, '76, Carl\'s Jr., Chipotle, Firehouse Subs, Jack in the Box, Smokeless Smoking, The Backyard Experience, The Donut Shop, The Habit Burger Grill, Wells Fargo, Willow Creek, Wingstop', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-191355" target="_blank" rel="noopener">CBRE — Chris Campbell</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-191355" target="_blank" rel="noopener">CBRE — Jason Read</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-191355" target="_blank" rel="noopener">CBRE — Scott Carruth</a><br>');
+addPlaza(38.67311723076923, -121.16724436153847, 376.6, 4, 'Unnamed Retail Center', '1013 Riley Street Folsom', '-', 'Folsom', 1, 'Kohl\'s', 12, '5 Star Liquor, Angels Nails, BJ Cinnamon, Bank of America, Chevron, PLA Skateboarding, Red Robin, Say Salon, Silky Nails, Tangled, The Cave Folsom, Wendy\'s', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.crexi.com/lease/properties/173881/california-1002-1016-riley-street" target="_blank" rel="noopener">GQ North Real Estate — Nate Giwoff</a><br><a href="https://www.crexi.com/lease/properties/173881/california-1002-1016-riley-street" target="_blank" rel="noopener">GQNorth Real Estate — Bob Shahlaie</a><br>');
+addPlaza(38.65506750909091, -121.12272511818182, 289.7, 5, 'Broadstone Marketplace', '2776 East Bidwell Street Folsom', 'El Dorado County', 'Folsom', 1, 'Bel Air', 10, 'BJ\'s, Berilian Jewelers, Buffalo Wild Wings, Chevron, European Wax Center, Five Guys, Icing on the Cupcake, Massage Envy, Temple Coffee Roasters, eVgo', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.65672352, -121.17427826999999, 326.3, 6, 'Natoma Station Shopping Center (North)', '500 Plaza Drive Folsom', '-', 'Folsom', 1, 'WinCo Foods', 9, 'Arthur Murray Dance Center, Enterprise, Everspring Water, Goodwill, Massage Rejuvenation, Maya Microblading, Recovery Works Massage Therapy, Retail Pro, Sola Salons', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-185389" target="_blank" rel="noopener">CBRE — Chris Campbell</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-185389" target="_blank" rel="noopener">CBRE — Jason Read</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-185389" target="_blank" rel="noopener">CBRE — Scott Carruth</a><br><a href="https://www.crexi.com/lease/properties/1025739/california-526-e-bidwell-st" target="_blank" rel="noopener">Clark Commercial Realty Advisors — Jeff Clark</a><br>');
+addPlaza(38.690025633333335, -121.12441518888889, 289.7, 7, 'Unnamed Retail Center', '25002 Blue Ravine Road Folsom', 'El Dorado County', 'Folsom', 2, '99 Ranch Market, Dollar Tree', 7, 'Marco\'s Pizza, Peet\'s Coffee, Quality Cuts, Starbucks, Taco Bell, The UPS Store, Wells Fargo', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.67244395, -121.1620634125, 289.7, 8, 'Unnamed Retail Center', '606 East Bidwell Street Folsom', '-', 'Folsom', 1, 'Big 5 Sporting Goods', 7, 'American Logwear Embroidery, El Pollo Loco, Finecuts Family Salon, GGG Spa, McDonald\'s, Taco Bell, The Nicholson Music Company', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.64989055, -121.16460725, 289.7, 9, 'Prairie City Crossing', '1850 Prairie City Road Folsom', 'Sacramento County', 'Folsom', 1, 'Safeway', 5, 'AT&T, Chevron, Panda Express, Starbucks, Tesla Supercharger', '#e74c3c', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-128388" target="_blank" rel="noopener">CBRE — Chris Campbell</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-128388" target="_blank" rel="noopener">CBRE — Jason Read</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-128388" target="_blank" rel="noopener">CBRE — Scott Carruth</a><br>');
+addPlaza(38.645838624999996, -121.11040155, 289.7, 10, 'Unnamed Retail Center', '1800 Cavitt Drive Folsom', 'Sacramento County', 'Folsom', 1, 'Costco', 3, 'Fairfield Inn & Suites Sacramento Folsom, Green Acres Nursery & Supply, Hampton Inn & Suites Folsom', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.68920786666666, -121.12176446666668, 289.7, 11, 'Unnamed Retail Center', '25025 Blue Ravine Road Folsom', 'El Dorado County', 'Folsom', 1, 'Raley\'s', 2, 'Mountain Mike\'s, Papa John\'s', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-128389" target="_blank" rel="noopener">CBRE — Chris Campbell</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-128389" target="_blank" rel="noopener">CBRE — Jason Read</a><br><a href="https://www.cbre.com/properties/properties-for-lease/commercial-space/details/US-SMPL-128389" target="_blank" rel="noopener">CBRE — Scott Carruth</a><br>');
+addPlaza(38.669234900000006, -121.1662986, 289.7, 12, 'Unnamed Retail Center', '1018 Riley Street Folsom', '-', 'Folsom', 1, 'Walmart Supercenter', 1, 'ChargePoint', '#3498db', '<br><br><b>Leasing contact(s):</b><br><a href="https://www.crexi.com/lease/properties/173881/california-1002-1016-riley-street" target="_blank" rel="noopener">GQ North Real Estate — Nate Giwoff</a><br><a href="https://www.crexi.com/lease/properties/173881/california-1002-1016-riley-street" target="_blank" rel="noopener">GQNorth Real Estate — Bob Shahlaie</a><br>');
+  addStore(38.6502131, -121.1642124, 'Starbucks', '1860 Prarie City Road Prairie City', '#e74c3c', 9, 'Prairie City Crossing', false);
+addStore(38.650057, -121.164133, 'AT&T', '-', '#e74c3c', 9, 'Prairie City Crossing', false);
+addStore(38.6487622, -121.119366, 'Pinkberry', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6502327, -121.120246, 'White House Black Market', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6514665, -121.119761, 'Panera Bread', '380 Palladio Parkway Folsom', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6469299, -121.1157099, 'BevMo!', '-', '#f39c12', 0, 'Palladio at Broadstone', true);
+addStore(38.6460274, -121.1141342, 'Chevron', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6441112, -121.1221636, 'DSW', '2395 Iron Point Road Folsom', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6907539, -121.1238412, 'Taco Bell', '25002 Blue Ravine Road Folsom', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.6894144, -121.121064, 'Mountain Mike\'s', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(38.6883677, -121.123565, 'The UPS Store', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.6889114, -121.1228815, 'Peet\'s Coffee', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.6901538, -121.125165, 'Quality Cuts', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.6889042, -121.123576, 'Wells Fargo', '-', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.6541438, -121.1247123, 'Men\'s Wearhouse', '-', '#e74c3c', 2, 'Broadstone Plaza', false);
+addStore(38.6545369, -121.1252845, 'Tillys', '-', '#e74c3c', 2, 'Broadstone Plaza', false);
+addStore(38.6547019, -121.1212666, 'Berilian Jewelers', '-', '#e74c3c', 5, 'Broadstone Marketplace', false);
+addStore(38.6547276, -121.1221259, 'European Wax Center', '-', '#e74c3c', 5, 'Broadstone Marketplace', false);
+addStore(38.6547349, -121.121172, 'Temple Coffee Roasters', '2776 East Bidwell Street Folsom', '#e74c3c', 5, 'Broadstone Marketplace', false);
+addStore(38.6543997, -121.125078, 'Aaron Brothers', '-', '#e74c3c', 2, 'Broadstone Plaza', false);
+addStore(38.6542406, -121.1248863, 'Hobby Town USA', '-', '#e74c3c', 2, 'Broadstone Plaza', false);
+addStore(38.6540411, -121.1235516, 'Icing on the Cupcake', '-', '#e74c3c', 5, 'Broadstone Marketplace', false);
+addStore(38.6694643, -121.1555959, 'Chipotle', '1001 East Bidwell Street Folsom', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.6691715, -121.1560808, 'Dick\'s Sporting Goods', '1003 East Bidwell Street Folsom', '#f39c12', 3, 'Unnamed Retail Center', true);
+addStore(38.6683603, -121.1675262, 'Walmart Supercenter', '1018 Riley Street Folsom', '#f39c12', 12, 'Unnamed Retail Center', true);
+addStore(38.6717844, -121.1700157, 'Red Robin', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.6744132, -121.1673004, 'Say Salon', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.6432708, -121.1882283, 'Tommy Hilfiger', '-', '#e74c3c', 1, 'Folsom Premium Outlets', false);
+addStore(38.6428518, -121.1877294, 'Forever 21', '-', '#e74c3c', 1, 'Folsom Premium Outlets', false);
+addStore(38.644335, -121.1878957, 'Adidas', '-', '#f39c12', 1, 'Folsom Premium Outlets', true);
+addStore(38.644356, -121.1889739, 'Nike', '-', '#f39c12', 1, 'Folsom Premium Outlets', true);
+addStore(38.6427303, -121.1861201, 'Saks Fifth Avenue Off 5th', '-', '#e74c3c', 1, 'Folsom Premium Outlets', false);
+addStore(38.6433546, -121.1860932, 'Gap Factory Store', '-', '#e74c3c', 1, 'Folsom Premium Outlets', false);
+addStore(38.6431241, -121.186045, 'Banana Republic Factory Store', '-', '#e74c3c', 1, 'Folsom Premium Outlets', false);
+addStore(38.6431744, -121.1865546, 'Loft Outlet', '-', '#e74c3c', 1, 'Folsom Premium Outlets', false);
+addStore(38.6437526, -121.1861737, 'Levi’s Outlet Store', '-', '#e74c3c', 1, 'Folsom Premium Outlets', false);
+addStore(38.6440585, -121.1862273, 'Kenneth Cole', '-', '#e74c3c', 1, 'Folsom Premium Outlets', false);
+addStore(38.6432917, -121.1864848, 'Skechers', '-', '#e74c3c', 1, 'Folsom Premium Outlets', false);
+addStore(38.6432624, -121.1873968, 'Toys\'R\'Us Express', '-', '#e74c3c', 1, 'Folsom Premium Outlets', false);
+addStore(38.6440585, -121.1890651, 'Calvin Klein', '-', '#e74c3c', 1, 'Folsom Premium Outlets', false);
+addStore(38.6438774, -121.1874689, 'Nautica', '-', '#e74c3c', 1, 'Folsom Premium Outlets', false);
+addStore(38.6444585, -121.1884974, 'Sports Fever', '-', '#e74c3c', 1, 'Folsom Premium Outlets', false);
+addStore(38.6437694, -121.1887218, 'The Children’s Place Outlet', '-', '#e74c3c', 1, 'Folsom Premium Outlets', false);
+addStore(38.6440543, -121.1866082, 'Bose', '-', '#e74c3c', 1, 'Folsom Premium Outlets', false);
+addStore(38.6430597, -121.1872319, 'Rocky Mountain Chocolate Factory', '-', '#e74c3c', 1, 'Folsom Premium Outlets', false);
+addStore(38.6438869, -121.1885178, 'Clarks Bostonian', '-', '#e74c3c', 1, 'Folsom Premium Outlets', false);
+addStore(38.6445855, -121.1882657, 'Converse', '-', '#e74c3c', 1, 'Folsom Premium Outlets', false);
+addStore(38.6445918, -121.1886316, 'DC Shoes', '-', '#e74c3c', 1, 'Folsom Premium Outlets', false);
+addStore(38.6437948, -121.187725, 'Famous Footwear Outlet', '-', '#e74c3c', 1, 'Folsom Premium Outlets', false);
+addStore(38.6428454, -121.1872128, 'G.H. Bass & Co.', '-', '#e74c3c', 1, 'Folsom Premium Outlets', false);
+addStore(38.643979, -121.1875543, 'Merrell', '-', '#e74c3c', 1, 'Folsom Premium Outlets', false);
+addStore(38.6442044, -121.1867249, 'Naturalizer', '-', '#e74c3c', 1, 'Folsom Premium Outlets', false);
+addStore(38.6430804, -121.1875665, 'Nine West Outlet', '-', '#e74c3c', 1, 'Folsom Premium Outlets', false);
+addStore(38.6436488, -121.1865257, 'Stride Rite Keds Sperry', '-', '#e74c3c', 1, 'Folsom Premium Outlets', false);
+addStore(38.6440743, -121.1887617, 'Vans', '-', '#e74c3c', 1, 'Folsom Premium Outlets', false);
+addStore(38.6526525, -121.1256755, 'Famous Footwear', '-', '#e74c3c', 2, 'Broadstone Plaza', false);
+addStore(38.6531661, -121.1263629, 'Lane Bryant', '-', '#e74c3c', 2, 'Broadstone Plaza', false);
+addStore(38.65398, -121.1271155, 'Marshalls', '-', '#f39c12', 2, 'Broadstone Plaza', true);
+addStore(38.6547136, -121.1274774, 'Michaels', '2715 East Bidwell Street Folsom', '#e74c3c', 2, 'Broadstone Plaza', false);
+addStore(38.6533004, -121.126558, 'Old Navy', '-', '#e74c3c', 2, 'Broadstone Plaza', false);
+addStore(38.655043, -121.1276701, 'PetSmart', '2705 East Bidwell Street Folsom', '#e74c3c', 2, 'Broadstone Plaza', false);
+addStore(38.6536393, -121.1268709, 'Ross', '2745 East Bidwell Street Folsom', '#f39c12', 2, 'Broadstone Plaza', true);
+addStore(38.6529718, -121.1261627, 'Total Wine', '2765 East Bidwell Street Folsom', '#e74c3c', 2, 'Broadstone Plaza', false);
+addStore(38.6678782, -121.15599, 'Willow Creek', '1011 Bidwell St.', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.6496551, -121.1180515, 'AT&T', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6503798, -121.119709, 'Apricot Lane', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6482683, -121.1193578, 'Bag King', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6492445, -121.1186282, 'Barnes & Noble', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6496215, -121.11896, 'Chico\'s', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6498855, -121.1211119, 'Dr. Stacy\'s Optometry', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6483563, -121.1187811, 'East Side Ride', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.650229, -121.1195321, 'Gymboree', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6495231, -121.1208786, 'H&M', '-', '#f39c12', 0, 'Palladio at Broadstone', true);
+addStore(38.6486328, -121.119119, 'Johnny Rockets', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6482662, -121.1185424, 'Kirkland\'s', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6481363, -121.1191941, 'Massage Heights', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.650472, -121.1215813, 'Phenix Salon Suites', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6508972, -121.1201651, 'Red Robin', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6512848, -121.1200149, 'Roosters Men\'s Grooming Center', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6483479, -121.1182956, 'See\'s Candies', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6494959, -121.1180247, 'Sleep Number', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6496825, -121.11901, 'Soma', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6482013, -121.1192639, 'Threading Place', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6482932, -121.1163725, 'Bank of America', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6495519, -121.119493, 'Button Up Boutique', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6491685, -121.119797, 'claire\'s', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6493382, -121.1193175, 'Grebitus Jewelers', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6496409, -121.119564, 'JoS. A. Bank', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6493958, -121.1193296, 'LensCrafters', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6494723, -121.1194208, 'Maribou', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6500339, -121.1205353, 'Pretty Sweet Bakery', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6507095, -121.1207257, 'Rod Works, Unique Home Décor', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6507231, -121.1208169, 'Starbucks', '350 Palladio Parkway Folsom', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.649693, -121.1187806, 'T-Mobile', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6682647, -121.1550062, 'The Habit Burger Grill', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.6683151, -121.1551442, 'Wingstop', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.6696118, -121.155912, 'Smokeless Smoking', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.6695437, -121.155706, 'The Donut Shop', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.6696498, -121.1559794, 'Firehouse Subs', '1001 East Bidwell Street Folsom', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.6695816, -121.1558149, 'The Backyard Experience', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.6555461, -121.1234299, 'Five Guys', '2750 East Bidwell Street Folsom', '#e74c3c', 5, 'Broadstone Marketplace', false);
+addStore(38.6572759, -121.1738764, 'Maya Microblading', '500 Plaza Drive Folsom', '#e74c3c', 6, 'Natoma Station Shopping Center (North)', false);
+addStore(38.6701095, -121.165071, 'ChargePoint', '-', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(38.6556666, -121.122109, 'eVgo', '-', '#e74c3c', 5, 'Broadstone Marketplace', false);
+addStore(38.6467679, -121.1174813, 'KFC', '2535 Iron Point Road Folsom', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6467285, -121.1174282, 'A&W', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6503263, -121.118535, 'ChargePoint', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6893289, -121.1218302, 'Papa John\'s', '25035 Blue Ravine Road Folsom', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(38.6742032, -121.1672346, 'PLA Skateboarding', '330 East Bidwell Street Folsom', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.6472, -121.11834, 'Tesla Supercharger', '220 Palladio Parkway Folsom', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6910229, -121.1255535, 'Marco\'s Pizza', '117', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.6432803, -121.187784, 'Aeropostale', '-', '#e74c3c', 1, 'Folsom Premium Outlets', false);
+addStore(38.6431785, -121.1879255, 'Papaya', '-', '#e74c3c', 1, 'Folsom Premium Outlets', false);
+addStore(38.6742132, -121.1673018, 'Angels Nails', '328 East Bidwell Street Folsom', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.6741837, -121.1671421, '5 Star Liquor', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.6736261, -121.1673599, 'Silky Nails', '401 East Bidwell Street Folsom', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.6736465, -121.1674527, 'Tangled', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.6723669, -121.1635926, 'American Logwear Embroidery', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(38.6718276, -121.1637569, 'Finecuts Family Salon', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(38.6732251, -121.162524, 'Big 5 Sporting Goods', '606 East Bidwell Street Folsom', '#f39c12', 8, 'Unnamed Retail Center', true);
+addStore(38.6440013, -121.1881007, 'Wispy Dream Lashes', '13000 Folsom Boulevard Folsom', '#e74c3c', 1, 'Folsom Premium Outlets', false);
+addStore(38.6906887, -121.125382, '99 Ranch Market', 'Blue Ravine Road', '#f39c12', 7, 'Unnamed Retail Center', true);
+addStore(38.6903472, -121.125183, 'Dollar Tree', 'Blue Ravine Road', '#f39c12', 7, 'Unnamed Retail Center', true);
+addStore(38.6741262, -121.1667665, 'BJ Cinnamon', '402 East Bidwell Street', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.6450619, -121.1218265, 'Pieology Pizzeria', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6553905, -121.1231556, 'Massage Envy', '-', '#e74c3c', 5, 'Broadstone Marketplace', false);
+addStore(38.6454105, -121.1206528, 'Verizon', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6449933, -121.1221341, 'Gateway Nails & Spa', '2405 Iron Point Road', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6440804, -121.1219266, 'Eyeglass World', '2395 Iron Point Road', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6456327, -121.1198562, 'Mattress Firm', '2475 Iron Point Road Folsom', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.656162, -121.1729334, 'Arthur Murray Dance Center', '-', '#e74c3c', 6, 'Natoma Station Shopping Center (North)', false);
+addStore(38.6562175, -121.1728411, 'Massage Rejuvenation', '-', '#e74c3c', 6, 'Natoma Station Shopping Center (North)', false);
+addStore(38.6570607, -121.1733301, 'Recovery Works Massage Therapy', '-', '#e74c3c', 6, 'Natoma Station Shopping Center (North)', false);
+addStore(38.6573525, -121.1739616, 'Sola Salons', '-', '#e74c3c', 6, 'Natoma Station Shopping Center (North)', false);
+addStore(38.6571773, -121.1749291, 'Retail Pro', '-', '#e74c3c', 6, 'Natoma Station Shopping Center (North)', false);
+addStore(38.6568307, -121.1775427, 'Enterprise', '-', '#e74c3c', 6, 'Natoma Station Shopping Center (North)', false);
+addStore(38.671688, -121.1617456, 'McDonald\'s', '697 East Bidwell Street', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(38.6730602, -121.1614887, 'The Nicholson Music Company', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(38.6729836, -121.1616041, 'GGG Spa', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(38.648802, -121.164568, 'Tesla Supercharger', '1840 Prairie City Road Folsom', '#e74c3c', 9, 'Prairie City Crossing', false);
+addStore(38.6562993, -121.1725853, 'Everspring Water', '220 Blue Ravine Road Folsom', '#e74c3c', 6, 'Natoma Station Shopping Center (North)', false);
+addStore(38.6734483, -121.1690079, 'The Cave Folsom', '313 East Bidwell Street Folsom', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.64759, -121.12069, 'Electrify America', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6458085, -121.1096673, 'Costco', '1800 Cavitt Drive Folsom', '#f39c12', 10, 'Unnamed Retail Center', true);
+addStore(38.6559133, -121.1283447, 'The Home Depot', '2675 East Bidwell Street Folsom', '#f39c12', 2, 'Broadstone Plaza', true);
+addStore(38.6575917, -121.1285218, 'America\'s Tire Warehouse', '-', '#e74c3c', 2, 'Broadstone Plaza', false);
+addStore(38.654702, -121.1240408, 'Buffalo Wild Wings', '-', '#e74c3c', 5, 'Broadstone Marketplace', false);
+addStore(38.6548537, -121.1244558, 'McDonald\'s', '2757 East Bidwell Street Folsom', '#e74c3c', 2, 'Broadstone Plaza', false);
+addStore(38.6564216, -121.1264297, 'Del Taco', '-', '#e74c3c', 2, 'Broadstone Plaza', false);
+addStore(38.6509084, -121.1648727, 'Panda Express', '1840 Prairie City Road Folsom', '#e74c3c', 9, 'Prairie City Crossing', false);
+addStore(38.6498352, -121.1658144, 'Safeway', '1850 Prairie City Road Folsom', '#f39c12', 9, 'Prairie City Crossing', true);
+addStore(38.6495276, -121.164043, 'Chevron', '-', '#e74c3c', 9, 'Prairie City Crossing', false);
+addStore(38.6488159, -121.1181014, 'Whole Foods Market', '270 Palladio Parkway Folsom', '#f39c12', 0, 'Palladio at Broadstone', true);
+addStore(38.6458662, -121.10787, 'Green Acres Nursery & Supply', '205 Serpa Way', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(38.6561923, -121.1218964, 'Bel Air', '2760 East Bidwell Street', '#f39c12', 5, 'Broadstone Marketplace', true);
+addStore(38.6562345, -121.1241621, 'BJ\'s', '-', '#e74c3c', 5, 'Broadstone Marketplace', false);
+addStore(38.6444477, -121.1178841, 'Sam\'s Club', '2495 Iron Point Road Folsom', '#f39c12', 0, 'Palladio at Broadstone', true);
+addStore(38.6439175, -121.1213609, 'REI', '2425 Iron Point Road Folsom', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6440318, -121.1204083, 'Best Buy', '2445 Iron Point Road Folsom', '#f39c12', 0, 'Palladio at Broadstone', true);
+addStore(38.6439944, -121.1209023, 'Staples', '2435 Iron Point Road Folsom', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.645287, -121.1162863, 'Residence Inn', '2555 Iron Point Road Folsom', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6462664, -121.1161781, 'Courtyard', '2575 Iron Point Road Folsom', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6463172, -121.1181589, 'Wendy\'s', '2505 Iron Point Drive Folsom', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6462432, -121.1171389, 'Taco Bell', '2545 Iron Point Road Folsom', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6459558, -121.1186609, 'Olive Garden', '2485 Iron Point Road', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6458091, -121.1175818, 'Carl\'s Jr.', '2515 Iron Point Road Folsom', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6559062, -121.1746167, 'WinCo Foods', '-', '#f39c12', 6, 'Natoma Station Shopping Center (North)', true);
+addStore(38.6569531, -121.1761663, 'Goodwill', '-', '#e74c3c', 6, 'Natoma Station Shopping Center (North)', false);
+addStore(38.6445776, -121.1119707, 'Hampton Inn & Suites Folsom', '155 Placerville Road Folsom', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(38.6467295, -121.1143975, 'In-N-Out Burger', '225 Placerville Road Folsom', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6454428, -121.1169128, 'IHOP', '-', '#e74c3c', 0, 'Palladio at Broadstone', false);
+addStore(38.6888803, -121.1223992, 'Raley\'s', '25025 Blue Ravine Road Folsom', '#f39c12', 11, 'Unnamed Retail Center', true);
+addStore(38.6538051, -121.1230664, 'Chevron', '-', '#e74c3c', 5, 'Broadstone Marketplace', false);
+addStore(38.6691433, -121.1543542, 'Wells Fargo', '1113 East Bidwell Street Folsom', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.6581127, -121.1294252, 'Walgreens', '2595 East Bidwell Street Folsom', '#f39c12', 2, 'Broadstone Plaza', true);
+addStore(38.6720905, -121.1676609, 'Kohl\'s', '1013 Riley Street Folsom', '#f39c12', 4, 'Unnamed Retail Center', true);
+addStore(38.6733397, -121.16662, 'Bank of America', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.6700217, -121.1548393, 'Carl\'s Jr.', '1016 East Bidwell Street Folsom', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.6719791, -121.1603605, 'Taco Bell', '702 East Bidwell Street Folsom', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(38.6568428, -121.1269757, 'Chick-fil-A', '2679 East Bidwell Street Folsom', '#e74c3c', 2, 'Broadstone Plaza', false);
+addStore(38.6695946, -121.1529331, 'Jack in the Box', '401 Blue Ravine Road Folsom', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.6697754, -121.1540297, '76', '1024 East Bidwell Street Folsom', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.6910809, -121.1245895, 'Starbucks', '25008 Blue Ravine Road Folsom', '#3498db', 7, 'Unnamed Retail Center', false);
+addStore(38.6704715, -121.1656621, 'Chevron', '1020 Riley Street Folsom', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.6709775, -121.1646521, 'Wendy\'s', '1101 Riley Avenue Folsom', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.6724211, -121.1614349, 'El Pollo Loco', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(38.6471022, -121.1120982, 'Fairfield Inn & Suites Sacramento Folsom', '1755 Cavitt Drive Folsom', '#3498db', 10, 'Unnamed Retail Center', false);
+ 
+  // ---- Tenant name filter ----
+  var allTenantNames = ['5 Star Liquor', '76', '99 Ranch Market', 'A&W', 'Aaron Brothers', 'Adidas', 'Aeropostale', 'America\'s Tire Warehouse', 'American Logwear Embroidery', 'Angels Nails', 'Apricot Lane', 'Arthur Murray Dance Center', 'AT&T', 'Bag King', 'Banana Republic Factory Store', 'Bank of America', 'Barnes & Noble', 'Bel Air', 'Berilian Jewelers', 'Best Buy', 'BevMo!', 'Big 5 Sporting Goods', 'BJ Cinnamon', 'BJ\'s', 'Bose', 'Buffalo Wild Wings', 'Button Up Boutique', 'Calvin Klein', 'Carl\'s Jr.', 'ChargePoint', 'Chevron', 'Chick-fil-A', 'Chico\'s', 'Chipotle', 'claire\'s', 'Clarks Bostonian', 'Converse', 'Costco', 'Courtyard', 'DC Shoes', 'Del Taco', 'Dick\'s Sporting Goods', 'Dollar Tree', 'Dr. Stacy\'s Optometry', 'DSW', 'East Side Ride', 'El Pollo Loco', 'Electrify America', 'Enterprise', 'European Wax Center', 'Everspring Water', 'eVgo', 'Eyeglass World', 'Fairfield Inn & Suites Sacramento Folsom', 'Famous Footwear', 'Famous Footwear Outlet', 'Finecuts Family Salon', 'Firehouse Subs', 'Five Guys', 'Forever 21', 'G.H. Bass & Co.', 'Gap Factory Store', 'Gateway Nails & Spa', 'GGG Spa', 'Goodwill', 'Grebitus Jewelers', 'Green Acres Nursery & Supply', 'Gymboree', 'H&M', 'Hampton Inn & Suites Folsom', 'Hobby Town USA', 'Icing on the Cupcake', 'IHOP', 'In-N-Out Burger', 'Jack in the Box', 'Johnny Rockets', 'JoS. A. Bank', 'Kenneth Cole', 'KFC', 'Kirkland\'s', 'Kohl\'s', 'Lane Bryant', 'LensCrafters', 'Levi’s Outlet Store', 'Loft Outlet', 'Marco\'s Pizza', 'Maribou', 'Marshalls', 'Massage Envy', 'Massage Heights', 'Massage Rejuvenation', 'Mattress Firm', 'Maya Microblading', 'McDonald\'s', 'Men\'s Wearhouse', 'Merrell', 'Michaels', 'Mountain Mike\'s', 'Naturalizer', 'Nautica', 'Nike', 'Nine West Outlet', 'Old Navy', 'Olive Garden', 'Panda Express', 'Panera Bread', 'Papa John\'s', 'Papaya', 'Peet\'s Coffee', 'PetSmart', 'Phenix Salon Suites', 'Pieology Pizzeria', 'Pinkberry', 'PLA Skateboarding', 'Pretty Sweet Bakery', 'Quality Cuts', 'Raley\'s', 'Recovery Works Massage Therapy', 'Red Robin', 'REI', 'Residence Inn', 'Retail Pro', 'Rocky Mountain Chocolate Factory', 'Rod Works, Unique Home Décor', 'Roosters Men\'s Grooming Center', 'Ross', 'Safeway', 'Saks Fifth Avenue Off 5th', 'Sam\'s Club', 'Say Salon', 'See\'s Candies', 'Silky Nails', 'Skechers', 'Sleep Number', 'Smokeless Smoking', 'Sola Salons', 'Soma', 'Sports Fever', 'Staples', 'Starbucks', 'Stride Rite Keds Sperry', 'T-Mobile', 'Taco Bell', 'Tangled', 'Temple Coffee Roasters', 'Tesla Supercharger', 'The Backyard Experience', 'The Cave Folsom', 'The Children’s Place Outlet', 'The Donut Shop', 'The Habit Burger Grill', 'The Home Depot', 'The Nicholson Music Company', 'The UPS Store', 'Threading Place', 'Tillys', 'Tommy Hilfiger', 'Total Wine', 'Toys\'R\'Us Express', 'Vans', 'Verizon', 'Walgreens', 'Walmart Supercenter', 'Wells Fargo', 'Wendy\'s', 'White House Black Market', 'Whole Foods Market', 'Willow Creek', 'WinCo Foods', 'Wingstop', 'Wispy Dream Lashes'];
+  var selectedNames = new Set(allTenantNames);
+ 
+  var plazaNameIndex = {};
+  storesData.forEach(function(s) {
+    if (s.plazaId === -1) return;
+    if (!plazaNameIndex[s.plazaId]) plazaNameIndex[s.plazaId] = new Set();
+    plazaNameIndex[s.plazaId].add(s.name);
+  });
+ 
+  var tenantControl = L.control({position: 'topleft'});
+  tenantControl.onAdd = function() {
+    var container = L.DomUtil.create('div', 'tenant-filter');
+    container.innerHTML =
+      '<button id="tenantToggleBtn" class="tenant-toggle-btn" type="button">'
+      + 'Tenants: All (' + allTenantNames.length + ')</button>'
+      + '<div id="tenantPanel" class="tenant-panel" style="display:none;">'
+      +   '<input id="tenantSearch" class="tenant-search" type="text" placeholder="Search tenants...">'
+      +   '<div class="tenant-actions">'
+      +     '<button id="tenantSelectAll" type="button">Select all</button>'
+      +     '<button id="tenantDeselectAll" type="button">Deselect all</button>'
+      +   '</div>'
+      +   '<div id="tenantList" class="tenant-list"></div>'
+      + '</div>';
+    L.DomEvent.disableClickPropagation(container);
+    L.DomEvent.disableScrollPropagation(container);
+    return container;
+  };
+  tenantControl.addTo(map);
+ 
+  function updateTenantToggleLabel() {
+    var btn = document.getElementById('tenantToggleBtn');
+    var n = selectedNames.size;
+    var total = allTenantNames.length;
+    var label;
+    if (n === total) {
+      label = 'Tenants: All (' + total + ')';
+    } else if (n === 0) {
+      label = 'Tenants: none selected';
+    } else {
+      label = 'Tenants: ' + n + ' of ' + total + ' selected';
+    }
+    btn.innerHTML = label;
+  }
+ 
+  var tenantRows = [];
+  var tenantListEl = document.getElementById('tenantList');
+  allTenantNames.forEach(function(name) {
+    var row = document.createElement('label');
+    row.className = 'tenant-item';
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = true;
+    cb.addEventListener('change', function() {
+      if (cb.checked) { selectedNames.add(name); } else { selectedNames.delete(name); }
+      updateTenantToggleLabel();
+      updateVisibility();
+    });
+    row.appendChild(cb);
+    row.appendChild(document.createTextNode(' ' + name));
+    tenantListEl.appendChild(row);
+    tenantRows.push({el: row, checkbox: cb, lower: name.toLowerCase()});
+  });
+ 
+  document.getElementById('tenantToggleBtn').addEventListener('click', function() {
+    var panel = document.getElementById('tenantPanel');
+    panel.style.display = (panel.style.display === 'none') ? 'block' : 'none';
+  });
+ 
+  document.getElementById('tenantSearch').addEventListener('input', function(e) {
+    var q = e.target.value.toLowerCase();
+    tenantRows.forEach(function(r) {
+      r.el.style.display = (r.lower.indexOf(q) !== -1) ? '' : 'none';
+    });
+  });
+ 
+  document.getElementById('tenantSelectAll').addEventListener('click', function() {
+    tenantRows.forEach(function(r) { r.checkbox.checked = true; });
+    selectedNames = new Set(allTenantNames);
+    updateTenantToggleLabel();
+    updateVisibility();
+  });
+ 
+  document.getElementById('tenantDeselectAll').addEventListener('click', function() {
+    tenantRows.forEach(function(r) { r.checkbox.checked = false; });
+    selectedNames = new Set();
+    updateTenantToggleLabel();
+    updateVisibility();
+  });
+  // ---- end tenant name filter ----
+ 
+  map.on('overlayadd overlayremove', updateVisibility);
+  updateVisibility();
+ 
+  var overlays = {
+    '🔴  Multi-anchor plazas (2+ anchors)': layerMultiAnchor,
+    '⭕  Single-anchor plazas': layerSingleAnchor,
+    '🟣  Plaza Center Points': layerPlazaCenters,
+    '🟡  Anchor Stores (in Plaza)': layerAnchors,
+    '🔵🔴  Tenants (In Plaza)': layerTenants,
+    '━━━━━━━━━━━━━━': L.layerGroup(),
+    '🔥  High Density Plazas (10+ tenants)': layerHighDensity,
+    '🔹  Lower Density (< 10 tenants)': layerLowDensity
+  };
+ 
+  var countyDivider = false;
+  for (var county in countyLayers) {
+    if (!countyDivider) {
+        overlays['━━━━━━━━━━━━━━ '] = L.layerGroup();
+        countyDivider = true;
+    }
+    overlays['📍 ' + county] = countyLayers[county];
+  }
+ 
+  L.control.layers(null, overlays, {
+    position: 'topright',
+    collapsed: false,
+  }).addTo(map);
+ 
+  var legend = L.control({position: 'bottomright'});
+  legend.onAdd = function() {
+    var div = L.DomUtil.create('div', 'legend');
+    div.innerHTML = '<b>Retail Centers – Folsom, CA</b><br>'
+      + '<span class="legend-dot" style="background:#e74c3c"></span> Named plaza<br>'
+      + '<span class="legend-dot" style="background:#3498db"></span> Unnamed plaza<br>'
+      + '<span class="legend-dot" style="background:#8e44ad"></span> Plaza center point<br>'
+      + '<span class="legend-dot" style="background:#f39c12"></span> Anchor store (in plaza)<br>'
+      + '<span class="legend-dot" style="background:#27ae60"></span> Standalone store<br>'
+      + '⚓ = anchor &nbsp; 🔥 = 10+ tenants<br>'
+      + '<span style="font-size:11px;color:#666;">Use the Tenants filter (top-left) to isolate specific names.</span>';
+    return div;
+  };
+  legend.addTo(map);
+ 
+  document.getElementById('legendHeader').addEventListener('click', function() {
+    var body = document.getElementById('legendBody');
+    var icon = document.getElementById('legendToggleIcon');
+    var collapsed = (body.style.display === 'none');
+    body.style.display = collapsed ? 'block' : 'none';
+    icon.textContent = collapsed ? '▾' : '▸';
+  });
+</script>
+</body>
+</html>
