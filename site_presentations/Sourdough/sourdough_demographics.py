@@ -10,6 +10,13 @@ ACS_YEAR = 2024
 LODES_YEAR = 2022
 LODES_FALLBACK_YEAR = 2019
  
+def _extract_state_county(geographies):
+    for layer_name, entries in geographies.items():
+        if entries and "STATE" in entries[0] and "COUNTY" in entries[0]:
+            return entries[0]["STATE"], entries[0]["COUNTY"], entries[0].get("TRACT")
+    raise KeyError(f"no geography layer with STATE+COUNTY found - available layers: {list(geographies.keys())}")
+ 
+ 
 def geocode_address(address:str):
     url = "https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress"
     params = {
@@ -27,13 +34,13 @@ def geocode_address(address:str):
         raise ValueError(f"could not geocode {address}")
     m = matches[0]
     coords = m["coordinates"]
-    geos = m["geographies"]["2020 Census Blocks"][0]
+    state_fips, county_fips, tract = _extract_state_county(m["geographies"])
     return {
         "lat": coords["y"],
         "lon": coords["x"],
-        "state_fips": geos["STATE"],
-        "county_fips": geos["COUNTY"],
-        "tract": geos["TRACT"],
+        "state_fips": state_fips,
+        "county_fips": county_fips,
+        "tract": tract,
         "matched_address": m["matchedAddress"]
     }
  
@@ -48,10 +55,10 @@ def reverse_geocode_coords(lat: float, lon: float):
     }
     response = requests.get(url, params=params, timeout=30)
     r = response.json()
-    geos = r["result"]["geographies"]["2020 Census Blocks"][0]
+    state_fips, county_fips, _ = _extract_state_county(r["result"]["geographies"])
     return {
-        "state_fips": geos["STATE"],
-        "county_fips": geos["COUNTY"],
+        "state_fips": state_fips,
+        "county_fips": county_fips,
     }
  
 def _bbox(lat,lon,radius_miles):
