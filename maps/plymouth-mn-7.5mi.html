@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8' />
+  <title>Retail Centers – Plymouth, MN</title>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' />
+  <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
+  <style>
+    body { margin: 0; font-family: sans-serif; }
+    #map { height: 100vh; width: 100%; }
+    .legend {
+      background: white; padding: 10px 14px; border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); line-height: 1.8;
+      font-size: 13px;
+    }
+    .legend-dot { display: inline-block; width: 12px; height: 12px;
+                   border-radius: 50%; margin-right: 6px; }
+    .tenant-filter { font-size: 13px; }
+    .tenant-toggle-btn {
+      background: white; border: 2px solid rgba(0,0,0,0.2); border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); padding: 8px 12px; font-size: 13px;
+      font-family: sans-serif; cursor: pointer; min-width: 180px; text-align: left;
+    }
+    .tenant-toggle-btn:hover { background: #f4f4f4; }
+    .tenant-panel {
+      background: white; border-radius: 6px; box-shadow: 0 1px 5px rgba(0,0,0,0.3);
+      margin-top: 4px; padding: 10px; width: 260px; max-height: 380px;
+      display: flex; flex-direction: column;
+    }
+    .tenant-search {
+      width: 100%; box-sizing: border-box; padding: 6px 8px; margin-bottom: 8px;
+      border: 1px solid #ccc; border-radius: 4px; font-size: 13px;
+    }
+    .tenant-actions { display: flex; gap: 6px; margin-bottom: 8px; }
+    .tenant-actions button {
+      flex: 1; padding: 5px 6px; font-size: 12px; border: 1px solid #ccc;
+      border-radius: 4px; background: #f7f7f7; cursor: pointer;
+    }
+    .tenant-actions button:hover { background: #eaeaea; }
+    .tenant-list { overflow-y: auto; max-height: 260px; border-top: 1px solid #eee; padding-top: 6px; }
+    .tenant-item {
+      display: block; font-size: 12.5px; padding: 3px 2px; cursor: pointer;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .tenant-item:hover { background: #f4f4f4; }
+    .tenant-item input { margin-right: 6px; }
+  </style>
+</head>
+<body>
+<div id='map'></div>
+<script>
+  var map = L.map('map').setView([45.027162037147754, -93.42117153689995], 12);
+ 
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(map);
+ 
+  var plazasData = [];
+  var storesData = [];
+ 
+  var layerMultiAnchor = L.layerGroup().addTo(map);
+  var layerSingleAnchor = L.layerGroup().addTo(map);
+  var layerPlazaCenters = L.layerGroup().addTo(map);
+  var layerAnchors = L.layerGroup().addTo(map);
+  var layerTenants = L.layerGroup().addTo(map);
+  var layerStandalone = L.layerGroup().addTo(map);
+  var layerHighDensity = L.layerGroup().addTo(map);
+  var layerLowDensity = L.layerGroup().addTo(map);
+  var countyLayers = {};
+ 
+  function getOrCreateCountyLayer(county) {
+    if (!county || county === '-') county = 'Unknown';
+    if (!countyLayers[county]) {
+        countyLayers[county] = L.layerGroup().addTo(map);
+    }
+    return countyLayers[county];
+  }
+ 
+  function addPlaza(lat, lng, radius_m, plazaId, name, address, county, city, numAnchors, anchors, numTenants, tenants, color, leasingHtml) {
+    var popup = '<b>' + name + '</b><br>'
+      + (address !== '-' ? address + '<br>' : '')
+      + city + (county !== '-' ? ', ' + county + ' County' : '') + '<br>'
+      + leasingHtml
+      + '<br><b>' + numAnchors + ' anchor(s): </b><br>'
+      + anchors.split(', ').join('<br>')
+      + '<br><br><b>' + numTenants + ' other tenant(s):</b><br>'
+      + tenants.split(', ').join('<br>');
+    
+    var circle = L.circle([lat, lng], {
+      radius: radius_m,
+      color: color,
+      fillColor: color,
+      fillOpacity: 0.08,
+      weight: 2
+    });
+    if (numAnchors > 1) {
+      layerMultiAnchor.addLayer(circle);
+    } else {
+      layerSingleAnchor.addLayer(circle);
+    }
+ 
+    var center = L.circleMarker([lat,lng], {
+        radius: 9,
+        color: '#fff',
+        fillColor: '#8e44ad',
+        fillOpacity: 1,
+        weight: 2
+    }).bindPopup(popup, {maxHeight: 320, autoPanPadding: [20, 20]}).bindTooltip(name, {permanent: false, direction: 'top'});
+ 
+    var cleanCounty = (!county || county === '-') ? 'Unknown' : county;
+    getOrCreateCountyLayer(cleanCounty);
+ 
+    plazasData.push({
+        circle: circle,
+        center: center,
+        id: plazaId,
+        name: name,
+        county: cleanCounty,
+        numAnchors: numAnchors,
+        numTenants: numTenants
+    });
+  }
+ 
+  function addStore(lat, lng, name, address, color, plazaId, plaza, isAnchor) {
+    var size = isAnchor ? 11 : 9;
+    var icon = L.divIcon({
+      className: '',
+      html: '<div style="position:absolute;width:' + size + 'px;height:' + size + 'px;'
+          + 'border-radius:50%;background:' + color + ';border:2px solid white;'
+          + 'box-shadow:0 1px 3px rgba(0,0,0,0.4);top:50%;left:50%;'
+          + 'transform:translate(-50%,-50%)'
+          + (isAnchor ? ';outline:2px solid rgba(0,0,0,0.25)' : '')
+          + '"></div>',
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2]
+    });
+    var marker = L.marker([lat, lng], {icon: icon})
+      .bindPopup('<b>' + name + '</b>' + (isAnchor ? '⚓' : '')+ '<br>' 
+        + '<i>' + plaza + '</i><br>'
+        + address)
+      .bindTooltip(name, {direction: 'top'})
+    
+    storesData.push({
+      marker: marker,
+      plazaId: plazaId,
+      plazaLabel: plaza,
+      isAnchor: isAnchor,
+      name: name
+    });
+  }
+ 
+  function tenantFilterMatchesPlaza(plazaId) {
+    // Fast path: nothing deselected, every plaza passes.
+    if (selectedNames.size >= allTenantNames.length) return true;
+    var names = plazaNameIndex[plazaId];
+    if (!names) return false;
+    for (var n of names) {
+      if (selectedNames.has(n)) return true;
+    }
+    return false;
+  }
+ 
+  function updateVisibility() {
+    plazasData.forEach(function(p) {
+      var anchorMatch = (p.numAnchors > 1) ? map.hasLayer(layerMultiAnchor): map.hasLayer(layerSingleAnchor);
+      var densityMatch = (p.numTenants >= 10) ? map.hasLayer(layerHighDensity) : map.hasLayer(layerLowDensity);
+      var countyLayer = countyLayers[p.county];
+      var countyMatch = countyLayer ? map.hasLayer(countyLayer) : true;
+      var tenantMatch = tenantFilterMatchesPlaza(p.id);
+ 
+      var plazaVisible = anchorMatch && densityMatch && countyMatch && tenantMatch;
+      p.isActive = plazaVisible;
+ 
+      if (plazaVisible) {
+        // FIX 2: Changed map.has() to map.hasLayer()
+        if (!map.hasLayer(p.circle)) p.circle.addTo(map);
+      } else {
+        if (map.hasLayer(p.circle)) map.removeLayer(p.circle);
+      }
+ 
+      if (plazaVisible && map.hasLayer(layerPlazaCenters)) {
+        if (!map.hasLayer(p.center)) p.center.addTo(map);
+      } else {
+        if (map.hasLayer(p.center)) map.removeLayer(p.center);
+      }
+    });
+      
+    storesData.forEach(function(s) {
+        var storeVisible = false;
+        var nameMatch = selectedNames.has(s.name);
+ 
+        if (s.plazaId === -1) {
+            // Standalone store
+            storeVisible = map.hasLayer(layerStandalone) && nameMatch;
+ 
+        } else {
+            var parentPlaza = plazasData.find(function(p) {
+                return p.id === s.plazaId;
+            });
+ 
+            if (parentPlaza && parentPlaza.isActive) {
+                storeVisible = (s.isAnchor
+                    ? map.hasLayer(layerAnchors)
+                    : map.hasLayer(layerTenants)) && nameMatch;
+            }
+        }
+ 
+        if (storeVisible) {
+            if (!map.hasLayer(s.marker))
+                s.marker.addTo(map);
+        } else {
+            if (map.hasLayer(s.marker))
+                map.removeLayer(s.marker);
+        }
+    });
+  }
+ 
+  addPlaza(45.10303614385965, -93.45290686491228, 341.3, 0, 'Grove Square', '13611 Grove Drive North Maple Grove', 'Hennepin County', 'Maple Grove', 1, 'Walgreens', 56, 'AT&T, American Automobile Association, Batteries Plus Bulbs, Brothers Meat & Seafood, Caribou Coffee, Carpet King, Chuck & Don\'s, Clean \'n\' Press, Clothes Mentor, Domino\'s, Down In The Valley, Dunkin\', Edible Arrangements, Euro Gourmet, GNC, Golden Corral, Golden Razor Salon, Goldwear Jewelers, Good Feet, Goodwill, Great Clips, Great Harvest Bread, H&R Block, Heeling Touch, Ink Sanctum Tattoo & Piercing, Jimmy John\'s, Johnson Fitness Exercise Equipment, K-Nails, KinderCare, Magic Needle, Maple Grove Tire & Service, Maple Grove Vision Clinic, Maple Square Fuel & Wash, New Uses, Nothing Bundt Cakes, Once Upon A Child, Orangetheory Fitness, Original Mattress Factory, Pacific Granite, Peony Nail Spa, Pilgrim Cleaners, Plato\'s Closet, Shell, Sherwin-Williams, Smokers House, Sonny\'s Nails, Sota, Speedway, Style Encore, Talisman Hair Studio, The UPS Store, Tires Plus, United States Post Office, Victra Verizon, WW Studio, Willow Salon', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(45.05401894259259, -93.36650195, 428.7, 1, 'Crystal Shopping Center', '5620 West Broadway Crystal', 'Hennepin County', 'Crystal', 6, 'ALDI, Dollar Tree, Marshalls, Planet Fitness, Target, Walgreens', 48, 'Anytime Fitness, Arby\'s, Bank of America, Bargain Mart Furniture, Big O Tires, Buffalo Wild Wings, Caribou Coffee, Catherines, Crystal Gallery Mall, Crystal Shopping Center, Crystal Tobacco & Cigar Outlet Plus, Crystal Town Center, Dark Horse Vapors, Inc., Domino\'s, Down In The Valley, Dunkin\', Extra Space Storage, Famous Footwear, Fantastic Sams, GNC, GameStop, Gold Eagle, Great Clips, H&R Block, Home Choice, Johantgen Jewelers, Kumon, Noodles & Company, NuYu Premium Hair, O\'Reilly Auto Parts, Pet Supplies Plus, Phenix Salon Suites, Popeyes, Pro Nails, Rainbow, Sally Beauty, Sprint, Starbucks, Stitchline Alterations, Subway, Sun Shoppe, Supermercado y Panaderia LomaBonita, TCF Bank, Taco Bell, U-Haul, United States Post Office, Visionworks, Wells Fargo', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.93657844186047, -93.38546186511627, 420.8, 2, 'The Shoppes at Knollwood', '8340 Minnesota State Highway 7 Saint Louis Park', 'Hennepin County', 'Saint Louis Park', 4, 'Kohl\'s, Nordstrom Rack, TJ Maxx, Walgreens', 39, 'AT&T, America\'s Best Contacts & Eyeglasses, Applebee\'s, Banana Republic, Blaze Pizza, Burger King, Caribou Coffee, Cub Foods, DSW, Firestone, Five Guys, Flooring Expo by Carpet King, GNC, Great Clips, Home Choice, J.Crew, Jimmy John\'s, Knollwood Mall, Le Monde Tailors, Mattress Firm, Noodles & Company, Nothing Bundt Cakes, Old Navy, Panera Bread, Pearle Vision, Regis, Restwell Mattress Factory, Sport Clips, T-Mobile, Taco Bell, Torrid, Total Wine, Ulta Beauty, Uniform Advantage, Verizon, Wells Fargo, Wendy\'s, White Castle, Yardbird', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(45.03066425666667, -93.33801733333333, 350.6, 3, 'Robbinsdale Town Center', '4140 West Broadway Avenue Robbinsdale', 'Hennepin County', 'Robbinsdale', 2, 'Ace Hardware, Walgreens', 28, 'Bill\'s Gun Shop, Dollar General, Finds On Broadway, Golden Age Design, Hackenmueller Meats, Huntington Bank, Kings & Queens Tailors, McDonald\'s, Metro by T-Mobile, Minnesota Makers, Mobil, Northside Oriental Market & Deli, Papa John\'s, Pawn America, Payday America, Pilgrim Cleaners, RE/MAX Elite, Robbinsdale Marine & Small Engine Repair, Robbinsdale Town Center, Robin Center, Salon HALO, Shell, Smoke Shop, Subway, U.S. Bank, Washburn-McReavy Robbinsdale Chapel, Wickedly Charming Boutique, Wuollet Bakery', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(45.094535306666664, -93.43845342333334, 574.5, 4, 'The Shoppes at Arbor Lakes', '12530 Elm Creek Boulevard North Maple Grove', 'Hennepin County', 'Maple Grove', 4, 'Burlington, Planet Fitness, Trader Joe\'s, Whole Foods Market', 26, 'Allure Intimate Apparel, BMO Harris Bank, Bank of America, Buca di Beppo, Chico\'s, Chipotle, Cold Stone Creamery, Evereve, Five Guys, GameStop, Ideal image Laser Hair Removal, Jared, LensCrafters, Men\'s Wearhouse, Nails & Spa, Noodles & Company, Olive Garden, P.F. Chang\'s, Panera Bread, Portillo\'s, Shake Shack, Sport Clips, T-Mobile, The Joint Chiropractic, Ulta Beauty, World Market', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(45.033953004, -93.38111255199999, 340.6, 5, 'New Hope City Center', '4200 Winnetka Avenue New Hope', 'Hennepin County', 'New Hope', 2, 'Dollar Tree, Walgreens', 23, 'Alex Audio Video, Applebee\'s, Caribou Coffee, Cosmo-Prof, Drive Appeal, Dunkin\' Donuts, GNC, Great Nails, Jackson Hewitt, Jet\'s Pizza, Life Time, McDonald\'s, Metro by T-Mobile, Milagro\'s Beauty Salon, New Hope City Center, New Hope Coin Laundry, Pawn, Rapid Refill, SalonCentric, Subway, Taco John\'s, Unique Thrift Donation Center, Winnetka Mall', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.971887289473685, -93.50089635789475, 289.7, 6, 'Unnamed Retail Center', '1055 Wayzata Boulevard East Wayzata', 'Hennepin County', 'Wayzata', 1, 'Walgreens', 18, 'Aveda, Bank of America, Bob\'s Shoe Repair, Bruegger\'s Bagels, Caribou Coffee, Chuck and Don\'s, Huntington Bank, Jimmy John\'s, Lunds & Byerlys, Modern Roots, Noodles & Company, Old National Bank, Paint Nail Bar, Schuler Shoes, Sport Clips, The Owl and the Octopus, The UPS Store, Vively', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(45.10017873333333, -93.44827776111111, 321.3, 7, 'Maple Grove Crossings', '8010 Wedgewood Lane Maple Grove', 'Hennepin County', 'Maple Grove', 2, 'Kohl\'s, Petco', 16, 'Barnes & Noble, By the Yard, Inc., Christopher & Banks, Cub Foods, Famous Footwear, FedEx Office, Fireside Hearth & Home, Five Below, Medshape, Michaels, Old Navy, Papa John\'s, Starbucks, The Tile Shop, Tobacco Grove, Van\'s Nail & Spa', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.92483877058823, -93.41107935882353, 289.7, 8, 'Unnamed Retail Center', '5 9th Avenue South Hopkins', 'Hennepin County', 'Hopkins', 1, 'Hance Ace Hardware', 16, 'Amy\'s Cupcake Shoppe, Bongo\'s & Bud\'s, Center Drug, Chipotle, Cold Stone Creamery, Driskill\'s Food, Duff\'s Barber Shop, European Massage Therapy, Little Blind Spot, Mainstreet Nails, Mill City Sound, Richards Liquor, The Liquor Store & More, The Vine Room, U.S. Bank, Vaping Studio', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.96555276666666, -93.35081074, 342.4, 9, 'Park Place Plaza', '1650 Park Place Boulevard Saint Louis Park', 'Hennepin County', 'Saint Louis Park', 3, 'Costco, Office Depot, The Home Depot', 12, 'Arby\'s, Bruegger\'s Bagels, Caribou Coffee, Five Guys, Great Clips, Jersey Mike\'s Subs, Liquor Boy Wine and Spirits, Little Break Spa, Panera Bread, PetSmart, Sola Salons, Twin City Nails', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.98479962666667, -93.38116564666667, 316.1, 10, 'Unnamed Retail Center', '7914 Olson Memorial Highway Golden Valley', 'Hennepin County', 'Golden Valley', 1, 'Ace Hardware', 14, 'All Strings Attached, Chipotle, Dairy Queen, Down In The Valley, Lighting Outlet Center, Liquor Barrel, Mochinut, Mort\'s Delli, Noodles & Company, Ragstock, Starbucks, T-Mobile, The UPS Store, United States Post Office', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(45.030336135714286, -93.44780807142857, 289.7, 11, 'Unnamed Retail Center', '4190 Vinewood Lane Plymouth', 'Hennepin County', 'Plymouth', 4, 'HomeGoods, Kohl\'s, TJ Maxx, Walgreens', 10, 'Bath and Body Works, Chili\'s, Famous Footwear, Five Guys, Great Clips, Holiday, My Salon, Nails and Co., PetSmart, Top Ten Liquors', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.969587233333336, -93.44758895833333, 396.6, 12, 'Unnamed Retail Center', '13513 Ridgedale Drive Hopkins', 'Hennepin County', 'Hopkins', 2, 'Best Buy, Target', 10, 'Barnes & Noble, City Looks, Cost Cutters, Famous Footwear, Lunds & Byerlys Wines & Spirits, Massage Envy, Mercedes-Benz, Morrie\'s Minnetonka, Tesla Supercharger, Ulta Beauty', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.93739569090909, -93.39254537272727, 289.7, 13, 'Knollwood Village', '8950 Minnesota State Highway 7 Saint Louis Park', 'Hennepin County', 'Saint Louis Park', 3, 'Aldi, Dollar Tree, Target', 8, 'Advance Auto Parts, Castle Lashes & Nails, Five Below, H&R Block, Huntington Bank, Primrose School of St. Louis Park West, Sally Beauty, UPS', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(45.02153038181818, -93.37938903636363, 289.7, 14, 'Unnamed Retail Center', '3566 Winnetka Avenue North', 'Hennepin County', 'New Hope', 1, 'Frattalone\'s Ace Hardware', 10, 'Anytime Fitness, AutoZone, Bruegger\'s Bagels, Daisy Nails, Hot Comics and Collectables, More Value Food & Fuel, Speedway, Speedy Wash, Tires Plus, Winnetka Liquors', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(45.04428353, -93.52832086999999, 581.4, 15, 'Medina Clydesdale Marketplace', '300 Clydesdale Trail Medina', 'Hennepin County', 'Medina', 2, 'ALDI, Target', 8, 'Anytime Fitness, Caribou Coffee, Circle K, Kalla Lily Salon and Spa, North American Liquors, United States Post Office, Verizon, Wells Fargo', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(45.093919299999996, -93.44371483, 289.7, 16, 'Unnamed Retail Center', '12745 Elm Creek Boulevard Maple Grove', 'Hennepin County', 'Maple Grove', 2, 'Best Buy, Nordstrom Rack', 8, 'Chuck E. Cheese, DMP Furniture, David\'s Bridal, Hampton Inn & Suites, Mattress Firm, Naf Naf Grill, Panda Express, Total Wine', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.95935845, -93.3708206, 289.7, 17, 'Unnamed Retail Center', '7121 Cedar Lake Road Saint Louis Park', 'Hennepin County', 'Saint Louis Park', 1, 'Walgreens', 9, 'A Barber\'s Touch, Bravo Jewellers, DK Diamond Nails, Jerry\'s Hardware & Rental, Metro by T-Mobile, Shanghai Market, U.S. Cleaners, West End Tobacco & Cigars, Westwood Liquors', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.952617399999994, -93.41861396, 289.7, 18, 'Unnamed Retail Center', '11100 Cedar Lake Road Minnetonka', 'Hennepin County', 'Minnetonka', 1, 'ALDI', 9, 'Anytime Fitness, BP, Cedar Nails, Domino\'s, Evolve Salon, Holiday, Lodestone Coffee and Games, Strong Liquors, Wings Financial Credit Union', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.97310546, -93.42297277, 289.7, 19, 'Unnamed Retail Center', '11220 Wayzata Boulevard Minnetonka', 'Hennepin County', 'Minnetonka', 2, 'Dick\'s Sporting Goods, Trader Joe\'s', 8, 'Bed Bath & Beyond, Great Clips, InVision Distinctive Eyewear, Lands\' End, Michaels, Olive Garden, Twin City Nails, Wild Birds Unlimited', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(45.007314944444445, -93.38072785555556, 457.8, 20, 'Midland Center', '7825 Medicine Lake Road Golden Valley', 'Hennepin County', 'Golden Valley', 1, 'Walgreens', 8, 'BP, Boost Mobile, Dairy Queen, Family Dollar, Midland Center, Peppertree Salon, Public Storage, Rockhopper Comics and Games', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(45.12500324444445, -93.48993752222222, 289.7, 21, 'Unnamed Retail Center', '9480 Dunkirk Lane North Maple Grove', 'Hennepin County', 'Maple Grove', 1, 'Dollar Tree', 8, 'Discount Tire, Down Range Guns & Ammo, Five Star Storage, Hobby Lobby, Huntington Bank, The Furniture Mart, Valvoline, White Castle', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.9334937, -93.42069856666666, 289.7, 22, 'Unnamed Retail Center', '1511 Highway 7 Hopkins', 'Hennepin County', 'Hopkins', 1, 'Walgreens', 8, 'Caribou Coffee, LA Fitness, MGM Liquor Warehouse, Perkins, Salon L\'Image, Speedway, Speedy Wash, Starbucks', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(45.093096071428576, -93.42507135714285, 289.7, 23, 'The Fountains at Arbor Lakes', '11160 Fountains Drive Maple Grove', 'Hennepin County', 'Maple Grove', 2, 'Costco, Office Depot', 5, 'Freddy\'s, Jamba, PetSmart, Snip-Its, The Hair District', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(45.01783486666667, -93.48281671666666, 289.7, 24, 'Unnamed Retail Center', '3255 Vicksburg Lane North Plymouth', 'Hennepin County', 'Plymouth', 2, 'Lowe\'s, Walgreens', 4, 'BMO Harris Bank, Potbelly, Ruby Tuesday, Starbucks', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(45.1276768, -93.49338594, 289.7, 25, 'Unnamed Retail Center', '16750 County Road 30 Maple Grove', 'Hennepin County', 'Maple Grove', 2, 'Walgreens, Walmart Supercenter', 3, 'AutoZone, Caliber Collision, Goodwill', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(45.0953756, -93.35664396, 289.7, 26, 'Unnamed Retail Center', '7700 Brooklyn Boulevard Brooklyn Park', 'Hennepin County', 'Brooklyn Park', 1, 'Walgreens', 4, 'AutoZone, Dairy Queen, Family Dollar, White Castle', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.968292925, -93.43756875, 289.7, 27, 'Ridgedale Center', '-', 'Hennepin County', '-', 3, 'JCPenney, Macy\'s, Nordstrom', 1, 'Ridgedale Center', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(45.070168375, -93.327004525, 289.7, 28, 'Unnamed Retail Center', '6390 Brooklyn Boulevard Brooklyn Center', 'Hennepin County', 'Brooklyn Center', 2, 'Dollar Tree, Walgreens', 2, 'AutoZone, Sun Foods', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(45.0997052, -93.38581125, 289.7, 29, 'Unnamed Retail Center', '8000 Lakeland Avenue North Brooklyn Park', 'Hennepin County', 'Brooklyn Park', 1, 'Walmart Supercenter', 3, 'Amoco, Lupient Kia of Brooklyn Park, Lupient Nissan', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(45.09192099999999, -93.37849746666666, 289.7, 30, 'Starlite Center', '7555 West Broadway Avenue Brooklyn Park', 'Hennepin County', 'Brooklyn Park', 1, 'Target', 2, 'Cub Foods, McDonald\'s', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(45.064799066666666, -93.4805266, 289.7, 31, 'Taryn Hills', '-', 'Hennepin County', '-', 1, 'Walgreens', 2, 'Speedway, Speedy Wash', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.97350016666667, -93.44442923333334, 289.7, 32, 'Unnamed Retail Center', '1001 Plymouth Road Minnetonka', 'Hennepin County', 'Minnetonka', 2, 'Office Depot, Whole Foods Market', 1, 'Wendy\'s', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.98556093333334, -93.5707218, 289.7, 33, 'Unnamed Retail Center', '1865 Wayzata Boulevard Long Lake', 'Hennepin County', 'Long Lake', 1, 'Ace Hardware', 2, 'Gear West, Subway', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.997650066666665, -93.4554872, 289.7, 34, 'Unnamed Retail Center', '1705 Annapolis Lane North Plymouth', 'Hennepin County', 'Plymouth', 1, 'The Home Depot', 2, 'Discount Tire, Kwik Trip', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(45.09351235, -93.3535693, 289.7, 35, 'Unnamed Retail Center', '7600 Brooklyn Boulevard Brooklyn Park', 'Hennepin County', 'Brooklyn Park', 1, 'ALDI', 1, 'Ocean Market', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(45.0779132, -93.3939905, 289.7, 36, 'Unnamed Retail Center', '6700 Boone Avenue North Brooklyn Park', 'Hennepin County', 'Brooklyn Park', 1, 'The Home Depot', 1, '4 Wheel Parts', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+  addStore(44.9371299, -93.3849872, 'GNC', '8316 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9372056, -93.384986, 'Regis', '8318 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9372835, -93.3849847, 'Sport Clips', '8320A Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9242516, -93.4099374, 'Chipotle', '786 Mainstreet Hopkins', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.9662247, -93.3499316, 'Caribou Coffee', '1650 Park Place Boulevard Saint Louis Park', '#e74c3c', 9, 'Park Place Plaza', false);
+addStore(44.9665322, -93.3499396, 'Jersey Mike\'s Subs', '1650 Park Place Boulevard Saint Louis Park', '#e74c3c', 9, 'Park Place Plaza', false);
+addStore(44.9722936, -93.5002891, 'Lunds & Byerlys', '1151 Wayzata Boulevard East Wayzata', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.9592111, -93.3704766, 'A Barber\'s Touch', '7121 Cedar Lake Road Saint Louis Park', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(44.9517626, -93.4201134, 'Holiday', '-', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(44.9525826, -93.4204567, 'BP', '-', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(44.963929, -93.3507194, 'PetSmart', '5640 Cedar Lake Road Saint Louis Park', '#e74c3c', 9, 'Park Place Plaza', false);
+addStore(45.0920661, -93.4341287, 'Trader Joe\'s', '12105 Elm Creek Boulevard North Maple Grove', '#f39c12', 4, 'The Shoppes at Arbor Lakes', true);
+addStore(44.9361263, -93.3874239, 'Jimmy John\'s', '8500 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9256845, -93.4118136, 'Hance Ace Hardware', '-', '#f39c12', 8, 'Unnamed Retail Center', true);
+addStore(44.9256959, -93.4123929, 'Center Drug', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(45.0453766, -93.5313189, 'Wells Fargo', '-', '#e74c3c', 15, 'Medina Clydesdale Marketplace', false);
+addStore(45.0446623, -93.5312986, 'Caribou Coffee', '-', '#e74c3c', 15, 'Medina Clydesdale Marketplace', false);
+addStore(44.9663431, -93.3499347, 'Great Clips', '1650 Park Place Boulevard Saint Louis Park', '#e74c3c', 9, 'Park Place Plaza', false);
+addStore(45.0211276, -93.3797837, 'Tires Plus', '3520 Winnetka Avenue North', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(44.9597993, -93.3718083, 'Walgreens', '-', '#f39c12', 17, 'Unnamed Retail Center', true);
+addStore(44.9591676, -93.3717466, 'Westwood Liquors', '2304 Louisiana Avenue South Saint Louis Park', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(44.9588314, -93.3715079, 'Jerry\'s Hardware & Rental', '2326 Louisiana Avenue South Saint Louis Park', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(45.0444547, -93.5269793, 'Circle K', '-', '#e74c3c', 15, 'Medina Clydesdale Marketplace', false);
+addStore(45.0459791, -93.5267746, 'Anytime Fitness', '5145 County Road 101 Medina', '#e74c3c', 15, 'Medina Clydesdale Marketplace', false);
+addStore(45.044563, -93.526856, 'North American Liquors', '-', '#e74c3c', 15, 'Medina Clydesdale Marketplace', false);
+addStore(44.953182, -93.419344, 'Anytime Fitness', '11104 Cedar Lake Road Minnetonka', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(44.9527375, -93.419319, 'ALDI', '11100 Cedar Lake Road Minnetonka', '#f39c12', 18, 'Unnamed Retail Center', true);
+addStore(44.9638487, -93.3499396, 'Office Depot', '5610 Cedar Lake Road Saint Louis Park', '#f39c12', 9, 'Park Place Plaza', true);
+addStore(44.963889, -93.3503312, 'Liquor Boy Wine and Spirits', '5620 Cedar Lake Road Saint Louis Park', '#e74c3c', 9, 'Park Place Plaza', false);
+addStore(44.9367685, -93.3830512, 'Blaze Pizza', '8126 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9368369, -93.3833528, 'Great Clips', '8136 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9368424, -93.3836672, 'Caribou Coffee', '8208 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9368451, -93.3837838, 'T-Mobile', '8224 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9368074, -93.3842581, 'DSW', '8236 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9368166, -93.384644, 'Old Navy', '8308 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9336583, -93.4202116, 'Caribou Coffee', '-', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(44.9338026, -93.4200828, 'Salon L\'Image', '-', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(44.9850699, -93.3828074, 'Down In The Valley', '8020 Olson Memorial Highway Golden Valley', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(45.1022693, -93.45418, 'Down In The Valley', '13633 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.0542234, -93.3636151, 'Down In The Valley', '5582 West Broadway Avenue Crystal', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(44.9741146, -93.4454026, 'Whole Foods Market', '1001 Plymouth Road Minnetonka', '#f39c12', 32, 'Unnamed Retail Center', true);
+addStore(44.9363468, -93.3855441, 'Panera Bread', '8452 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9683797, -93.4463636, 'Lunds & Byerlys Wines & Spirits', '-', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(44.9685808, -93.447254, 'Barnes & Noble', '13131 Ridgedale Drive', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(44.9684081, -93.4468678, 'Famous Footwear', '-', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(44.9683588, -93.446605, 'Massage Envy', '-', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(44.9683854, -93.4467337, 'City Looks', '13135 Ridgedale Drive Minnetonka', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(44.9691406, -93.4477181, 'Cost Cutters', '-', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(44.9688047, -93.4475089, 'Ulta Beauty', '13145 Ridgedale Drive Minnetonka', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(44.9740515, -93.4446094, 'Office Depot', '1005 Plymouth Road Minnetonka', '#f39c12', 32, 'Unnamed Retail Center', true);
+addStore(44.9736454, -93.423164, 'Bed Bath & Beyond', '11240 Wayzata Boulevard Minnetonka', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(44.9736552, -93.4237749, 'Dick\'s Sporting Goods', '-', '#f39c12', 19, 'Unnamed Retail Center', true);
+addStore(44.9736423, -93.4227459, 'Trader Joe\'s', '11220 Wayzata Boulevard Minnetonka', '#f39c12', 19, 'Unnamed Retail Center', true);
+addStore(44.9733532, -93.4222156, 'Lands\' End', '-', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(44.9674947, -93.4389479, 'JCPenney', '-', '#f39c12', 27, 'Ridgedale Center', true);
+addStore(44.96902, -93.4382655, 'Macy\'s', '-', '#f39c12', 27, 'Ridgedale Center', true);
+addStore(45.0182393, -93.4829833, 'Potbelly', '3235 Vicksburg Lane North Plymouth', '#3498db', 24, 'Unnamed Retail Center', false);
+addStore(44.9855902, -93.5714385, 'Subway', '1865 Wayzata Boulevard Long Lake', '#3498db', 33, 'Unnamed Retail Center', false);
+addStore(44.9244955, -93.4102652, 'Mainstreet Nails', '801 Mainstreet Hopkins', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.9531116, -93.4179633, 'Cedar Nails', '11058 Cedar Lake Road', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(44.9534615, -93.4166095, 'Evolve Salon', '10992 Cedar Lake Road', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(44.9535145, -93.4164163, 'Lodestone Coffee and Games', '10982 Cedar Lake Road', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(45.0942202, -93.4424892, 'Naf Naf Grill', '12733 Elm Creek Boulevard Maple Grove', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(45.0944019, -93.4424812, 'Panda Express', '12741 Elm Creek Boulevard', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(45.0210935, -93.3789399, 'Anytime Fitness', '3540 Winnetka Avenue North New Hope', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(45.0211403, -93.3782987, 'Bruegger\'s Bagels', '3558 Winnetka Avenue North', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(45.0211013, -93.3786627, 'Daisy Nails', '3548 Winnetka Avenue North', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(45.021106, -93.379495, 'Hot Comics and Collectables', '3526 Winnetka Avenue North', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(45.0210954, -93.3787937, 'Winnetka Liquors', '3544 Winnetka Avenue North', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(44.9377014, -93.3925504, 'Aldi', '8950 Minnesota State Highway 7 Saint Louis Park', '#f39c12', 13, 'Knollwood Village', true);
+addStore(44.9370325, -93.3925989, 'Dollar Tree', '8928 Minnesota State Highway 7 Saint Louis Park', '#f39c12', 13, 'Knollwood Village', true);
+addStore(44.9373349, -93.3927001, 'H&R Block', '8942 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 13, 'Knollwood Village', false);
+addStore(44.9367717, -93.3925115, 'Five Below', '8912 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 13, 'Knollwood Village', false);
+addStore(44.9372296, -93.3926649, 'Sally Beauty', '8938 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 13, 'Knollwood Village', false);
+addStore(44.9371346, -93.392633, 'Castle Lashes & Nails', '8934 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 13, 'Knollwood Village', false);
+addStore(44.9368249, -93.384992, 'Applebee\'s', '8312 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9377161, -93.3864862, 'America\'s Best Contacts & Eyeglasses', '8348 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9376973, -93.3851781, 'J.Crew', '8324 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9367635, -93.3827731, 'Noodles & Company', '8120 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9368364, -93.3832506, 'Nothing Bundt Cakes', '8132 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9376225, -93.386678, 'Torrid', '8364 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9375663, -93.3867504, 'Uniform Advantage', '8366 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9377039, -93.3856367, 'Ulta Beauty', '8338 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.937049, -93.3849885, 'AT&T', '8314 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9377002, -93.3853843, 'Banana Republic', '8330 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9376742, -93.3866113, 'Le Monde Tailors', '8360 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9369759, -93.3827832, 'Total Wine', '8100 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9843967, -93.380935, 'Chipotle', '515 Winnetka Avenue North Golden Valley', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.9713899, -93.5024684, 'Walgreens', '1055 Wayzata Boulevard East Wayzata', '#f39c12', 6, 'Unnamed Retail Center', true);
+addStore(44.9842459, -93.37911, 'Starbucks', '7802 Olson Memorial Highway, Golden Valley Commons Golden Valley', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.9377092, -93.3860098, 'Nordstrom Rack', '8344 Highway 7', '#f39c12', 2, 'The Shoppes at Knollwood', true);
+addStore(45.0215112, -93.3782307, 'Frattalone\'s Ace Hardware', '3566 Winnetka Avenue North', '#f39c12', 14, 'Unnamed Retail Center', true);
+addStore(44.9850741, -93.3823732, 'The UPS Store', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.9845505, -93.3792404, 'Noodles & Company', '7808 Olson Memorial Highway Golden Valley', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.9591909, -93.370694, 'Metro by T-Mobile', '7127 Cedar Lake Road Saint Louis Park', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(44.9591976, -93.3706218, 'Bravo Jewellers', '7125 Cedar Lake Road Saint Louis Park', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(44.9592921, -93.3704571, 'U.S. Cleaners', '7119 Cedar Lake Road Saint Louis Park', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(44.9593488, -93.3702493, 'DK Diamond Nails', '7109 Cedar Lake Road Saint Louis Park', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(44.9594513, -93.3700212, 'Shanghai Market', '7105 Cedar Lake Road Saint Louis Park', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(45.0931271, -93.4337334, 'P.F. Chang\'s', '-', '#e74c3c', 4, 'The Shoppes at Arbor Lakes', false);
+addStore(45.0926878, -93.433551, 'Planet Fitness', '12059 Elm Creek Boulevard Maple Grove', '#f39c12', 4, 'The Shoppes at Arbor Lakes', true);
+addStore(45.0950435, -93.3543809, 'Family Dollar', '7638 Brooklyn Boulevard Brooklyn Park', '#3498db', 26, 'Unnamed Retail Center', false);
+addStore(45.093927, -93.3538251, 'Ocean Market', '7609 Welcome Avenue North Brooklyn Park', '#3498db', 35, 'Unnamed Retail Center', false);
+addStore(45.0933882, -93.426627, 'Snip-Its', '11634', '#e74c3c', 23, 'The Fountains at Arbor Lakes', false);
+addStore(45.0934877, -93.4266212, 'The Hair District', '-', '#e74c3c', 23, 'The Fountains at Arbor Lakes', false);
+addStore(45.0933147, -93.4266344, 'Jamba', '11632 Fountains Drive Maple Grove', '#e74c3c', 23, 'The Fountains at Arbor Lakes', false);
+addStore(45.1034031, -93.4533621, 'Smokers House', '13543 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1034714, -93.4534553, 'Brothers Meat & Seafood', '13545 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1036081, -93.4536415, 'Willow Salon', '13555 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1038132, -93.4539209, 'Heeling Touch', '13565 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1038816, -93.4540141, 'American Automobile Association', '13569 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.10395, -93.4541072, 'Pilgrim Cleaners', '13579 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1046798, -93.454421, 'Pacific Granite', '13720 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1045662, -93.4540314, 'Magic Needle', '13694 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1045591, -93.4541347, 'Clean \'n\' Press', '13704 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1045226, -93.4542225, 'Edible Arrangements', '13712 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.104498, -93.4543291, 'Great Harvest Bread', '13714 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.102762, -93.4548435, 'K-Nails', '13681 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1027024, -93.4548073, 'Goldwear Jewelers', '13689 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1024231, -93.4544559, 'Maple Grove Vision Clinic', '13645 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1025253, -93.4545967, 'Ink Sanctum Tattoo & Piercing', '13649 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1023606, -93.4543701, 'Clothes Mentor', '13641 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.102479, -93.454531, 'Good Feet', '13647 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1025812, -93.4546691, 'GNC', '13651 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1023516, -93.4534883, 'Golden Razor Salon', '13609 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1023019, -93.4535614, 'H&R Block', '13613 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1024013, -93.4534152, 'Walgreens', '13611 Grove Drive North Maple Grove', '#f39c12', 0, 'Grove Square', true);
+addStore(44.9844922, -93.3791998, 'T-Mobile', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.9849864, -93.3818808, 'Ragstock', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.9723344, -93.4432757, 'Wendy\'s', '12950 Wayzata Boulevard Minnetonka', '#3498db', 32, 'Unnamed Retail Center', false);
+addStore(44.9348774, -93.3852401, 'Five Guys', '525 Blake Road North Hopkins', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.937497, -93.3926586, 'Advance Auto Parts', '8950 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 13, 'Knollwood Village', false);
+addStore(44.936359, -93.385914, 'Mattress Firm', '8456 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(45.0299346, -93.4499681, 'Five Guys', '4105 Vinewood Lane North Plymouth', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(44.9714634, -93.5006599, 'Bruegger\'s Bagels', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(45.1287788, -93.4933304, 'Caliber Collision', '16750 9th Avenue North Maple Grove', '#3498db', 25, 'Unnamed Retail Center', false);
+addStore(44.984431, -93.3781046, 'Dairy Queen', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.9849908, -93.381558, 'Ace Hardware', '7914 Olson Memorial Highway Golden Valley', '#f39c12', 10, 'Unnamed Retail Center', true);
+addStore(44.9849908, -93.3811651, 'Liquor Barrel', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.9844974, -93.3812704, 'Mort\'s Delli', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(45.0330958, -93.382488, 'Applebee\'s', '-', '#e74c3c', 5, 'New Hope City Center', false);
+addStore(45.0333436, -93.3824801, 'Subway', '4215 Winnetka Avenue North New Hope', '#e74c3c', 5, 'New Hope City Center', false);
+addStore(45.0334268, -93.3824832, 'Taco John\'s', '-', '#e74c3c', 5, 'New Hope City Center', false);
+addStore(45.0336616, -93.3821891, 'Pawn', '-', '#e74c3c', 5, 'New Hope City Center', false);
+addStore(45.0336554, -93.3819396, 'Jackson Hewitt', '-', '#e74c3c', 5, 'New Hope City Center', false);
+addStore(45.0339028, -93.3816485, 'Cosmo-Prof', '-', '#e74c3c', 5, 'New Hope City Center', false);
+addStore(45.033964, -93.3815431, 'GNC', '-', '#e74c3c', 5, 'New Hope City Center', false);
+addStore(45.0350732, -93.3824629, 'New Hope Coin Laundry', '4411 Winnetka Avenue New Hope', '#e74c3c', 5, 'New Hope City Center', false);
+addStore(45.0348714, -93.381893, 'Milagro\'s Beauty Salon', '4341 Winnetka Avenue New Hope', '#e74c3c', 5, 'New Hope City Center', false);
+addStore(45.034855, -93.3818092, 'Metro by T-Mobile', '-', '#e74c3c', 5, 'New Hope City Center', false);
+addStore(45.0348794, -93.381741, 'SalonCentric', '-', '#e74c3c', 5, 'New Hope City Center', false);
+addStore(45.0347758, -93.3814245, 'Dollar Tree', '-', '#f39c12', 5, 'New Hope City Center', true);
+addStore(45.127543, -93.4912609, 'Goodwill', '9530 Dunkirk Lane North Maple Grove', '#3498db', 25, 'Unnamed Retail Center', false);
+addStore(45.1239653, -93.4911914, 'Five Star Storage', '-', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(45.1245497, -93.490703, 'The Furniture Mart', '-', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(45.1245502, -93.4893393, 'Down Range Guns & Ammo', '-', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(45.12452, -93.4892092, 'Dollar Tree', '-', '#f39c12', 21, 'Unnamed Retail Center', true);
+addStore(45.1244942, -93.4885625, 'Hobby Lobby', '-', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(45.0928567, -93.4229513, 'PetSmart', '11200 Fountains Drive North Maple Grove', '#e74c3c', 23, 'The Fountains at Arbor Lakes', false);
+addStore(45.0929342, -93.4224488, 'Office Depot', '11160 Fountains Drive Maple Grove', '#f39c12', 23, 'The Fountains at Arbor Lakes', true);
+addStore(45.0080159, -93.3815925, 'Peppertree Salon', '-', '#e74c3c', 20, 'Midland Center', false);
+addStore(45.0081226, -93.381591, 'Boost Mobile', '-', '#e74c3c', 20, 'Midland Center', false);
+addStore(45.0082558, -93.3815849, 'Family Dollar', '-', '#e74c3c', 20, 'Midland Center', false);
+addStore(45.0313342, -93.3392123, 'Minnesota Makers', '4180 West Broadway Avenue Robbinsdale', '#e74c3c', 3, 'Robbinsdale Town Center', false);
+addStore(45.031448, -93.3393494, 'Finds On Broadway', '4180 West Broadway Avenue Robbinsdale', '#e74c3c', 3, 'Robbinsdale Town Center', false);
+addStore(45.031577, -93.3391561, 'Metro by T-Mobile', '-', '#e74c3c', 3, 'Robbinsdale Town Center', false);
+addStore(45.0306884, -93.3373567, 'Papa John\'s', '4121 Lakeland Avenue North Robbinsdale', '#e74c3c', 3, 'Robbinsdale Town Center', false);
+addStore(45.0305984, -93.3372355, 'Payday America', '4121 Lakeland Avenue North Robbinsdale', '#e74c3c', 3, 'Robbinsdale Town Center', false);
+addStore(45.0544212, -93.3688582, 'Caribou Coffee', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0537589, -93.3688653, 'Sally Beauty', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0538735, -93.3688641, 'Bargain Mart Furniture', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0540542, -93.3688606, 'Kumon', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0541828, -93.3688582, 'Pet Supplies Plus', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0543197, -93.3688571, 'GameStop', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0543931, -93.3689727, 'Bank of America', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0544286, -93.3691221, 'Domino\'s', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0527616, -93.3685885, 'Pro Nails', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0527142, -93.3684868, 'Sun Shoppe', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0522719, -93.3676941, 'Planet Fitness', '-', '#f39c12', 1, 'Crystal Shopping Center', true);
+addStore(45.0522762, -93.3672631, 'Marshalls', '-', '#f39c12', 1, 'Crystal Shopping Center', true);
+addStore(45.0542935, -93.3659465, 'Subway', '5557 West Broadway Crystal', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0540899, -93.3660005, 'Fantastic Sams', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0539571, -93.3662586, 'Dollar Tree', '-', '#f39c12', 1, 'Crystal Shopping Center', true);
+addStore(45.0543533, -93.3660883, 'GNC', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0337185, -93.3799832, 'Caribou Coffee', '4210 Winnetka Avenue North New Hope', '#e74c3c', 5, 'New Hope City Center', false);
+addStore(45.0337494, -93.379861, 'Rapid Refill', '4212 Winnetka Avenue North New Hope', '#e74c3c', 5, 'New Hope City Center', false);
+addStore(45.0337211, -93.3797914, 'Great Nails', '4214 Winnetka Avenue North New Hope', '#e74c3c', 5, 'New Hope City Center', false);
+addStore(45.0337507, -93.3796951, 'Jet\'s Pizza', '4216 Winnetka Avenue North New Hope', '#e74c3c', 5, 'New Hope City Center', false);
+addStore(45.0542722, -93.363796, 'Buffalo Wild Wings', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0542577, -93.3648092, 'Starbucks', '5596 West Broadway Avenue Crystal', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0542858, -93.3647395, 'Great Clips', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0542581, -93.3646124, 'Noodles & Company', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.054268, -93.3634607, 'Anytime Fitness', '5580 West Broadway Avenue Crystal', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0541358, -93.3629746, 'United States Post Office', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0540468, -93.3629769, 'Visionworks', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0534189, -93.3629946, 'Dark Horse Vapors, Inc.', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0533066, -93.3629969, 'Home Choice', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0538913, -93.3664028, 'Sprint', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0538314, -93.3665111, 'Catherines', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0537898, -93.3666076, 'Johantgen Jewelers', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0536428, -93.3668626, 'Crystal Tobacco & Cigar Outlet Plus', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0534991, -93.3665768, 'Supermercado y Panaderia LomaBonita', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0532494, -93.3666912, 'Rainbow', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0531533, -93.3668555, 'Stitchline Alterations', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0527284, -93.3666919, 'Phenix Salon Suites', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0530361, -93.3666978, 'Famous Footwear', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0529662, -93.3665083, 'NuYu Premium Hair', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0531533, -93.3665448, 'H&R Block', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0924894, -93.4340758, 'Evereve', '-', '#e74c3c', 4, 'The Shoppes at Arbor Lakes', false);
+addStore(45.092465, -93.4344041, 'LensCrafters', '-', '#e74c3c', 4, 'The Shoppes at Arbor Lakes', false);
+addStore(45.0924744, -93.4342386, 'Ideal image Laser Hair Removal', '-', '#e74c3c', 4, 'The Shoppes at Arbor Lakes', false);
+addStore(45.0931145, -93.4352394, 'Ulta Beauty', '12181 Elm Creek Boulevard North Maple Grove', '#e74c3c', 4, 'The Shoppes at Arbor Lakes', false);
+addStore(45.056308, -93.36664, 'Extra Space Storage', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0568415, -93.3690632, 'U-Haul', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0446448, -93.5311649, 'Kalla Lily Salon and Spa', '-', '#e74c3c', 15, 'Medina Clydesdale Marketplace', false);
+addStore(45.0446277, -93.5310308, 'Verizon', '-', '#e74c3c', 15, 'Medina Clydesdale Marketplace', false);
+addStore(44.9722294, -93.4255184, 'Michaels', '11522 Wayzata Boulevard Minnetonka', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(44.9685163, -93.4358896, 'Nordstrom', '-', '#f39c12', 27, 'Ridgedale Center', true);
+addStore(44.966128, -93.3499291, 'Bruegger\'s Bagels', '1650 Park Place Boulevard Saint Louis Park', '#e74c3c', 9, 'Park Place Plaza', false);
+addStore(44.972276, -93.5012878, 'Vively', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.9713765, -93.5015921, 'Huntington Bank', '1101 Wayzata Boulevard West', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.9722916, -93.5001665, 'Caribou Coffee', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.9722644, -93.5009837, 'Chuck and Don\'s', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.9722682, -93.5015151, 'Paint Nail Bar', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.9719654, -93.5024132, 'Old National Bank', '135 Central Avenue North', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.9722561, -93.5013612, 'Modern Roots', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.9722559, -93.5012112, 'Bank of America', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.9722728, -93.5017265, 'Aveda', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.9722538, -93.5010738, 'The Owl and the Octopus', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.9719326, -93.4999132, 'Sport Clips', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.9717218, -93.4999028, 'Bob\'s Shoe Repair', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.9715768, -93.4998825, 'Schuler Shoes', '1175', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.9717918, -93.499908, 'The UPS Store', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.9714635, -93.5004772, 'Noodles & Company', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.9858043, -93.5720541, 'Ace Hardware', '1865 Wayzata Boulevard Long Lake', '#f39c12', 33, 'Unnamed Retail Center', true);
+addStore(44.9241189, -93.4113148, 'Duff\'s Barber Shop', '5 9th Avenue South Hopkins', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.9242998, -93.4111018, 'Bongo\'s & Bud\'s', '820 Mainstreet Hopkins', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.924302, -93.4107268, 'Mill City Sound', '812 Mainstreet Hopkins', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.9243042, -93.4105639, 'The Liquor Store & More', '808 Mainstreet Hopkins', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(45.096743, -93.4413943, 'Noodles & Company', '-', '#e74c3c', 4, 'The Shoppes at Arbor Lakes', false);
+addStore(45.0963939, -93.4419724, 'Chico\'s', '-', '#e74c3c', 4, 'The Shoppes at Arbor Lakes', false);
+addStore(45.0962822, -93.4419707, 'Sport Clips', '-', '#e74c3c', 4, 'The Shoppes at Arbor Lakes', false);
+addStore(45.096207, -93.4419717, 'The Joint Chiropractic', '-', '#e74c3c', 4, 'The Shoppes at Arbor Lakes', false);
+addStore(45.0960586, -93.4419757, 'GameStop', '-', '#e74c3c', 4, 'The Shoppes at Arbor Lakes', false);
+addStore(45.0959813, -93.4414, 'Panera Bread', '7778 Main Street North Maple Grove', '#e74c3c', 4, 'The Shoppes at Arbor Lakes', false);
+addStore(45.0961714, -93.4413973, 'Nails & Spa', '-', '#e74c3c', 4, 'The Shoppes at Arbor Lakes', false);
+addStore(45.0962535, -93.4413988, 'Allure Intimate Apparel', '-', '#e74c3c', 4, 'The Shoppes at Arbor Lakes', false);
+addStore(45.0963767, -93.4414003, 'Five Guys', '7814 Main Street North Maple Grove', '#e74c3c', 4, 'The Shoppes at Arbor Lakes', false);
+addStore(45.0956686, -93.442044, 'Cold Stone Creamery', '-', '#e74c3c', 4, 'The Shoppes at Arbor Lakes', false);
+addStore(45.0955181, -93.4420467, 'Men\'s Wearhouse', '-', '#e74c3c', 4, 'The Shoppes at Arbor Lakes', false);
+addStore(45.0956695, -93.4413393, 'Chipotle', '7750 Main Street North Maple Grove', '#e74c3c', 4, 'The Shoppes at Arbor Lakes', false);
+addStore(45.0954344, -93.4413353, 'T-Mobile', '-', '#e74c3c', 4, 'The Shoppes at Arbor Lakes', false);
+addStore(45.0945065, -93.444939, 'Chuck E. Cheese', '-', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(45.0946496, -93.4449368, 'David\'s Bridal', '-', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(45.0942666, -93.4421728, 'Mattress Firm', '12729 Elm Creek Boulevard North Maple Grove', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(45.0554382, -93.3650816, 'ALDI', '5620 West Broadway Crystal', '#f39c12', 1, 'Crystal Shopping Center', true);
+addStore(44.9335678, -93.4192751, 'Walgreens', '1511 Highway 7 Hopkins', '#f39c12', 22, 'Unnamed Retail Center', true);
+addStore(44.9335831, -93.421891, 'Speedway', '3864 Hopkins Crossroad Minnetonka', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(44.935344, -93.3841903, 'Restwell Mattress Factory', '8229 State Highway 7 Service Road Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9353436, -93.3840374, 'Home Choice', '8225 State Highway 7 Service Road Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9353429, -93.3837219, 'Flooring Expo by Carpet King', '8221 State Highway 7 Service Road Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9664013, -93.3499362, 'Twin City Nails', '1650 Park Place Boulevard Saint Louis Park', '#e74c3c', 9, 'Park Place Plaza', false);
+addStore(44.9360555, -93.3877606, 'Pearle Vision', '8510 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9361138, -93.3876195, 'Verizon', '8504 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9263774, -93.4121841, 'Vaping Studio', '907 1st Street North Hopkins', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(45.0703935, -93.3262398, 'Sun Foods', '-', '#3498db', 28, 'Unnamed Retail Center', false);
+addStore(45.0699253, -93.326248, 'Dollar Tree', '-', '#f39c12', 28, 'Unnamed Retail Center', true);
+addStore(44.9707444, -93.5001986, 'Jimmy John\'s', '1140 Wayzata Boulevard East Wayzata', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(45.0294289, -93.4469103, 'HomeGoods', '4190 Vinewood Lane Plymouth', '#f39c12', 11, 'Unnamed Retail Center', true);
+addStore(45.0315721, -93.4475314, 'Bath and Body Works', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(45.0296283, -93.4469178, 'PetSmart', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(45.0301258, -93.4468617, 'TJ Maxx', '-', '#f39c12', 11, 'Unnamed Retail Center', true);
+addStore(45.0315749, -93.447436, 'Great Clips', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(45.0307055, -93.4468075, 'Top Ten Liquors', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(45.0315564, -93.4473351, 'My Salon', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(45.0315082, -93.4472094, 'Nails and Co.', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(45.0304025, -93.4468399, 'Famous Footwear', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(44.9513221, -93.4179817, 'Domino\'s', '10904 Greenbrier Road Minnetonka', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(44.9531837, -93.4177002, 'Strong Liquors', '11048 Cedar Lake Road Minnetonka', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(45.0297926, -93.336532, 'Subway', '4080 West Broadway Robbinsdale', '#e74c3c', 3, 'Robbinsdale Town Center', false);
+addStore(45.0296619, -93.3363094, 'Dollar General', '-', '#e74c3c', 3, 'Robbinsdale Town Center', false);
+addStore(45.0297931, -93.3366323, 'Smoke Shop', '-', '#e74c3c', 3, 'Robbinsdale Town Center', false);
+addStore(45.0290762, -93.335859, 'Bill\'s Gun Shop', '-', '#e74c3c', 3, 'Robbinsdale Town Center', false);
+addStore(45.0297843, -93.3378902, 'Salon HALO', '-', '#e74c3c', 3, 'Robbinsdale Town Center', false);
+addStore(44.9245589, -93.4089497, 'Amy\'s Cupcake Shoppe', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.9262621, -93.4117807, 'European Massage Therapy', '901 1st Street North Hopkins', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.9235413, -93.4099875, 'Little Blind Spot', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.9241166, -93.409543, 'The Vine Room', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.9241166, -93.4096891, 'Cold Stone Creamery', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.972241, -93.4227487, 'InVision Distinctive Eyewear', '11300 Wayzata Boulevard', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(45.1004343, -93.4476449, 'By the Yard, Inc.', '8046 Wedgewood Lane North Maple Grove', '#e74c3c', 7, 'Maple Grove Crossings', false);
+addStore(44.9705043, -93.4467633, 'Tesla Supercharger', '13201 Ridgedale Drive Minnetonka', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(44.9646718, -93.354199, 'Little Break Spa', '5811 Cedar Lake Road Saint Louis Park', '#e74c3c', 9, 'Park Place Plaza', false);
+addStore(44.9850814, -93.3831482, 'Mochinut', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.9733861, -93.4220736, 'Wild Birds Unlimited', '11210 Wayzata Boulevard', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(44.973439, -93.4219877, 'Twin City Nails', '11210 Wayzata Boulevard', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(44.973553, -93.4218351, 'Great Clips', '11210 Wayzata Boulevard', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(44.9663175, -93.3490632, 'Sola Salons', '1675 Park Place Boulevard', '#e74c3c', 9, 'Park Place Plaza', false);
+addStore(44.9377686, -93.3913953, 'UPS', '-', '#e74c3c', 13, 'Knollwood Village', false);
+addStore(44.9378066, -93.3861173, 'Knollwood Mall', '-', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(45.0335628, -93.3820496, 'New Hope City Center', '-', '#e74c3c', 5, 'New Hope City Center', false);
+addStore(44.9348839, -93.3870837, 'White Castle', '-', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9667998, -93.3541593, 'Costco', '5801 16th Street West Saint Louis Park', '#f39c12', 9, 'Park Place Plaza', true);
+addStore(44.9360662, -93.3932648, 'Target', '8900 Minnesota State Highway 7 Saint Louis Park', '#f39c12', 13, 'Knollwood Village', true);
+addStore(44.9681407, -93.437172, 'Ridgedale Center', '12401 Wayzata Boulevard', '#e74c3c', 27, 'Ridgedale Center', false);
+addStore(44.9700824, -93.4493274, 'Best Buy', '13513 Ridgedale Drive Hopkins', '#f39c12', 12, 'Unnamed Retail Center', true);
+addStore(44.9649761, -93.3524838, 'The Home Depot', '5800 Cedar Lake Road Saint Louis Park', '#f39c12', 9, 'Park Place Plaza', true);
+addStore(44.9673144, -93.3505813, 'Five Guys', '5699 16th Street West Saint Louis Park', '#e74c3c', 9, 'Park Place Plaza', false);
+addStore(44.9722237, -93.4483292, 'Morrie\'s Minnetonka', '13400 Wayzata Boulevard Minnetonka', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(45.0533977, -93.3663171, 'Crystal Shopping Center', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0521827, -93.3648703, 'Target', '5537 West Broadway Avenue Crystal', '#f39c12', 1, 'Crystal Shopping Center', true);
+addStore(45.0536827, -93.3632066, 'Crystal Gallery Mall', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0554867, -93.3651503, 'Crystal Town Center', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(44.9850278, -93.3779857, 'United States Post Office', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.9338978, -93.4205166, 'MGM Liquor Warehouse', '-', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(44.9358654, -93.3885481, 'Wells Fargo', '8600 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9349433, -93.3862163, 'Walgreens', '540 Blake Road North', '#f39c12', 2, 'The Shoppes at Knollwood', true);
+addStore(45.0928438, -93.4429254, 'Total Wine', '12795 Elm Creek Boulevard Maple Grove', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(45.094476, -93.4463745, 'Hampton Inn & Suites', '7745 Elm Creek Boulevard Maple Grove', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(45.0912795, -93.4359053, 'Whole Foods Market', '12201 Elm Creek Boulevard North Maple Grove', '#f39c12', 4, 'The Shoppes at Arbor Lakes', true);
+addStore(45.0939539, -93.4325349, 'BMO Harris Bank', '-', '#e74c3c', 4, 'The Shoppes at Arbor Lakes', false);
+addStore(45.0936945, -93.4322023, 'Jared', '-', '#e74c3c', 4, 'The Shoppes at Arbor Lakes', false);
+addStore(45.0933329, -93.4238683, 'Costco', '11330 Fountains Drive North Maple Grove', '#f39c12', 23, 'The Fountains at Arbor Lakes', true);
+addStore(45.0333214, -93.3795289, 'Walgreens', '4200 Winnetka Avenue New Hope', '#f39c12', 5, 'New Hope City Center', true);
+addStore(45.0351365, -93.381927, 'Winnetka Mall', '-', '#e74c3c', 5, 'New Hope City Center', false);
+addStore(45.0086115, -93.3814563, 'Midland Center', '-', '#e74c3c', 20, 'Midland Center', false);
+addStore(45.0172878, -93.4826547, 'Walgreens', '3255 Vicksburg Lane North Plymouth', '#f39c12', 24, 'Unnamed Retail Center', true);
+addStore(45.0787147, -93.3941453, '4 Wheel Parts', '6771 Boone Avenue North Brooklyn Park', '#3498db', 36, 'Unnamed Retail Center', false);
+addStore(45.0771117, -93.3938357, 'The Home Depot', '6700 Boone Avenue North Brooklyn Park', '#f39c12', 36, 'Unnamed Retail Center', true);
+addStore(44.9657826, -93.3499154, 'Arby\'s', '1690 Park Place Boulevard Saint Louis Park', '#e74c3c', 9, 'Park Place Plaza', false);
+addStore(44.9320639, -93.4216825, 'LA Fitness', '-', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(44.9333797, -93.4188357, 'Starbucks', '1505 State Highway 7 Hopkins', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(44.9251268, -93.4117773, 'U.S. Bank', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.998556, -93.4556056, 'The Home Depot', '1705 Annapolis Lane North Plymouth', '#f39c12', 34, 'Unnamed Retail Center', true);
+addStore(45.1026677, -93.4477943, 'Cub Foods', '8150 Wedgewood Lane Maple Grove', '#e74c3c', 7, 'Maple Grove Crossings', false);
+addStore(45.0458045, -93.5289161, 'Target', '300 Clydesdale Trail Medina', '#f39c12', 15, 'Medina Clydesdale Marketplace', true);
+addStore(45.0404773, -93.5248012, 'United States Post Office', '105 Hamel Road Hamel', '#e74c3c', 15, 'Medina Clydesdale Marketplace', false);
+addStore(45.0168597, -93.4850132, 'Lowe\'s', '3205 Vicksburg Lane North Plymouth', '#f39c12', 24, 'Unnamed Retail Center', true);
+addStore(44.9333286, -93.3861936, 'Wendy\'s', '502 Blake Road North', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(45.0222936, -93.3808519, 'AutoZone', '3601 Winnetka Avenue North', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(44.9334615, -93.4222742, 'Perkins', '-', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(45.0318087, -93.4481572, 'Kohl\'s', '4190 Vinewood Lane North Plymouth', '#f39c12', 11, 'Unnamed Retail Center', true);
+addStore(45.0292411, -93.4497882, 'Holiday', '4075 Vinewood Lane North', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(45.0285858, -93.4494866, 'Walgreens', '4005 Vinewood Lane North Plymouth', '#f39c12', 11, 'Unnamed Retail Center', true);
+addStore(45.0525092, -93.3628908, 'Big O Tires', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.1006259, -93.385254, 'Walmart Supercenter', '8000 Lakeland Avenue North Brooklyn Park', '#f39c12', 29, 'Unnamed Retail Center', true);
+addStore(44.9513159, -93.4202355, 'Wings Financial Credit Union', '-', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(45.0286331, -93.4480638, 'Chili\'s', '4000 Vinewood Lane North', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(44.9340286, -93.4215176, 'Speedy Wash', '-', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(44.9972106, -93.455878, 'Discount Tire', '1655 Annapolis Lane North Plymouth', '#3498db', 34, 'Unnamed Retail Center', false);
+addStore(45.0999241, -93.4470411, 'The Tile Shop', '8032 Wedgewood Lane Maple Grove', '#e74c3c', 7, 'Maple Grove Crossings', false);
+addStore(45.1033648, -93.450964, 'Maple Square Fuel & Wash', '13400 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1033591, -93.4505705, 'Shell', '-', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1010927, -93.450463, 'Caribou Coffee', '8073 Wedgewood Lane Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1007552, -93.4504201, 'Tobacco Grove', '8069 Wedgewood Lane Maple Grove', '#e74c3c', 7, 'Maple Grove Crossings', false);
+addStore(45.0996495, -93.4501206, 'Starbucks', '7979 Wedgewood Lane Maple Grove', '#e74c3c', 7, 'Maple Grove Crossings', false);
+addStore(45.0991073, -93.4495777, 'Fireside Hearth & Home', '7937 Wedgewood Lane Maple Grove', '#e74c3c', 7, 'Maple Grove Crossings', false);
+addStore(45.1004719, -93.4521896, 'Tires Plus', '13562 80th Circle North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1027091, -93.4504841, 'Talisman Hair Studio', '8125 Wedgewood Lane Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1045651, -93.4553973, 'Speedway', '-', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1034722, -93.452247, 'United States Post Office', '13500 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.0951371, -93.4413164, 'Buca di Beppo', '12650 Elm Creek Boulevard Maple Grove', '#e74c3c', 4, 'The Shoppes at Arbor Lakes', false);
+addStore(44.9723167, -93.4496701, 'Mercedes-Benz', '-', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(45.1279387, -93.4929349, 'Walgreens', '16750 County Road 30 Maple Grove', '#f39c12', 25, 'Unnamed Retail Center', true);
+addStore(45.1259089, -93.4903654, 'White Castle', '9480 Dunkirk Lane North Maple Grove', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(45.1257035, -93.4896654, 'Discount Tire', '-', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(45.1261328, -93.4943354, 'Walmart Supercenter', '9451 Dunkirk Lane North Maple Grove', '#f39c12', 25, 'Unnamed Retail Center', true);
+addStore(45.1263949, -93.4891741, 'Huntington Bank', '16450 County Road 30 Maple Grove', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(45.0341774, -93.3819188, 'Life Time', '4239 Winnetka Avenue North New Hope', '#e74c3c', 5, 'New Hope City Center', false);
+addStore(44.97191, -93.4236638, 'Olive Garden', '-', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(44.9641333, -93.3510977, 'Panera Bread', '5680 Cedar Lake Road Saint Louis Park', '#e74c3c', 9, 'Park Place Plaza', false);
+addStore(45.0192703, -93.4824283, 'Ruby Tuesday', '-', '#3498db', 24, 'Unnamed Retail Center', false);
+addStore(45.0179105, -93.4824592, 'BMO Harris Bank', '3245 Vicksburg Lane North Plymouth', '#3498db', 24, 'Unnamed Retail Center', false);
+addStore(44.9255252, -93.4134465, 'Driskill\'s Food', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.9378274, -93.3833055, 'Cub Foods', '3620 Texas Avenue South Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9373953, -93.3874706, 'Kohl\'s', '8340 Minnesota State Highway 7 Saint Louis Park', '#f39c12', 2, 'The Shoppes at Knollwood', true);
+addStore(44.9376911, -93.3844318, 'TJ Maxx', '8322 Minnesota State Highway 7 Saint Louis Park', '#f39c12', 2, 'The Shoppes at Knollwood', true);
+addStore(44.9600944, -93.3706232, 'West End Tobacco & Cigars', '7120 Cedar Lake Road Saint Louis Park', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(44.985066, -93.3840698, 'Lighting Outlet Center', '8200 Olson Memorial Highway Golden Valley', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(45.0951068, -93.3571617, 'Walgreens', '7700 Brooklyn Boulevard Brooklyn Park', '#f39c12', 26, 'Unnamed Retail Center', true);
+addStore(45.0949576, -93.3579506, 'AutoZone', '-', '#3498db', 26, 'Unnamed Retail Center', false);
+addStore(45.0930977, -93.3533135, 'ALDI', '7600 Brooklyn Boulevard Brooklyn Park', '#f39c12', 35, 'Unnamed Retail Center', true);
+addStore(45.0223473, -93.3796911, 'Speedway', '-', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(45.0929511, -93.3773331, 'McDonald\'s', '7685 West Broadway Avenue Brooklyn Park', '#e74c3c', 30, 'Starlite Center', false);
+addStore(45.0331752, -93.3788855, 'Dunkin\' Donuts', '7820 42nd Avenue North New Hope', '#e74c3c', 5, 'New Hope City Center', false);
+addStore(45.0076891, -93.3824886, 'Rockhopper Comics and Games', '8016 Medicine Lake Road', '#e74c3c', 20, 'Midland Center', false);
+addStore(45.0063191, -93.3797493, 'Walgreens', '-', '#f39c12', 20, 'Midland Center', true);
+addStore(45.0070666, -93.3794696, 'Dairy Queen', '7825 Medicine Lake Road Golden Valley', '#e74c3c', 20, 'Midland Center', false);
+addStore(45.0076773, -93.3800507, 'BP', '-', '#e74c3c', 20, 'Midland Center', false);
+addStore(45.0040766, -93.3785678, 'Public Storage', '-', '#e74c3c', 20, 'Midland Center', false);
+addStore(45.0927552, -93.4423074, 'Nordstrom Rack', '12745 Elm Creek Boulevard Maple Grove', '#f39c12', 16, 'Unnamed Retail Center', true);
+addStore(45.0955686, -93.3569351, 'White Castle', '-', '#3498db', 26, 'Unnamed Retail Center', false);
+addStore(45.0962015, -93.3567915, 'Dairy Queen', '7749 Zane Avenue North Brooklyn Park', '#3498db', 26, 'Unnamed Retail Center', false);
+addStore(45.1046256, -93.4537938, 'Maple Grove Tire & Service', '13680 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1047077, -93.4525404, 'The UPS Store', '13570 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1047016, -93.4531199, 'Batteries Plus Bulbs', '13650 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1046715, -93.4532765, 'Euro Gourmet', '13670 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1046733, -93.453196, 'Sonny\'s Nails', '13660 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1047186, -93.4529664, 'Sota', '13630 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1047219, -93.4528105, 'WW Studio', '13610 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1047044, -93.4527323, 'Domino\'s', '13590 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1046912, -93.4524251, 'Great Clips', '13550 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1046812, -93.4522036, 'Dunkin\'', '13530 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1021071, -93.4528681, 'Sherwin-Williams', '13599 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1023408, -93.4527669, 'Golden Corral', '13603 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1033067, -93.4560632, 'New Uses', '13777 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1008292, -93.4541498, 'Goodwill', '13605 80th Circle North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.101778, -93.4531391, 'Plato\'s Closet', '13608 80th Circle North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1017774, -93.4528289, 'Once Upon A Child', '13596 80th Circle North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1017484, -93.4533675, 'Style Encore', '13626 80th Circle North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.101637, -93.4535094, 'Johnson Fitness Exercise Equipment', '13630 80th Circle North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1022032, -93.4504742, 'Chuck & Don\'s', '8115 Wedgewood Lane Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1037097, -93.4508217, 'KinderCare', '13380 Grove Drive North Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.0995748, -93.450049, 'Papa John\'s', '7973 Wedgewood Lane Maple Grove', '#e74c3c', 7, 'Maple Grove Crossings', false);
+addStore(45.0995136, -93.4499761, 'Medshape', '7967 Wedgewood Lane Maple Grove', '#e74c3c', 7, 'Maple Grove Crossings', false);
+addStore(45.1005148, -93.4503686, 'FedEx Office', '8057 Wedgewood Lane Maple Grove', '#e74c3c', 7, 'Maple Grove Crossings', false);
+addStore(45.1010014, -93.4504595, 'Original Mattress Factory', '8071 Wedgewood Lane Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1011536, -93.4504654, 'Victra Verizon', '8077 Wedgewood Lane Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1012754, -93.4504701, 'Nothing Bundt Cakes', '8085 Wedgewood Lane Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.101684, -93.4504718, 'Jimmy John\'s', '8099 Wedgewood Lane Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1015366, -93.4504717, 'Peony Nail Spa', '8095 Wedgewood Lane Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1022943, -93.4504791, 'Carpet King', '8117 Wedgewood Lane Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1020853, -93.450468, 'AT&T', '8105 Wedgewood Lane Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.1025494, -93.4504786, 'Orangetheory Fitness', '8121 Wedgewood Lane Maple Grove', '#e74c3c', 0, 'Grove Square', false);
+addStore(45.0989119, -93.4467539, 'Michaels', '7980 Wedgewood Lane Maple Grove', '#e74c3c', 7, 'Maple Grove Crossings', false);
+addStore(45.0991739, -93.4469152, 'Petco', '8010 Wedgewood Lane Maple Grove', '#f39c12', 7, 'Maple Grove Crossings', true);
+addStore(45.0994814, -93.446985, 'Old Navy', '8020 Wedgewood Lane Maple Grove', '#e74c3c', 7, 'Maple Grove Crossings', false);
+addStore(45.1000647, -93.447144, 'Five Below', '8036 Wedgewood Lane Maple Grove', '#e74c3c', 7, 'Maple Grove Crossings', false);
+addStore(45.1002486, -93.4473297, 'Barnes & Noble', '8040 Wedgewood Lane Maple Grove', '#e74c3c', 7, 'Maple Grove Crossings', false);
+addStore(45.1004312, -93.4474913, 'Christopher & Banks', '8046 Wedgewood Lane Maple Grove', '#e74c3c', 7, 'Maple Grove Crossings', false);
+addStore(45.1006468, -93.4478192, 'Van\'s Nail & Spa', '8066 Wedgewood Lane Maple Grove', '#e74c3c', 7, 'Maple Grove Crossings', false);
+addStore(45.100739, -93.4479277, 'Famous Footwear', '8076 Wedgewood Lane Maple Grove', '#e74c3c', 7, 'Maple Grove Crossings', false);
+addStore(45.1013784, -93.4476413, 'Kohl\'s', '8080 Wedgewood Lane Maple Grove', '#f39c12', 7, 'Maple Grove Crossings', true);
+addStore(45.0336693, -93.3783586, 'Alex Audio Video', '-', '#e74c3c', 5, 'New Hope City Center', false);
+addStore(44.9850935, -93.3846363, 'All Strings Attached', '8224 Olson Memorial Highway Golden Valley', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.9346096, -93.3886822, 'Taco Bell', '919 Cambridge Street Hopkins', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9354127, -93.3833972, 'Yardbird', '8215 State Highway 7 Service Road Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9368819, -93.3885317, 'Burger King', '3650 Aquila Avenue South Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9359426, -93.3881932, 'Firestone', '8530 Minnesota State Highway 7 Saint Louis Park', '#e74c3c', 2, 'The Shoppes at Knollwood', false);
+addStore(44.9385068, -93.392698, 'Primrose School of St. Louis Park West', '8955 36th Street West Saint Louis Park', '#e74c3c', 13, 'Knollwood Village', false);
+addStore(44.9383093, -93.3923236, 'Huntington Bank', '8951 36th Street West Saint Louis Park', '#e74c3c', 13, 'Knollwood Village', false);
+addStore(45.0918548, -93.3795111, 'Cub Foods', '7555 West Broadway Avenue Brooklyn Park', '#e74c3c', 30, 'Starlite Center', false);
+addStore(45.0909571, -93.3786482, 'Target', '7555 West Broadway Avenue Brooklyn Park', '#f39c12', 30, 'Starlite Center', true);
+addStore(45.0534941, -93.3653338, 'Taco Bell', '5547 West Broadway Avenue Crystal', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0542773, -93.367265, 'Popeyes', '6817 Bass Lake Road Crystal', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0543966, -93.3679386, 'Dunkin\'', '6827 Bass Lake Road', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0551929, -93.369724, 'Wells Fargo', '7000 Bass Lake Road Crystal', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0331824, -93.3809662, 'McDonald\'s', '4201 Winnetka Avenue New Hope', '#e74c3c', 5, 'New Hope City Center', false);
+addStore(45.0321414, -93.3399253, 'Huntington Bank', '4222 West Broadway Avenue Robbinsdale', '#e74c3c', 3, 'Robbinsdale Town Center', false);
+addStore(45.0319099, -93.3396046, 'Shell', '-', '#e74c3c', 3, 'Robbinsdale Town Center', false);
+addStore(45.0305716, -93.3378979, 'Pawn America', '-', '#e74c3c', 3, 'Robbinsdale Town Center', false);
+addStore(45.0301642, -93.3375321, 'Walgreens', '-', '#f39c12', 3, 'Robbinsdale Town Center', true);
+addStore(45.0316727, -93.3383757, 'McDonald\'s', '4601 Lake Drive Robbinsdale', '#e74c3c', 3, 'Robbinsdale Town Center', false);
+addStore(45.0987589, -93.3840148, 'Lupient Nissan', '7910 Lakeland Avenue North Brooklyn Park', '#3498db', 29, 'Unnamed Retail Center', false);
+addStore(45.0985354, -93.3862222, 'Lupient Kia of Brooklyn Park', '7911 Lakeland Avenue North Brooklyn Park', '#3498db', 29, 'Unnamed Retail Center', false);
+addStore(45.1249425, -93.4912274, 'Valvoline', '-', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(45.1279907, -93.4950681, 'AutoZone', '-', '#3498db', 25, 'Unnamed Retail Center', false);
+addStore(45.0950751, -93.4423296, 'Bank of America', '12728 Elm Creek Boulevard Maple Grove', '#e74c3c', 4, 'The Shoppes at Arbor Lakes', false);
+addStore(45.0940593, -93.4450005, 'Best Buy', '12905 Elm Creek Boulevard North Maple Grove', '#f39c12', 16, 'Unnamed Retail Center', true);
+addStore(45.0937192, -93.4361321, 'Portillo\'s', '12251 Elm Creek Boulevard Maple Grove', '#e74c3c', 4, 'The Shoppes at Arbor Lakes', false);
+addStore(45.0947984, -93.4393729, 'Olive Garden', '12520 Elm Creek Boulevard Maple Grove', '#e74c3c', 4, 'The Shoppes at Arbor Lakes', false);
+addStore(45.0959026, -93.4392238, 'Burlington', '12530 Elm Creek Boulevard North Maple Grove', '#f39c12', 4, 'The Shoppes at Arbor Lakes', true);
+addStore(45.0306536, -93.3399237, 'Northside Oriental Market & Deli', '4165 Hubbard Avenue North Robbinsdale', '#e74c3c', 3, 'Robbinsdale Town Center', false);
+addStore(45.0311767, -93.3395111, 'Kings & Queens Tailors', '4179 West Broadway Avenue Robbinsdale', '#e74c3c', 3, 'Robbinsdale Town Center', false);
+addStore(45.0311321, -93.3394678, 'Wickedly Charming Boutique', '4175 West Broadway Avenue Robbinsdale', '#e74c3c', 3, 'Robbinsdale Town Center', false);
+addStore(45.0307254, -93.3391206, 'Hackenmueller Meats', '4159 West Broadway Avenue Robbinsdale', '#e74c3c', 3, 'Robbinsdale Town Center', false);
+addStore(45.0306856, -93.3390419, 'Golden Age Design', '4157 West Broadway Avenue Robbinsdale', '#e74c3c', 3, 'Robbinsdale Town Center', false);
+addStore(45.0303917, -93.3386586, 'Wuollet Bakery', '4139 West Broadway Avenue Robbinsdale', '#e74c3c', 3, 'Robbinsdale Town Center', false);
+addStore(45.0307092, -93.3383046, 'Ace Hardware', '4140 West Broadway Avenue Robbinsdale', '#f39c12', 3, 'Robbinsdale Town Center', true);
+addStore(45.0320384, -93.3405894, 'Washburn-McReavy Robbinsdale Chapel', '4239 West Broadway Avenue Robbinsdale', '#e74c3c', 3, 'Robbinsdale Town Center', false);
+addStore(45.0322539, -93.3390539, 'Pilgrim Cleaners', '4606 42nd Avenue North Robbinsdale', '#e74c3c', 3, 'Robbinsdale Town Center', false);
+addStore(45.0309379, -93.337849, 'Robbinsdale Marine & Small Engine Repair', '4137 Lakeland Avenue North Robbinsdale', '#e74c3c', 3, 'Robbinsdale Town Center', false);
+addStore(45.035917, -93.3825184, 'Unique Thrift Donation Center', '4471 Winnetka Avenue North New Hope', '#e74c3c', 5, 'New Hope City Center', false);
+addStore(45.0553971, -93.368887, 'O\'Reilly Auto Parts', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0550952, -93.3689485, 'Gold Eagle', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.05504, -93.3679895, 'TCF Bank', '-', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.055088, -93.367226, 'Walgreens', '-', '#f39c12', 1, 'Crystal Shopping Center', true);
+addStore(45.0556309, -93.367062, 'Arby\'s', '5629 Broadway Avenue West Crystal', '#e74c3c', 1, 'Crystal Shopping Center', false);
+addStore(45.0917048, -93.4358867, 'World Market', '12209 Elm Creek Boulevard Maple Grove', '#e74c3c', 4, 'The Shoppes at Arbor Lakes', false);
+addStore(45.0648386, -93.4808072, 'Speedway', '-', '#e74c3c', 31, 'Taryn Hills', false);
+addStore(45.0649316, -93.4809388, 'Speedy Wash', '-', '#e74c3c', 31, 'Taryn Hills', false);
+addStore(45.064627, -93.4798338, 'Walgreens', '-', '#f39c12', 31, 'Taryn Hills', true);
+addStore(45.0224499, -93.3797307, 'Speedy Wash', '-', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(45.0215681, -93.3808013, 'More Value Food & Fuel', '3535 Winnetka Avenue North New Hope', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(45.0174416, -93.4813616, 'Starbucks', '-', '#3498db', 24, 'Unnamed Retail Center', false);
+addStore(44.9971836, -93.454978, 'Kwik Trip', '1605 Annapolis Lane North Plymouth', '#3498db', 34, 'Unnamed Retail Center', false);
+addStore(45.1009006, -93.387754, 'Amoco', '8050 Lakeland Avenue North Brooklyn Park', '#3498db', 29, 'Unnamed Retail Center', false);
+addStore(44.9254818, -93.4128748, 'Richards Liquor', '22 10th Avenue North Hopkins', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(45.0930139, -93.4435215, 'DMP Furniture', '-', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(45.0422453, -93.5240683, 'ALDI', '100 Westfalen Trail Medina', '#f39c12', 15, 'Medina Clydesdale Marketplace', true);
+addStore(45.0923581, -93.4263485, 'Freddy\'s', '-', '#e74c3c', 23, 'The Fountains at Arbor Lakes', false);
+addStore(45.0322136, -93.3376002, 'Mobil', '-', '#e74c3c', 3, 'Robbinsdale Town Center', false);
+addStore(45.0706948, -93.328036, 'Walgreens', '6390 Brooklyn Boulevard Brooklyn Center', '#f39c12', 28, 'Unnamed Retail Center', true);
+addStore(45.0696599, -93.3274943, 'AutoZone', '-', '#3498db', 28, 'Unnamed Retail Center', false);
+addStore(45.0283067, -93.3363761, 'RE/MAX Elite', '403 West Broadway Avenue Robbinsdale', '#e74c3c', 3, 'Robbinsdale Town Center', false);
+addStore(45.0306095, -93.3346226, 'Robin Center', '-', '#e74c3c', 3, 'Robbinsdale Town Center', false);
+addStore(45.0286102, -93.335448, 'U.S. Bank', '-', '#e74c3c', 3, 'Robbinsdale Town Center', false);
+addStore(45.0292693, -93.336084, 'Robbinsdale Town Center', '4080 West Broadway Avenue', '#e74c3c', 3, 'Robbinsdale Town Center', false);
+addStore(45.0322386, -93.3782279, 'Drive Appeal', '-', '#e74c3c', 5, 'New Hope City Center', false);
+addStore(44.9852883, -93.5686728, 'Gear West', '1786 Wayzata Boulevard Long Lake', '#3498db', 33, 'Unnamed Retail Center', false);
+addStore(44.9698616, -93.4479264, 'Target', '13201 Ridgedale Drive Minnetonka', '#f39c12', 12, 'Unnamed Retail Center', true);
+addStore(45.0936116, -93.4376812, 'Shake Shack', '12351 Elm Creek Blvd N Maple Grove', '#e74c3c', 4, 'The Shoppes at Arbor Lakes', false);
+ 
+  // ---- Tenant name filter ----
+  var allTenantNames = ['4 Wheel Parts', 'A Barber\'s Touch', 'Ace Hardware', 'Advance Auto Parts', 'ALDI', 'Aldi', 'Alex Audio Video', 'All Strings Attached', 'Allure Intimate Apparel', 'America\'s Best Contacts & Eyeglasses', 'American Automobile Association', 'Amoco', 'Amy\'s Cupcake Shoppe', 'Anytime Fitness', 'Applebee\'s', 'Arby\'s', 'AT&T', 'AutoZone', 'Aveda', 'Banana Republic', 'Bank of America', 'Bargain Mart Furniture', 'Barnes & Noble', 'Bath and Body Works', 'Batteries Plus Bulbs', 'Bed Bath & Beyond', 'Best Buy', 'Big O Tires', 'Bill\'s Gun Shop', 'Blaze Pizza', 'BMO Harris Bank', 'Bob\'s Shoe Repair', 'Bongo\'s & Bud\'s', 'Boost Mobile', 'BP', 'Bravo Jewellers', 'Brothers Meat & Seafood', 'Bruegger\'s Bagels', 'Buca di Beppo', 'Buffalo Wild Wings', 'Burger King', 'Burlington', 'By the Yard, Inc.', 'Caliber Collision', 'Caribou Coffee', 'Carpet King', 'Castle Lashes & Nails', 'Catherines', 'Cedar Nails', 'Center Drug', 'Chico\'s', 'Chili\'s', 'Chipotle', 'Christopher & Banks', 'Chuck & Don\'s', 'Chuck and Don\'s', 'Chuck E. Cheese', 'Circle K', 'City Looks', 'Clean \'n\' Press', 'Clothes Mentor', 'Cold Stone Creamery', 'Cosmo-Prof', 'Cost Cutters', 'Costco', 'Crystal Gallery Mall', 'Crystal Shopping Center', 'Crystal Tobacco & Cigar Outlet Plus', 'Crystal Town Center', 'Cub Foods', 'Dairy Queen', 'Daisy Nails', 'Dark Horse Vapors, Inc.', 'David\'s Bridal', 'Dick\'s Sporting Goods', 'Discount Tire', 'DK Diamond Nails', 'DMP Furniture', 'Dollar General', 'Dollar Tree', 'Domino\'s', 'Down In The Valley', 'Down Range Guns & Ammo', 'Driskill\'s Food', 'Drive Appeal', 'DSW', 'Duff\'s Barber Shop', 'Dunkin\'', 'Dunkin\' Donuts', 'Edible Arrangements', 'Euro Gourmet', 'European Massage Therapy', 'Evereve', 'Evolve Salon', 'Extra Space Storage', 'Family Dollar', 'Famous Footwear', 'Fantastic Sams', 'FedEx Office', 'Finds On Broadway', 'Fireside Hearth & Home', 'Firestone', 'Five Below', 'Five Guys', 'Five Star Storage', 'Flooring Expo by Carpet King', 'Frattalone\'s Ace Hardware', 'Freddy\'s', 'GameStop', 'Gear West', 'GNC', 'Gold Eagle', 'Golden Age Design', 'Golden Corral', 'Golden Razor Salon', 'Goldwear Jewelers', 'Good Feet', 'Goodwill', 'Great Clips', 'Great Harvest Bread', 'Great Nails', 'H&R Block', 'Hackenmueller Meats', 'Hampton Inn & Suites', 'Hance Ace Hardware', 'Heeling Touch', 'Hobby Lobby', 'Holiday', 'Home Choice', 'HomeGoods', 'Hot Comics and Collectables', 'Huntington Bank', 'Ideal image Laser Hair Removal', 'Ink Sanctum Tattoo & Piercing', 'InVision Distinctive Eyewear', 'J.Crew', 'Jackson Hewitt', 'Jamba', 'Jared', 'JCPenney', 'Jerry\'s Hardware & Rental', 'Jersey Mike\'s Subs', 'Jet\'s Pizza', 'Jimmy John\'s', 'Johantgen Jewelers', 'Johnson Fitness Exercise Equipment', 'K-Nails', 'Kalla Lily Salon and Spa', 'KinderCare', 'Kings & Queens Tailors', 'Knollwood Mall', 'Kohl\'s', 'Kumon', 'Kwik Trip', 'LA Fitness', 'Lands\' End', 'Le Monde Tailors', 'LensCrafters', 'Life Time', 'Lighting Outlet Center', 'Liquor Barrel', 'Liquor Boy Wine and Spirits', 'Little Blind Spot', 'Little Break Spa', 'Lodestone Coffee and Games', 'Lowe\'s', 'Lunds & Byerlys', 'Lunds & Byerlys Wines & Spirits', 'Lupient Kia of Brooklyn Park', 'Lupient Nissan', 'Macy\'s', 'Magic Needle', 'Mainstreet Nails', 'Maple Grove Tire & Service', 'Maple Grove Vision Clinic', 'Maple Square Fuel & Wash', 'Marshalls', 'Massage Envy', 'Mattress Firm', 'McDonald\'s', 'Medshape', 'Men\'s Wearhouse', 'Mercedes-Benz', 'Metro by T-Mobile', 'MGM Liquor Warehouse', 'Michaels', 'Midland Center', 'Milagro\'s Beauty Salon', 'Mill City Sound', 'Minnesota Makers', 'Mobil', 'Mochinut', 'Modern Roots', 'More Value Food & Fuel', 'Morrie\'s Minnetonka', 'Mort\'s Delli', 'My Salon', 'Naf Naf Grill', 'Nails & Spa', 'Nails and Co.', 'New Hope City Center', 'New Hope Coin Laundry', 'New Uses', 'Noodles & Company', 'Nordstrom', 'Nordstrom Rack', 'North American Liquors', 'Northside Oriental Market & Deli', 'Nothing Bundt Cakes', 'NuYu Premium Hair', 'O\'Reilly Auto Parts', 'Ocean Market', 'Office Depot', 'Old National Bank', 'Old Navy', 'Olive Garden', 'Once Upon A Child', 'Orangetheory Fitness', 'Original Mattress Factory', 'P.F. Chang\'s', 'Pacific Granite', 'Paint Nail Bar', 'Panda Express', 'Panera Bread', 'Papa John\'s', 'Pawn', 'Pawn America', 'Payday America', 'Pearle Vision', 'Peony Nail Spa', 'Peppertree Salon', 'Perkins', 'Pet Supplies Plus', 'Petco', 'PetSmart', 'Phenix Salon Suites', 'Pilgrim Cleaners', 'Planet Fitness', 'Plato\'s Closet', 'Popeyes', 'Portillo\'s', 'Potbelly', 'Primrose School of St. Louis Park West', 'Pro Nails', 'Public Storage', 'Ragstock', 'Rainbow', 'Rapid Refill', 'RE/MAX Elite', 'Regis', 'Restwell Mattress Factory', 'Richards Liquor', 'Ridgedale Center', 'Robbinsdale Marine & Small Engine Repair', 'Robbinsdale Town Center', 'Robin Center', 'Rockhopper Comics and Games', 'Ruby Tuesday', 'Sally Beauty', 'Salon HALO', 'Salon L\'Image', 'SalonCentric', 'Schuler Shoes', 'Shake Shack', 'Shanghai Market', 'Shell', 'Sherwin-Williams', 'Smoke Shop', 'Smokers House', 'Snip-Its', 'Sola Salons', 'Sonny\'s Nails', 'Sota', 'Speedway', 'Speedy Wash', 'Sport Clips', 'Sprint', 'Starbucks', 'Stitchline Alterations', 'Strong Liquors', 'Style Encore', 'Subway', 'Sun Foods', 'Sun Shoppe', 'Supermercado y Panaderia LomaBonita', 'T-Mobile', 'Taco Bell', 'Taco John\'s', 'Talisman Hair Studio', 'Target', 'TCF Bank', 'Tesla Supercharger', 'The Furniture Mart', 'The Hair District', 'The Home Depot', 'The Joint Chiropractic', 'The Liquor Store & More', 'The Owl and the Octopus', 'The Tile Shop', 'The UPS Store', 'The Vine Room', 'Tires Plus', 'TJ Maxx', 'Tobacco Grove', 'Top Ten Liquors', 'Torrid', 'Total Wine', 'Trader Joe\'s', 'Twin City Nails', 'U-Haul', 'U.S. Bank', 'U.S. Cleaners', 'Ulta Beauty', 'Uniform Advantage', 'Unique Thrift Donation Center', 'United States Post Office', 'UPS', 'Valvoline', 'Van\'s Nail & Spa', 'Vaping Studio', 'Verizon', 'Victra Verizon', 'Visionworks', 'Vively', 'Walgreens', 'Walmart Supercenter', 'Washburn-McReavy Robbinsdale Chapel', 'Wells Fargo', 'Wendy\'s', 'West End Tobacco & Cigars', 'Westwood Liquors', 'White Castle', 'Whole Foods Market', 'Wickedly Charming Boutique', 'Wild Birds Unlimited', 'Willow Salon', 'Wings Financial Credit Union', 'Winnetka Liquors', 'Winnetka Mall', 'World Market', 'Wuollet Bakery', 'WW Studio', 'Yardbird'];
+  var selectedNames = new Set(allTenantNames);
+ 
+  var plazaNameIndex = {};
+  storesData.forEach(function(s) {
+    if (s.plazaId === -1) return;
+    if (!plazaNameIndex[s.plazaId]) plazaNameIndex[s.plazaId] = new Set();
+    plazaNameIndex[s.plazaId].add(s.name);
+  });
+ 
+  var tenantControl = L.control({position: 'topleft'});
+  tenantControl.onAdd = function() {
+    var container = L.DomUtil.create('div', 'tenant-filter');
+    container.innerHTML =
+      '<button id="tenantToggleBtn" class="tenant-toggle-btn" type="button">'
+      + 'Tenants: All (' + allTenantNames.length + ')</button>'
+      + '<div id="tenantPanel" class="tenant-panel" style="display:none;">'
+      +   '<input id="tenantSearch" class="tenant-search" type="text" placeholder="Search tenants...">'
+      +   '<div class="tenant-actions">'
+      +     '<button id="tenantSelectAll" type="button">Select all</button>'
+      +     '<button id="tenantDeselectAll" type="button">Deselect all</button>'
+      +   '</div>'
+      +   '<div id="tenantList" class="tenant-list"></div>'
+      + '</div>';
+    L.DomEvent.disableClickPropagation(container);
+    L.DomEvent.disableScrollPropagation(container);
+    return container;
+  };
+  tenantControl.addTo(map);
+ 
+  function updateTenantToggleLabel() {
+    var btn = document.getElementById('tenantToggleBtn');
+    var n = selectedNames.size;
+    var total = allTenantNames.length;
+    var label;
+    if (n === total) {
+      label = 'Tenants: All (' + total + ')';
+    } else if (n === 0) {
+      label = 'Tenants: none selected';
+    } else {
+      label = 'Tenants: ' + n + ' of ' + total + ' selected';
+    }
+    btn.innerHTML = label;
+  }
+ 
+  var tenantRows = [];
+  var tenantListEl = document.getElementById('tenantList');
+  allTenantNames.forEach(function(name) {
+    var row = document.createElement('label');
+    row.className = 'tenant-item';
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = true;
+    cb.addEventListener('change', function() {
+      if (cb.checked) { selectedNames.add(name); } else { selectedNames.delete(name); }
+      updateTenantToggleLabel();
+      updateVisibility();
+    });
+    row.appendChild(cb);
+    row.appendChild(document.createTextNode(' ' + name));
+    tenantListEl.appendChild(row);
+    tenantRows.push({el: row, checkbox: cb, lower: name.toLowerCase()});
+  });
+ 
+  document.getElementById('tenantToggleBtn').addEventListener('click', function() {
+    var panel = document.getElementById('tenantPanel');
+    panel.style.display = (panel.style.display === 'none') ? 'block' : 'none';
+  });
+ 
+  document.getElementById('tenantSearch').addEventListener('input', function(e) {
+    var q = e.target.value.toLowerCase();
+    tenantRows.forEach(function(r) {
+      r.el.style.display = (r.lower.indexOf(q) !== -1) ? '' : 'none';
+    });
+  });
+ 
+  document.getElementById('tenantSelectAll').addEventListener('click', function() {
+    tenantRows.forEach(function(r) { r.checkbox.checked = true; });
+    selectedNames = new Set(allTenantNames);
+    updateTenantToggleLabel();
+    updateVisibility();
+  });
+ 
+  document.getElementById('tenantDeselectAll').addEventListener('click', function() {
+    tenantRows.forEach(function(r) { r.checkbox.checked = false; });
+    selectedNames = new Set();
+    updateTenantToggleLabel();
+    updateVisibility();
+  });
+  // ---- end tenant name filter ----
+ 
+  map.on('overlayadd overlayremove', updateVisibility);
+  updateVisibility();
+ 
+  var overlays = {
+    '🔴  Multi-anchor plazas (2+ anchors)': layerMultiAnchor,
+    '⭕  Single-anchor plazas': layerSingleAnchor,
+    '🟣  Plaza Center Points': layerPlazaCenters,
+    '🟡  Anchor Stores (in Plaza)': layerAnchors,
+    '🔵🔴  Tenants (In Plaza)': layerTenants,
+    '━━━━━━━━━━━━━━': L.layerGroup(),
+    '🔥  High Density Plazas (10+ tenants)': layerHighDensity,
+    '🔹  Lower Density (< 10 tenants)': layerLowDensity
+  };
+ 
+  var countyDivider = false;
+  for (var county in countyLayers) {
+    if (!countyDivider) {
+        overlays['━━━━━━━━━━━━━━ '] = L.layerGroup();
+        countyDivider = true;
+    }
+    overlays['📍 ' + county] = countyLayers[county];
+  }
+ 
+  L.control.layers(null, overlays, {
+    position: 'topright',
+    collapsed: false,
+  }).addTo(map);
+ 
+  var legend = L.control({position: 'bottomright'});
+  legend.onAdd = function() {
+    var div = L.DomUtil.create('div', 'legend');
+    div.innerHTML = '<b>Retail Centers – Plymouth, MN</b><br>'
+      + '<span class="legend-dot" style="background:#e74c3c"></span> Named plaza<br>'
+      + '<span class="legend-dot" style="background:#3498db"></span> Unnamed plaza<br>'
+      + '<span class="legend-dot" style="background:#8e44ad"></span> Plaza center point<br>'
+      + '<span class="legend-dot" style="background:#f39c12"></span> Anchor store (in plaza)<br>'
+      + '<span class="legend-dot" style="background:#27ae60"></span> Standalone store<br>'
+      + '⚓ = anchor &nbsp; 🔥 = 10+ tenants<br>'
+      + '<span style="font-size:11px;color:#666;">Use the Tenants filter (top-left) to isolate specific names.</span>';
+    return div;
+  };
+  legend.addTo(map);
+ 
+  document.getElementById('legendHeader').addEventListener('click', function() {
+    var body = document.getElementById('legendBody');
+    var icon = document.getElementById('legendToggleIcon');
+    var collapsed = (body.style.display === 'none');
+    body.style.display = collapsed ? 'block' : 'none';
+    icon.textContent = collapsed ? '▾' : '▸';
+  });
+</script>
+</body>
+</html>
