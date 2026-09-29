@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8' />
+  <title>Retail Centers – Lakeville, MN</title>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' />
+  <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
+  <style>
+    body { margin: 0; font-family: sans-serif; }
+    #map { height: 100vh; width: 100%; }
+    .legend {
+      background: white; padding: 10px 14px; border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); line-height: 1.8;
+      font-size: 13px;
+    }
+    .legend-dot { display: inline-block; width: 12px; height: 12px;
+                   border-radius: 50%; margin-right: 6px; }
+    .tenant-filter { font-size: 13px; }
+    .tenant-toggle-btn {
+      background: white; border: 2px solid rgba(0,0,0,0.2); border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); padding: 8px 12px; font-size: 13px;
+      font-family: sans-serif; cursor: pointer; min-width: 180px; text-align: left;
+    }
+    .tenant-toggle-btn:hover { background: #f4f4f4; }
+    .tenant-panel {
+      background: white; border-radius: 6px; box-shadow: 0 1px 5px rgba(0,0,0,0.3);
+      margin-top: 4px; padding: 10px; width: 260px; max-height: 380px;
+      display: flex; flex-direction: column;
+    }
+    .tenant-search {
+      width: 100%; box-sizing: border-box; padding: 6px 8px; margin-bottom: 8px;
+      border: 1px solid #ccc; border-radius: 4px; font-size: 13px;
+    }
+    .tenant-actions { display: flex; gap: 6px; margin-bottom: 8px; }
+    .tenant-actions button {
+      flex: 1; padding: 5px 6px; font-size: 12px; border: 1px solid #ccc;
+      border-radius: 4px; background: #f7f7f7; cursor: pointer;
+    }
+    .tenant-actions button:hover { background: #eaeaea; }
+    .tenant-list { overflow-y: auto; max-height: 260px; border-top: 1px solid #eee; padding-top: 6px; }
+    .tenant-item {
+      display: block; font-size: 12.5px; padding: 3px 2px; cursor: pointer;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .tenant-item:hover { background: #f4f4f4; }
+    .tenant-item input { margin-right: 6px; }
+  </style>
+</head>
+<body>
+<div id='map'></div>
+<script>
+  var map = L.map('map').setView([44.72046485374033, -93.23556043338107], 12);
+ 
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(map);
+ 
+  var plazasData = [];
+  var storesData = [];
+ 
+  var layerMultiAnchor = L.layerGroup().addTo(map);
+  var layerSingleAnchor = L.layerGroup().addTo(map);
+  var layerPlazaCenters = L.layerGroup().addTo(map);
+  var layerAnchors = L.layerGroup().addTo(map);
+  var layerTenants = L.layerGroup().addTo(map);
+  var layerStandalone = L.layerGroup().addTo(map);
+  var layerHighDensity = L.layerGroup().addTo(map);
+  var layerLowDensity = L.layerGroup().addTo(map);
+  var countyLayers = {};
+ 
+  function getOrCreateCountyLayer(county) {
+    if (!county || county === '-') county = 'Unknown';
+    if (!countyLayers[county]) {
+        countyLayers[county] = L.layerGroup().addTo(map);
+    }
+    return countyLayers[county];
+  }
+ 
+  function addPlaza(lat, lng, radius_m, plazaId, name, address, county, city, numAnchors, anchors, numTenants, tenants, color, leasingHtml) {
+    var popup = '<b>' + name + '</b><br>'
+      + (address !== '-' ? address + '<br>' : '')
+      + city + (county !== '-' ? ', ' + county + ' County' : '') + '<br>'
+      + leasingHtml
+      + '<br><b>' + numAnchors + ' anchor(s): </b><br>'
+      + anchors.split(', ').join('<br>')
+      + '<br><br><b>' + numTenants + ' other tenant(s):</b><br>'
+      + tenants.split(', ').join('<br>');
+    
+    var circle = L.circle([lat, lng], {
+      radius: radius_m,
+      color: color,
+      fillColor: color,
+      fillOpacity: 0.08,
+      weight: 2
+    });
+    if (numAnchors > 1) {
+      layerMultiAnchor.addLayer(circle);
+    } else {
+      layerSingleAnchor.addLayer(circle);
+    }
+ 
+    var center = L.circleMarker([lat,lng], {
+        radius: 9,
+        color: '#fff',
+        fillColor: '#8e44ad',
+        fillOpacity: 1,
+        weight: 2
+    }).bindPopup(popup, {maxHeight: 320, autoPanPadding: [20, 20]}).bindTooltip(name, {permanent: false, direction: 'top'});
+ 
+    var cleanCounty = (!county || county === '-') ? 'Unknown' : county;
+    getOrCreateCountyLayer(cleanCounty);
+ 
+    plazasData.push({
+        circle: circle,
+        center: center,
+        id: plazaId,
+        name: name,
+        county: cleanCounty,
+        numAnchors: numAnchors,
+        numTenants: numTenants
+    });
+  }
+ 
+  function addStore(lat, lng, name, address, color, plazaId, plaza, isAnchor) {
+    var size = isAnchor ? 11 : 9;
+    var icon = L.divIcon({
+      className: '',
+      html: '<div style="position:absolute;width:' + size + 'px;height:' + size + 'px;'
+          + 'border-radius:50%;background:' + color + ';border:2px solid white;'
+          + 'box-shadow:0 1px 3px rgba(0,0,0,0.4);top:50%;left:50%;'
+          + 'transform:translate(-50%,-50%)'
+          + (isAnchor ? ';outline:2px solid rgba(0,0,0,0.25)' : '')
+          + '"></div>',
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2]
+    });
+    var marker = L.marker([lat, lng], {icon: icon})
+      .bindPopup('<b>' + name + '</b>' + (isAnchor ? '⚓' : '')+ '<br>' 
+        + '<i>' + plaza + '</i><br>'
+        + address)
+      .bindTooltip(name, {direction: 'top'})
+    
+    storesData.push({
+      marker: marker,
+      plazaId: plazaId,
+      plazaLabel: plaza,
+      isAnchor: isAnchor,
+      name: name
+    });
+  }
+ 
+  function tenantFilterMatchesPlaza(plazaId) {
+    // Fast path: nothing deselected, every plaza passes.
+    if (selectedNames.size >= allTenantNames.length) return true;
+    var names = plazaNameIndex[plazaId];
+    if (!names) return false;
+    for (var n of names) {
+      if (selectedNames.has(n)) return true;
+    }
+    return false;
+  }
+ 
+  function updateVisibility() {
+    plazasData.forEach(function(p) {
+      var anchorMatch = (p.numAnchors > 1) ? map.hasLayer(layerMultiAnchor): map.hasLayer(layerSingleAnchor);
+      var densityMatch = (p.numTenants >= 10) ? map.hasLayer(layerHighDensity) : map.hasLayer(layerLowDensity);
+      var countyLayer = countyLayers[p.county];
+      var countyMatch = countyLayer ? map.hasLayer(countyLayer) : true;
+      var tenantMatch = tenantFilterMatchesPlaza(p.id);
+ 
+      var plazaVisible = anchorMatch && densityMatch && countyMatch && tenantMatch;
+      p.isActive = plazaVisible;
+ 
+      if (plazaVisible) {
+        // FIX 2: Changed map.has() to map.hasLayer()
+        if (!map.hasLayer(p.circle)) p.circle.addTo(map);
+      } else {
+        if (map.hasLayer(p.circle)) map.removeLayer(p.circle);
+      }
+ 
+      if (plazaVisible && map.hasLayer(layerPlazaCenters)) {
+        if (!map.hasLayer(p.center)) p.center.addTo(map);
+      } else {
+        if (map.hasLayer(p.center)) map.removeLayer(p.center);
+      }
+    });
+      
+    storesData.forEach(function(s) {
+        var storeVisible = false;
+        var nameMatch = selectedNames.has(s.name);
+ 
+        if (s.plazaId === -1) {
+            // Standalone store
+            storeVisible = map.hasLayer(layerStandalone) && nameMatch;
+ 
+        } else {
+            var parentPlaza = plazasData.find(function(p) {
+                return p.id === s.plazaId;
+            });
+ 
+            if (parentPlaza && parentPlaza.isActive) {
+                storeVisible = (s.isAnchor
+                    ? map.hasLayer(layerAnchors)
+                    : map.hasLayer(layerTenants)) && nameMatch;
+            }
+        }
+ 
+        if (storeVisible) {
+            if (!map.hasLayer(s.marker))
+                s.marker.addTo(map);
+        } else {
+            if (map.hasLayer(s.marker))
+                map.removeLayer(s.marker);
+        }
+    });
+  }
+ 
+  addPlaza(44.74761496818182, -93.28873835303031, 611.9, 0, 'Burnsville Center', '1178 Burnsville Center Burnsville', 'Dakota County', 'Burnsville', 9, 'Aldi, Costco, Dick\'s Sporting Goods, JCPenney, Kohl\'s, Macy\'s, Petco, Target, Walgreens', 57, '2nd Wind Exercise Equipment, ABC Zone, Applebee\'s, Barnes & Noble, Bassett Furnature, Burnsville Center, Cabana Tan, Chick-fil-A, Chili\'s, Chipotle, Chuck E. Cheese, Clover Cleaners, DSW, Dolphin Pool & Spa, Enterprise, Flooring Expo by Carpet King, GameStop, Games by James, Godfather\'s Pizza, Gordman\'s, Greg\'s Tailors, Harmon Auto Glass, Honest-1 Auto Care, Interstate Battery, Kirkland Furnature, Leeann Chin, Little Caesars, MGM Liquors, Men\'s Wearhouse, Michaels, Midas, Minnesota Pro Paintball, Music Go Round, Noodles & Company, OfficeMax, Orangetheory Fitness, Panera Bread, Papa Murphy\'s, Pawn America, Play It Again Sports, Pro Cuts, SalonCentric, Schueler Shoes, Sleep Number, Slumberland, Smashburger, Starbucks, T-Mobile, The Dollar Store, The Great Frame Up, The Hearing Shoppe, Toy Zone, U.S. Bank, Ulta Beauty, Verizon, Wedding Day Diamonds, Wells Fargo', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.693010967647055, -93.28337509411764, 289.7, 1, 'Unnamed Retail Center', '17681 Kenwood Trail Lakeville', 'Dakota County', 'Lakeville', 2, 'Dollar Tree, Walgreens', 32, 'AT&T, Advanced Eyecare Professionals, Anytime Fitness, Bank of America, Body & Sol Adeva, Cabana Tan, Chipotle, Cub Foods, Domino\'s, Fanci Nails, Fast Frame, FedEx Office, GNC, Great Clips, Jimmy John\'s, Lakevile Pipes & Cigars, Lakeville Family Eyecare, Lakeville Vape & Tobacco, Long John Silver\'s, Lynn\'s Auto Body, Papa Johns pizza, Papa Murphy\'s, Rendezvous Hair Studio, Speedway, Starbucks, T-Mobile, Taco Bell, The Travel Authority, U Nails, Vape Genius, Wendy\'s, Wildflower Quilt Co.', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.737729816666665, -93.25860249166668, 289.7, 2, 'Unnamed Retail Center', '1100 County Road 42 East Burnsville', 'Dakota County', 'Burnsville', 1, 'Walgreens', 23, 'American Family Insurance, Beau Monde Salon, Burnsville Family Eye Care, Caribou Coffee, Clothes Mentor, Davanni\'s Pizza & Hot Hoagies, Fantastic Sams, Great Harvest Bread Company, Hollywood Hair, Keep In Touch Massage Therapy, Laundromat, Once Upon a Child, Perfect Cleaners, Plato\'s Closet, Precision Tailoring, Professional Massage Center, Snap Fitness, Speedway, Stavrakis Jewelers, Subway, Tabacco, Unwind Yarn Shop, bb Nails', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.730121491304345, -93.21481971304347, 375.7, 3, 'Unnamed Retail Center', '15150 Cedar Avenue Apple Valley', 'Dakota County', 'Apple Valley', 2, 'Target, Walgreens', 21, '9Round, Apple Valley Ford, Apple Valley Post Office, Banfield Pet Hospital, Cold Stone Creamery, Cole\'s Salon, Crumbl Cookies, GNC, Mattress Firm, Milan Nails Spa, O\'Reilly Auto Parts, OfficeMax, Panera Bread, Papa Murphy\'s, Pilgrim Dry Cleaners, Speedway, Speedy Wash, Sport Clips, Top Star Tobacco & ECig, U.S. Bank, Wendy\'s', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.64862107777778, -93.24284906666668, 289.7, 4, 'Unnamed Retail Center', '20810 208th Street West Lakeville', 'Dakota County', 'Lakeville', 1, 'Ace Hardware Store', 17, 'AccuTac Arms, Cornerstone Copy Center, Flora Etcetera, Frenchies Modern Nails, Idioma Coffee Roastery + Lighthouse Cafe, Kaleidoscope, Lakeville Tire & Auto Service, Line-X Coatings, Midwest Saddleseat Consignment, Pearl Light Nails, Rapid Cash Plus, Sacks in the City, TR\'s Lakeville Barbershop, Tailor on Man, The Lakeville Barbers, Wells Fargo, World of Games', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.73012523333333, -93.21917069333334, 354.4, 5, 'Unnamed Retail Center', '7575 153rd Street West Apple Valley', 'Dakota County', 'Apple Valley', 3, 'ALDI, Burlington, Petco', 12, 'Arby\'s, Chick-fil-A, Chipotle, Five Below, Half Price Books, Hawaii Poke Bowl, Leeann Chin, Perkins, Popeyes, Sally Beauty, Subway, White Castle', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.73095837142857, -93.13366422142857, 289.7, 6, 'Unnamed Retail Center', '15066 Chippendale Avenue Rosemount', 'Dakota County', 'Rosemount', 1, 'Dollar Tree', 13, 'Arby\'s, Burger King, Chipotle, DQ Grill & Chill, Holiday, Jersey Mike\'s Subs, McDonald\'s, Noodles & Company, O\'Reilly Auto Parts, Rosemount Liquor, Sport Clips, Taco John\'s, Valvoline', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.74508264166667, -93.27943025, 289.7, 7, 'Burnsville Crossings', '14201 Nicollet Avenue South', 'Dakota County', 'Burnsville', 1, 'Office Depot', 11, 'Arby\'s, BMO, BP, Burger King, Days Inn Burnsville, Great Lakes Coin, Holiday, McDonald\'s, Nicollet Inn, Taco Bell, Taco John\'s', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.733695690909094, -93.22270144545455, 300.9, 8, 'Unnamed Retail Center', '7834 150th Street West Apple Valley', 'Dakota County', 'Apple Valley', 2, 'Ace Hardware, Walmart Supercenter', 9, 'Bruegger\'s Bagels, Coldwell Banker, Denny\'s, McDonald\'s, Panda Express, Subway, Taco Bell, The Cabinet Store, Valley Bike & Ski', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.74682172, -93.30578158, 289.7, 9, 'Unnamed Retail Center', '2012 County Road 42 West Burnsville', 'Dakota County', 'Burnsville', 1, 'Lucky\'s 13 Pub', 9, 'Auntie Anne\'s, Discount Tire, IHOP, Jamba, KFC, Pizza Hut, Sherwin-Williams, Speedway, Wendy\'s', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.73059191, -93.14435562, 289.7, 10, 'Unnamed Retail Center', '15034 Shannon Parkway Rosemount', 'Dakota County', 'Rosemount', 1, 'Walgreens', 9, 'Caribou Coffee, Chuck and Don\'s, Cub Foods, Green Leaf Vape & Tobacco, Impress Nails, KinderCare, Lakes Tailor and Cleaners, Papa Murphy\'s, Subway', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.747686825, -93.2809031, 289.7, 11, 'Unnamed Retail Center', '155 Nicollet Boulevard West Burnsville', 'Dakota County', 'Burnsville', 1, 'The Home Depot', 7, 'Cole\'s Salon, Home Choice, Honey Baked Ham, LifeWay Christian Bookstore, Old Country Buffet, Total Hockey, Turn Style', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.744578975, -93.1757996125, 289.7, 12, 'Unnamed Retail Center', '14020 Pilot Knob Road Apple Valley', 'Dakota County', 'Apple Valley', 1, 'Walgreens', 7, 'DaVita Dialysis, Domino\'s, PDQ, Shell, Snack Shack, Speedway, Subway', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.7339327625, -93.203655275, 289.7, 13, 'Unnamed Retail Center', '14926 Florence Trail Apple Valley', 'Dakota County', 'Apple Valley', 3, 'Kohl\'s, Nordstrom Rack, Sam\'s Club', 5, 'Famous Footwear, Fresh Thyme, Kwik Trip, Michaels, Ulta Beauty', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.7160168625, -93.2191721125, 289.7, 14, 'Unnamed Retail Center', '7560 160th Street West Lakeville', 'Dakota County', 'Lakeville', 1, 'Walgreens', 7, 'Focused Eye Care, Northland Collison, Penzeys Spices, Rose Yarn Co., Salon Sidera, Speedway, Wells Fargo', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.746179749999996, -93.3313781125, 289.7, 15, 'Unnamed Retail Center', '3965 Egan Drive Savage', 'Dakota County', 'Savage', 1, 'Walgreens', 7, 'Autozone, DQ Grill & Chill, McDonald\'s, Sonic, Subway, Taco John\'s, Von Hanson\'s', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.73262606666666, -93.12845656666667, 289.7, 16, 'Unnamed Retail Center', '14995 Robert Trail South Rosemount', 'Dakota County', 'Rosemount', 1, 'ALDI', 5, 'Domino\'s, Master Transmission, Sprint, Starbucks, Sunbelt Rentals', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.723240849999996, -93.17732565, 289.7, 17, 'Unnamed Retail Center', '15560 Pilot Knob Road Apple Valley', 'Dakota County', 'Apple Valley', 1, 'Target', 5, 'Caribou Coffee, Chase, Chipotle, Lund\'s & Byerly\'s, Starbucks', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.7466297, -93.30003786, 289.7, 18, 'Unnamed Retail Center', '1600 County Road 42 West', 'Dakota County', 'Burnsville', 1, 'Best Buy - Burnsville', 4, 'Bruegger\'s Bagels, Cub Foods, Olive Garden, Raising Cane\'s', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.73079275, -93.2013656, 289.7, 19, 'Unnamed Retail Center', '15101 Flagstaff Avenue Apple Valley', 'Dakota County', 'Apple Valley', 1, 'The Home Depot', 3, 'DK Nails, Public Storage, T-Mobile', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.64800755, -93.29927624999999, 289.7, 20, 'Unnamed Retail Center', '11542 207th Street West Lakeville', 'Dakota County', 'Lakeville', 1, 'ALDI', 3, 'Goodwill, Speedway, Taco Bell', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.7263697, -93.21396503333334, 289.7, 21, 'Unnamed Retail Center', '7320 153rd Street West Apple Valley', 'Dakota County', 'Apple Valley', 1, 'Dollar Tree', 2, 'Cub Foods, Goodwill', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.73656593333334, -93.12673693333333, 289.7, 22, 'Unnamed Retail Center', '14635 South Robert Trail Rosemount', 'Dakota County', 'Rosemount', 1, 'Pellicci Ace Hardware', 2, 'Culver\'s, Minnoco', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.682737233333334, -93.29128513333335, 289.7, 23, 'Unnamed Retail Center', '18275 Kenrick Avenue Lakeville', 'Dakota County', 'Lakeville', 1, 'Target', 2, 'Panda Express, Raising Cane\'s', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.6920963, -93.28611154999999, 289.7, 24, 'Unnamed Retail Center', '-', 'Dakota County', '-', 1, 'Ace Hardware', 1, 'ReStored Thrift Store', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(44.65025105, -93.29561394999999, 289.7, 25, 'Unnamed Retail Center', '20710 Keokuk Avenue Lakeville', 'Dakota County', 'Lakeville', 1, 'Walmart Supercenter', 1, 'Lakeville Collision Center', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+  addStore(44.7324247, -93.2235998, 'Denny\'s', '7805 150th Street West Apple Valley', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.7311182, -93.2132513, 'U.S. Bank', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.7309122, -93.2199576, 'Half Price Books', '7600 150th Street West Apple Valley', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.7459636, -93.1749613, 'Speedway', '14050 Pilot Knob Road Apple Valley', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(44.731429, -93.219412, 'Leeann Chin', '7632 150th Street West Apple Valley', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.7291422, -93.219592, 'Burlington', '7575 153rd Street West Apple Valley', '#f39c12', 5, 'Unnamed Retail Center', true);
+addStore(44.73038, -93.219575, 'Petco', '7590 West 150th Street Apple Valley', '#f39c12', 5, 'Unnamed Retail Center', true);
+addStore(44.73113, -93.2193858, 'Chipotle', '7638 150th Street West Apple Valley', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.7324667, -93.2217345, 'Taco Bell', '7715 150th Street West Apple Valley', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.6922692, -93.2812508, 'Cub Foods', 'Kenwood Trail Court Lakeville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.737932, -93.258711, 'Caribou Coffee', '1100 County Road 42 East Burnsville', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.730894, -93.2197735, 'Subway', '7592 West 150th Street Apple Valley', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.7307073, -93.2184109, 'White Castle', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.7305129, -93.2167265, 'Wendy\'s', '15100 Cedar Avenue Apple Valley', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.7475376, -93.2886549, 'Chipotle', '728 County Road 42 West Burnsville', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.747318, -93.3051467, 'Lucky\'s 13 Pub', '-', '#f39c12', 9, 'Unnamed Retail Center', true);
+addStore(44.7433019, -93.1760654, 'PDQ', '-', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(44.7300264, -93.1446683, 'Subway', '15075 Crestone Avenue West Rosemount', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.7446104, -93.2878079, 'Applebee\'s', '2152 Burnsville Center', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.747347, -93.292719, 'MGM Liquors', 'Burnsville', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.748426, -93.290731, 'T-Mobile', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.7484878, -93.290975, 'Godfather\'s Pizza', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.74856, -93.290545, 'Ulta Beauty', '830 County Road 42 West Burnsville', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.747461, -93.2888469, 'Pro Cuts', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.727993, -93.214358, 'OfficeMax', 'Apple Valley', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.7265585, -93.216046, 'Cub Foods', 'Apple Valley', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(44.73132, -93.211938, 'Speedway', 'Apple Valley', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.732629, -93.127883, 'Starbucks', '14903 South Robert Trail Rosemount', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(44.7328278, -93.1288856, 'Sprint', '-', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(44.7477325, -93.2946676, 'The Hearing Shoppe', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.7477686, -93.2947206, 'Little Caesars', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.7478863, -93.2950043, 'Clover Cleaners', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.7478453, -93.294907, 'Greg\'s Tailors', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.7479448, -93.3042696, 'Sherwin-Williams', 'Burnsville', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(44.7480927, -93.3048444, 'Pizza Hut', '2012 County Road 42 West Burnsville', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(44.744536, -93.290017, 'Chuck E. Cheese', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.74563, -93.289733, 'Verizon', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.745774, -93.289736, 'Schueler Shoes', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.746924, -93.29237, 'Cabana Tan', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.7298785, -93.1325131, 'Taco John\'s', '15085 Canada Avenue', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.746943, -93.292503, 'Papa Murphy\'s', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.746939, -93.292674, 'The Great Frame Up', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.73829, -93.2596503, 'bb Nails', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.738337, -93.259845, 'Laundromat', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.738368, -93.259946, 'Hollywood Hair', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.738402, -93.260131, 'Snap Fitness', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.73853, -93.260562, 'Burnsville Family Eye Care', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.738482, -93.260392, 'Tabacco', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.738029, -93.259152, 'Once Upon a Child', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.738019, -93.259055, 'Fantastic Sams', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.737997, -93.258981, 'Subway', '1100 County Road 42 Burnsville', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.737977, -93.258905, 'Keep In Touch Massage Therapy', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.737936, -93.258769, 'Great Harvest Bread Company', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.73813, -93.257488, 'Plato\'s Closet', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.737923, -93.257491, 'Perfect Cleaners', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.737786, -93.257502, 'Beau Monde Salon', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.737562, -93.257487, 'Unwind Yarn Shop', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.737507, -93.2575, 'American Family Insurance', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.737406, -93.25749, 'Professional Massage Center', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.737347, -93.257502, 'Stavrakis Jewelers', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.737242, -93.257505, 'Clothes Mentor', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.737145, -93.257498, 'Precision Tailoring', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.73685, -93.257455, 'Davanni\'s Pizza & Hot Hoagies', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.74843, -93.282875, 'Midas', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.748598, -93.283009, 'Harmon Auto Glass', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.74904, -93.283235, '2nd Wind Exercise Equipment', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.749346, -93.283396, 'Music Go Round', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.749559, -93.283504, 'GameStop', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.749697, -93.283579, 'Dolphin Pool & Spa', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.749758, -93.283616, 'SalonCentric', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.749865, -93.283681, 'Toy Zone', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.749956, -93.283719, 'ABC Zone', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.750078, -93.283778, 'Minnesota Pro Paintball', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.750475, -93.28403, 'Pawn America', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.750658, -93.284052, 'Play It Again Sports', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.731222, -93.14356, 'Caribou Coffee', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.7326492, -93.2017279, 'Kwik Trip', '-', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(44.744699, -93.2896115, 'Gordman\'s', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.748785, -93.28892, 'Starbucks', '810 County Road 42W Burnsville', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.7450791, -93.2887183, 'Kirkland Furnature', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.7450782, -93.2884099, 'Panera Bread', '901 County Road 42 West Burnsville', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.7450786, -93.2885413, 'Noodles & Company', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.7263485, -93.2135109, 'Dollar Tree', '-', '#f39c12', 21, 'Unnamed Retail Center', true);
+addStore(44.7158625, -93.2186627, 'Focused Eye Care', '7598 160th Street West Lakeville', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(44.7160509, -93.2209556, 'Penzeys Spices', '7626 160th Street West Lakeville', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(44.693544, -93.282126, 'Great Clips', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.6933105, -93.2818864, 'Cabana Tan', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.6931676, -93.2817753, 'Fast Frame', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.6934231, -93.2819462, 'Lakeville Family Eyecare', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.6930508, -93.2816954, 'U Nails', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.6937041, -93.2823702, 'Body & Sol Adeva', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.6934561, -93.2820025, 'Papa Johns pizza', '17668 Kenwood Trail', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.6928685, -93.281573, 'Dollar Tree', '-', '#f39c12', 1, 'Unnamed Retail Center', true);
+addStore(44.6932507, -93.2818338, 'The Travel Authority', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.6936556, -93.2823015, 'Lakevile Pipes & Cigars', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.7324917, -93.2224889, 'Bruegger\'s Bagels', '7745 150th Street West Apple Valley', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.7324138, -93.2222636, 'Panda Express', '7735 150th Street West Apple Valley', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.7308448, -93.2028166, 'Public Storage', '15075 Foliage Avenue Apple Valley', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(44.7442583, -93.2896962, 'Games by James', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.7459968, -93.3298286, 'Subway', '3965 Egan Drive Savage', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(44.7459144, -93.3341195, 'Von Hanson\'s', '-', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(44.7457529, -93.3002273, 'Bruegger\'s Bagels', '-', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(44.737482, -93.127151, 'Pellicci Ace Hardware', '14635 South Robert Trail Rosemount', '#f39c12', 22, 'Unnamed Retail Center', true);
+addStore(44.7309696, -93.1435716, 'Chuck and Don\'s', '3852 150th Street West Rosemount', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.7306352, -93.1359133, 'O\'Reilly Auto Parts', '15070 Chippendale Avenue West Rosemount', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.7303299, -93.1424081, 'Cub Foods', '3784 County Road 42 Rosemount', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.730734, -93.2196537, 'Sally Beauty', '7586 150th Street West Apple Valley', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.7153582, -93.2186456, 'Wells Fargo', '-', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(44.6495819, -93.2423928, 'TR\'s Lakeville Barbershop', '20908 Holyoke Avenue Lakeville', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.6486141, -93.2425352, 'Cornerstone Copy Center', '20776 Holyoke Avenue Lakeville', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.6485471, -93.242534, 'Flora Etcetera', '20780 Holyoke Avenue Lakeville', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.6486313, -93.2430223, 'Kaleidoscope', '20779 Holyoke Avenue Lakeville', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.6470038, -93.242416, 'The Lakeville Barbers', '20908 Holyoke Avenue Lakeville', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.6492513, -93.2425624, 'Midwest Saddleseat Consignment', '20730 Holyoke Avenue Lakeville', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.6495534, -93.242556, 'Pearl Light Nails', '20700 Holyoke Avenue Lakeville', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.6470053, -93.2425773, 'Rapid Cash Plus', '20908 Holyoke Avenue Lakeville', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.6489101, -93.2430462, 'Sacks in the City', '20757 Holyoke Avenue Lakeville', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.6487633, -93.243027, 'AccuTac Arms', '20769 Holyoke Avenue Lakeville', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.6493532, -93.2423437, 'Tailor on Man', '20730 Holyoke Avenue Lakeville', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.649114, -93.2422145, 'Frenchies Modern Nails', '20730 Holyoke Avenue Lakeville', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.7440057, -93.2889854, 'Burnsville Center', '1178 Burnsville Center Burnsville', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.6478942, -93.2424257, 'Ace Hardware Store', '20810 208th Street West Lakeville', '#f39c12', 4, 'Unnamed Retail Center', true);
+addStore(44.6929898, -93.285276, 'Papa Murphy\'s', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.6929191, -93.2852639, 'Jimmy John\'s', '17681 Kenwood Trail Lakeville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.6928404, -93.2852932, 'Rendezvous Hair Studio', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.6925335, -93.285088, 'Fanci Nails', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.6924989, -93.2849832, 'GNC', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.6924297, -93.2848738, 'Vape Genius', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.6937378, -93.2822297, 'Lakeville Vape & Tobacco', '17648 Kenwood Trail Lakeville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.7302802, -93.1432777, 'Green Leaf Vape & Tobacco', '3816 150th Street West Rosemount', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.7305242, -93.1339987, 'Dollar Tree', '-', '#f39c12', 6, 'Unnamed Retail Center', true);
+addStore(44.7313165, -93.1332225, 'Chipotle', '3390 150th Street West Rosemount', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.7312135, -93.1331144, 'Arby\'s', '3380 150th Street West Rosemount', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.691829, -93.2826924, 'Taco Bell', '17750 Kenwood Trail Lakeville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.6918457, -93.2825561, 'Long John Silver\'s', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.7313481, -93.1325481, 'Sport Clips', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.7313525, -93.1324311, 'Jersey Mike\'s Subs', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.7310387, -93.1449134, 'Lakes Tailor and Cleaners', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.7308482, -93.1449288, 'Papa Murphy\'s', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.7301059, -93.1447404, 'Impress Nails', '-', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.7313677, -93.1326591, 'Noodles & Company', '-', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.7336426, -93.222264, 'Valley Bike & Ski', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.7458031, -93.1749583, 'Shell', '14050 Pilot Knob Road Apple Valley', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(44.7448468, -93.1761528, 'DaVita Dialysis', '-', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(44.7439044, -93.1760928, 'Subway', '5480 141st Street West Apple Valley', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(44.7437704, -93.1761194, 'Domino\'s', '5480 141st Street West Apple Valley', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(44.7285244, -93.2197262, 'ALDI', '7589 153rd Street West Apple Valley', '#f39c12', 5, 'Unnamed Retail Center', true);
+addStore(44.7330686, -93.1288332, 'Domino\'s', '14875 South Robert Trail Rosemount', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(44.7457234, -93.1760128, 'Walgreens', '14020 Pilot Knob Road Apple Valley', '#f39c12', 12, 'Unnamed Retail Center', true);
+addStore(44.7309147, -93.2141263, 'Crumbl Cookies', '15052 Gleason Path Apple Valley', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.7312095, -93.2141216, 'Papa Murphy\'s', '15052 Gleason Path Apple Valley', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.7308979, -93.2151307, 'Banfield Pet Hospital', '15050 Cedar Avenue Apple Valley', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.7313468, -93.2152957, '9Round', '15050 Cedar Avenue Apple Valley', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.7314138, -93.2154513, 'Top Star Tobacco & ECig', '15050 Cedar Avenue Apple Valley', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.7314105, -93.2158474, 'GNC', '15050 Cedar Avenue Apple Valley', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.7314105, -93.2159653, 'Pilgrim Dry Cleaners', '15050 Cedar Avenue Apple Valley', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.7314071, -93.216253, 'Cole\'s Salon', '15050 Cedar Avenue South Apple Valley', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.7305406, -93.2170369, 'Cold Stone Creamery', '15100 Cedar Avenue Apple Valley', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.7305347, -93.2171698, 'Mattress Firm', '15100 Cedar Avenue Apple Valley', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.7324876, -93.2044612, 'Famous Footwear', '-', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(44.7324935, -93.2031964, 'Ulta Beauty', '14929 Florence Trail Apple Valley', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(44.7339337, -93.2249957, 'Subway', '7835 150th Street West Apple Valley', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.6940349, -93.285789, 'Chipotle', '17599 Kenwood Trail Lakeville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.6941008, -93.2857892, 'Bank of America', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.6941566, -93.2857905, 'AT&T', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.7486744, -93.2874092, 'Smashburger', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.6911324, -93.2836707, 'Domino\'s', '17823 Kenwood Trail Lakeville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.6912783, -93.2837611, 'Anytime Fitness', '17811 Kenwood Trail Lakeville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.6914098, -93.2838536, 'Advanced Eyecare Professionals', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.691636, -93.2839797, 'Wildflower Quilt Co.', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.7355706, -93.2206999, 'The Cabinet Store', '7611 147th Street West Apple Valley', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.6924963, -93.2832746, 'Starbucks', '17740 Kenwood Trail Argonne Village', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.6925034, -93.2831788, 'T-Mobile', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.6925419, -93.2831041, 'FedEx Office', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.7437555, -93.2801171, 'Great Lakes Coin', '14321 Nicollet Court', '#e74c3c', 7, 'Burnsville Crossings', false);
+addStore(44.7237465, -93.1779861, 'Caribou Coffee', '-', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(44.6493339, -93.2987747, 'Taco Bell', '-', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(44.7159979, -93.2209506, 'Salon Sidera', '7624 160th Street West Lakeville', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(44.7308928, -93.2195796, 'Hawaii Poke Bowl', '7594 150th Street West Apple Valley', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.7294566, -93.2185214, 'Popeyes', '7515 Cedar Avenue', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.7299774, -93.2195656, 'Five Below', '15109 Cedar Avenue', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.7472404, -93.2926927, 'Orangetheory Fitness', '1008 County Road 42 West', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.7469734, -93.2923521, 'Flooring Expo by Carpet King', '1000 County Road 42 West', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.7476752, -93.292656, 'Honest-1 Auto Care', '1014 County Road 42 West', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.6927617, -93.2868104, 'ReStored Thrift Store', '17630 Juniper Path', '#3498db', 24, 'Unnamed Retail Center', false);
+addStore(44.6486978, -93.2432867, 'Idioma Coffee Roastery + Lighthouse Cafe', '20769 Holyoke Avenue Lakeville', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.7276122, -93.2155944, 'Sport Clips', '7394 153rd Street West Apple Valley', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.7275951, -93.2154951, 'Milan Nails Spa', '7394 153rd Street West Apple Valley', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.745888, -93.3079731, 'Jamba', '-', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(44.7458282, -93.3079755, 'Auntie Anne\'s', '-', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(44.7220829, -93.1775686, 'Starbucks', '-', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(44.7469287, -93.3320977, 'Autozone', '-', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(44.7313513, -93.2012219, 'DK Nails', '-', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(44.731369, -93.2015088, 'T-Mobile', '-', '#3498db', 19, 'Unnamed Retail Center', false);
+addStore(44.7156371, -93.2207922, 'Rose Yarn Co.', '7608 160th Street West', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(44.7482521, -93.2996174, 'Best Buy - Burnsville', '1600 County Road 42 West', '#f39c12', 18, 'Unnamed Retail Center', true);
+addStore(44.6936475, -93.2836077, 'Walgreens', '-', '#f39c12', 1, 'Unnamed Retail Center', true);
+addStore(44.6944142, -93.2832229, 'Wendy\'s', '17610 Kendrick Avenue Lakeville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.6914309, -93.2854127, 'Ace Hardware', '-', '#f39c12', 24, 'Unnamed Retail Center', true);
+addStore(44.7278826, -93.2121419, 'Apple Valley Post Office', '7287 153rd Street West Saint Paul', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.7287844, -93.213938, 'O\'Reilly Auto Parts', '15300 Cedar Avenue Apple Valley', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.7323769, -93.1289642, 'ALDI', '14995 Robert Trail South Rosemount', '#f39c12', 16, 'Unnamed Retail Center', true);
+addStore(44.7346856, -93.2050482, 'Michaels', '14890 Florence Trail Apple Valley', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(44.7348087, -93.2035759, 'Kohl\'s', '14926 Florence Trail Apple Valley', '#f39c12', 13, 'Unnamed Retail Center', true);
+addStore(44.7346699, -93.2055646, 'Fresh Thyme', '14880 Florence Trail Apple Valley', '#3498db', 13, 'Unnamed Retail Center', false);
+addStore(44.7472322, -93.291839, 'Walgreens', '-', '#f39c12', 0, 'Burnsville Center', true);
+addStore(44.7490873, -93.2940659, 'Costco', '14050 Burnhaven Drive Burnsville', '#f39c12', 0, 'Burnsville Center', true);
+addStore(44.7296059, -93.1999151, 'The Home Depot', '15101 Flagstaff Avenue Apple Valley', '#f39c12', 19, 'Unnamed Retail Center', true);
+addStore(44.7343804, -93.2246111, 'Walmart Supercenter', '7834 150th Street West Apple Valley', '#f39c12', 8, 'Unnamed Retail Center', true);
+addStore(44.7308302, -93.212091, 'Speedy Wash', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.7296253, -93.2171015, 'Panera Bread', '15200 Cedar Avenue Apple Valley', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.7286056, -93.2170373, 'Walgreens', 'Apple Valley', '#f39c12', 3, 'Unnamed Retail Center', true);
+addStore(44.7262021, -93.2123382, 'Goodwill', '7320 153rd Street West Apple Valley', '#3498db', 21, 'Unnamed Retail Center', false);
+addStore(44.734687, -93.2223977, 'Ace Hardware', '-', '#f39c12', 8, 'Unnamed Retail Center', true);
+addStore(44.7301116, -93.2110062, 'Apple Valley Ford', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(44.723824, -93.1749385, 'Target', '15560 Pilot Knob Road Apple Valley', '#f39c12', 17, 'Unnamed Retail Center', true);
+addStore(44.7512316, -93.2899479, 'Kohl\'s', '13900 Aldrich Avenue South Burnsville', '#f39c12', 0, 'Burnsville Center', true);
+addStore(44.7460835, -93.2914191, 'Wells Fargo', '925 County Road 42 West', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.745734, -93.2768372, 'Nicollet Inn', '14201 Nicollet Avenue South', '#e74c3c', 7, 'Burnsville Crossings', false);
+addStore(44.7483687, -93.2873528, 'Men\'s Wearhouse', '14063 Aldrich Avenue South', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.7471927, -93.2899982, 'Barnes & Noble', '828 County Road 42 West Burnsville', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.7470885, -93.2910556, 'U.S. Bank', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.7471257, -93.2872402, 'Chili\'s', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.7469294, -93.2856273, 'Interstate Battery', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.743796, -93.2806834, 'Holiday', '-', '#e74c3c', 7, 'Burnsville Crossings', false);
+addStore(44.7473362, -93.3039282, 'KFC', '14150 5 Burnsville', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(44.7471632, -93.3061591, 'IHOP', '2080 42 West Burnsville', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(44.7447883, -93.2889678, 'Dick\'s Sporting Goods', '901 County Road 42 West Burnsville', '#f39c12', 0, 'Burnsville Center', true);
+addStore(44.7438891, -93.2911894, 'Macy\'s', '14251 Burnhaven Drive', '#f39c12', 0, 'Burnsville Center', true);
+addStore(44.7429661, -93.2890791, 'JCPenney', '14301 Burnhaven Drive', '#f39c12', 0, 'Burnsville Center', true);
+addStore(44.7455715, -93.2806858, 'McDonald\'s', '14200 Grand Avenue Burnsville', '#e74c3c', 7, 'Burnsville Crossings', false);
+addStore(44.7463865, -93.2803431, 'BMO', '-', '#e74c3c', 7, 'Burnsville Crossings', false);
+addStore(44.744603, -93.2782942, 'Office Depot', '-', '#f39c12', 7, 'Burnsville Crossings', true);
+addStore(44.7495418, -93.2820041, 'The Home Depot', '155 Nicollet Boulevard West Burnsville', '#f39c12', 11, 'Unnamed Retail Center', true);
+addStore(44.7462852, -93.278792, 'Taco John\'s', '-', '#e74c3c', 7, 'Burnsville Crossings', false);
+addStore(44.7454047, -93.2802015, 'BP', '-', '#e74c3c', 7, 'Burnsville Crossings', false);
+addStore(44.7460777, -93.2798139, 'Arby\'s', '1422 Grand Avenue', '#e74c3c', 7, 'Burnsville Crossings', false);
+addStore(44.7430392, -93.2800231, 'Days Inn Burnsville', '14331 Nicollet Court', '#e74c3c', 7, 'Burnsville Crossings', false);
+addStore(44.7448605, -93.2791797, 'Burger King', '14251 Nicolet Avenue Burnsville', '#e74c3c', 7, 'Burnsville Crossings', false);
+addStore(44.7454779, -93.278192, 'Taco Bell', '14231 Nicollet Avenue Burnsville', '#e74c3c', 7, 'Burnsville Crossings', false);
+addStore(44.7357773, -93.2580146, 'Speedway', '1221 42 East Burnsville', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(44.749245, -93.2873517, 'Leeann Chin', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.7492991, -93.2894246, 'Target', '810 County Road 42 West Burnsville', '#f39c12', 0, 'Burnsville Center', true);
+addStore(44.7513945, -93.2870793, 'Michaels', '13901 Aldrich Avenue South Burnsville', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.7486633, -93.2914782, 'Slumberland', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.7474313, -93.2811119, 'Old Country Buffet', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(44.7474891, -93.2807755, 'Turn Style', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(44.747483, -93.2801053, 'Cole\'s Salon', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(44.747514, -93.279757, 'LifeWay Christian Bookstore', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(44.7473382, -93.2813501, 'Home Choice', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(44.7472209, -93.2816153, 'Total Hockey', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(44.7474763, -93.2805056, 'Honey Baked Ham', '-', '#3498db', 11, 'Unnamed Retail Center', false);
+addStore(44.7470369, -93.2850098, 'Enterprise', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.7470323, -93.2864798, 'Wedding Day Diamonds', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.7480195, -93.2858681, 'Bassett Furnature', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.7477687, -93.2861438, 'OfficeMax', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.7483445, -93.2857733, 'The Dollar Store', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.7486289, -93.2855736, 'Petco', '14051 Aldrich Avenue South Burnsville', '#f39c12', 0, 'Burnsville Center', true);
+addStore(44.7470303, -93.2862707, 'Sleep Number', '-', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.6843679, -93.2912932, 'Target', '18275 Kenrick Avenue Lakeville', '#f39c12', 23, 'Unnamed Retail Center', true);
+addStore(44.6946839, -93.284446, 'Speedway', '17546 Kenrick Avenue Lakeville', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.7167507, -93.2186643, 'Walgreens', '7560 160th Street West Lakeville', '#f39c12', 14, 'Unnamed Retail Center', true);
+addStore(44.7154666, -93.218323, 'Speedway', '16161 Cedar Avenue Lakeville', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(44.7365413, -93.2594279, 'Walgreens', '14700 Lac Lavon Drive', '#f39c12', 2, 'Unnamed Retail Center', true);
+addStore(44.6504003, -93.2971104, 'Walmart Supercenter', '20710 Keokuk Avenue Lakeville', '#f39c12', 25, 'Unnamed Retail Center', true);
+addStore(44.7357888, -93.2236539, 'Coldwell Banker', '-', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.7457977, -93.2987983, 'Olive Garden', '1451 County Road 42 West Burnsville', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(44.7458245, -93.332154, 'Walgreens', '-', '#f39c12', 15, 'Unnamed Retail Center', true);
+addStore(44.7470407, -93.3300271, 'McDonald\'s', '3990 County Road 42 Savage', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(44.7459007, -93.3289052, 'DQ Grill & Chill', '1301 Highway 13 East Burnsville', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(44.7458406, -93.3070406, 'Wendy\'s', '2101 West County Road 42 Burnsville', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(44.7456996, -93.3064558, 'Discount Tire', '-', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(44.7458675, -93.3328372, 'Sonic', '4233 Egan Road Savage', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(44.7459647, -93.3310556, 'Taco John\'s', '-', '#3498db', 15, 'Unnamed Retail Center', false);
+addStore(44.7302876, -93.1323393, 'DQ Grill & Chill', '15073 Canada Avenue Rosemount', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.7301794, -93.1458064, 'KinderCare', '15080 Shannon Parkway Rosemount', '#3498db', 10, 'Unnamed Retail Center', false);
+addStore(44.7309188, -93.1456815, 'Walgreens', '15034 Shannon Parkway Rosemount', '#f39c12', 10, 'Unnamed Retail Center', true);
+addStore(44.7313071, -93.1355336, 'Holiday', '15066 Chippendale Avenue Rosemount', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.7306046, -93.1350402, 'Rosemount Liquor', '3440 150th Street West Rosemount', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.7306184, -93.1293368, 'Sunbelt Rentals', '15125 Robert Trail South Rosemount', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(44.7312397, -93.1352173, 'Valvoline', '3480 150th Street West Rosemount', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.7310622, -93.1319675, 'McDonald\'s', '15035 Canada Avenue Rosemount', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.7312798, -93.1348009, 'Burger King', '3460 150th Street West;150TH ST West Rosemount', '#3498db', 6, 'Unnamed Retail Center', false);
+addStore(44.7342357, -93.1268366, 'Master Transmission', '14805 Robert Trail South Rosemount', '#3498db', 16, 'Unnamed Retail Center', false);
+addStore(44.7352293, -93.1265476, 'Culver\'s', '14755 Robert Trail South Rosemount', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(44.717011, -93.2163829, 'Northland Collison', '7430 160th Street West Rosemount', '#3498db', 14, 'Unnamed Retail Center', false);
+addStore(44.6494701, -93.2435527, 'Wells Fargo', '8790 207th Street West Lakeville', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.6491509, -93.2444714, 'Line-X Coatings', '20725 Howland Avenue Lakeville', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.6469493, -93.2432417, 'Lakeville Tire & Auto Service', '20909 Holyoke Avenue Lakeville', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.7433182, -93.1760341, 'Snack Shack', '14261 - 14265 Essex Avenue Apple Valley', '#3498db', 12, 'Unnamed Retail Center', false);
+addStore(44.7285528, -93.218518, 'Arby\'s', '7525 153rd Street West Apple Valley', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.7314059, -93.2187056, 'Perkins', '7620 150th Street West Apple Valley', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.7471059, -93.3040228, 'Speedway', '1900 42 West Burnsville', '#3498db', 9, 'Unnamed Retail Center', false);
+addStore(44.6459615, -93.2983657, 'Speedway', '20920 Keokuk Avenue Lakeville', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(44.6501018, -93.2941175, 'Lakeville Collision Center', '20629 Kenrick Avenue Lakeville', '#3498db', 25, 'Unnamed Retail Center', false);
+addStore(44.6486883, -93.2430776, 'World of Games', '20777 Holyoke Avenue Lakeville', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(44.74705, -93.2941035, 'Chick-fil-A', '1200 County Road 42 West Burnsville', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.7347139, -93.2045028, 'Nordstrom Rack', '14910 Florence Trail Apple Valley', '#f39c12', 13, 'Unnamed Retail Center', true);
+addStore(44.7494969, -93.2858846, 'DSW', '14001 Aldrich Avenue Burnsville', '#e74c3c', 0, 'Burnsville Center', false);
+addStore(44.7369865, -93.1265122, 'Minnoco', '-', '#3498db', 22, 'Unnamed Retail Center', false);
+addStore(44.7277399, -93.2171835, 'Chick-fil-A', '7480 153rd Street West Apple Valley', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(44.6484242, -93.2995376, 'ALDI', '11542 207th Street West Lakeville', '#f39c12', 20, 'Unnamed Retail Center', true);
+addStore(44.7481791, -93.2954292, 'Aldi', '1294 County Road 42 West Burnsville', '#f39c12', 0, 'Burnsville Center', true);
+addStore(44.7328526, -93.2210068, 'McDonald\'s', '7667 150th Street West Apple Valley', '#3498db', 8, 'Unnamed Retail Center', false);
+addStore(44.7349537, -93.2011652, 'Sam\'s Club', '14940 Florence Trail Apple Valley', '#f39c12', 13, 'Unnamed Retail Center', true);
+addStore(44.7297171, -93.2137762, 'Target', '15150 Cedar Avenue Apple Valley', '#f39c12', 3, 'Unnamed Retail Center', true);
+addStore(44.7227641, -93.177644, 'Chipotle', '-', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(44.6950128, -93.2822679, 'Lynn\'s Auto Body', '-', '#3498db', 1, 'Unnamed Retail Center', false);
+addStore(44.6819196, -93.2916502, 'Raising Cane\'s', '-', '#3498db', 23, 'Unnamed Retail Center', false);
+addStore(44.6819242, -93.290912, 'Panda Express', '18455 Kenrick Avenue Lakeville', '#3498db', 23, 'Unnamed Retail Center', false);
+addStore(44.7239953, -93.1781164, 'Lund\'s & Byerly\'s', '15550 English Avenue', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(44.7458304, -93.2995293, 'Raising Cane\'s', '1501 County Road 42 West Burnsville', '#3498db', 18, 'Unnamed Retail Center', false);
+addStore(44.6483106, -93.300427, 'Goodwill', '-', '#3498db', 20, 'Unnamed Retail Center', false);
+addStore(44.7230323, -93.1777003, 'Chase', '-', '#3498db', 17, 'Unnamed Retail Center', false);
+addStore(44.7475154, -93.302017, 'Cub Foods', '-', '#3498db', 18, 'Unnamed Retail Center', false);
+ 
+  // ---- Tenant name filter ----
+  var allTenantNames = ['2nd Wind Exercise Equipment', '9Round', 'ABC Zone', 'AccuTac Arms', 'Ace Hardware', 'Ace Hardware Store', 'Advanced Eyecare Professionals', 'Aldi', 'ALDI', 'American Family Insurance', 'Anytime Fitness', 'Apple Valley Ford', 'Apple Valley Post Office', 'Applebee\'s', 'Arby\'s', 'AT&T', 'Auntie Anne\'s', 'Autozone', 'Banfield Pet Hospital', 'Bank of America', 'Barnes & Noble', 'Bassett Furnature', 'bb Nails', 'Beau Monde Salon', 'Best Buy - Burnsville', 'BMO', 'Body & Sol Adeva', 'BP', 'Bruegger\'s Bagels', 'Burger King', 'Burlington', 'Burnsville Center', 'Burnsville Family Eye Care', 'Cabana Tan', 'Caribou Coffee', 'Chase', 'Chick-fil-A', 'Chili\'s', 'Chipotle', 'Chuck and Don\'s', 'Chuck E. Cheese', 'Clothes Mentor', 'Clover Cleaners', 'Cold Stone Creamery', 'Coldwell Banker', 'Cole\'s Salon', 'Cornerstone Copy Center', 'Costco', 'Crumbl Cookies', 'Cub Foods', 'Culver\'s', 'Davanni\'s Pizza & Hot Hoagies', 'DaVita Dialysis', 'Days Inn Burnsville', 'Denny\'s', 'Dick\'s Sporting Goods', 'Discount Tire', 'DK Nails', 'Dollar Tree', 'Dolphin Pool & Spa', 'Domino\'s', 'DQ Grill & Chill', 'DSW', 'Enterprise', 'Famous Footwear', 'Fanci Nails', 'Fantastic Sams', 'Fast Frame', 'FedEx Office', 'Five Below', 'Flooring Expo by Carpet King', 'Flora Etcetera', 'Focused Eye Care', 'Frenchies Modern Nails', 'Fresh Thyme', 'Games by James', 'GameStop', 'GNC', 'Godfather\'s Pizza', 'Goodwill', 'Gordman\'s', 'Great Clips', 'Great Harvest Bread Company', 'Great Lakes Coin', 'Green Leaf Vape & Tobacco', 'Greg\'s Tailors', 'Half Price Books', 'Harmon Auto Glass', 'Hawaii Poke Bowl', 'Holiday', 'Hollywood Hair', 'Home Choice', 'Honest-1 Auto Care', 'Honey Baked Ham', 'Idioma Coffee Roastery + Lighthouse Cafe', 'IHOP', 'Impress Nails', 'Interstate Battery', 'Jamba', 'JCPenney', 'Jersey Mike\'s Subs', 'Jimmy John\'s', 'Kaleidoscope', 'Keep In Touch Massage Therapy', 'KFC', 'KinderCare', 'Kirkland Furnature', 'Kohl\'s', 'Kwik Trip', 'Lakes Tailor and Cleaners', 'Lakevile Pipes & Cigars', 'Lakeville Collision Center', 'Lakeville Family Eyecare', 'Lakeville Tire & Auto Service', 'Lakeville Vape & Tobacco', 'Laundromat', 'Leeann Chin', 'LifeWay Christian Bookstore', 'Line-X Coatings', 'Little Caesars', 'Long John Silver\'s', 'Lucky\'s 13 Pub', 'Lund\'s & Byerly\'s', 'Lynn\'s Auto Body', 'Macy\'s', 'Master Transmission', 'Mattress Firm', 'McDonald\'s', 'Men\'s Wearhouse', 'MGM Liquors', 'Michaels', 'Midas', 'Midwest Saddleseat Consignment', 'Milan Nails Spa', 'Minnesota Pro Paintball', 'Minnoco', 'Music Go Round', 'Nicollet Inn', 'Noodles & Company', 'Nordstrom Rack', 'Northland Collison', 'O\'Reilly Auto Parts', 'Office Depot', 'OfficeMax', 'Old Country Buffet', 'Olive Garden', 'Once Upon a Child', 'Orangetheory Fitness', 'Panda Express', 'Panera Bread', 'Papa Johns pizza', 'Papa Murphy\'s', 'Pawn America', 'PDQ', 'Pearl Light Nails', 'Pellicci Ace Hardware', 'Penzeys Spices', 'Perfect Cleaners', 'Perkins', 'Petco', 'Pilgrim Dry Cleaners', 'Pizza Hut', 'Plato\'s Closet', 'Play It Again Sports', 'Popeyes', 'Precision Tailoring', 'Pro Cuts', 'Professional Massage Center', 'Public Storage', 'Raising Cane\'s', 'Rapid Cash Plus', 'Rendezvous Hair Studio', 'ReStored Thrift Store', 'Rose Yarn Co.', 'Rosemount Liquor', 'Sacks in the City', 'Sally Beauty', 'Salon Sidera', 'SalonCentric', 'Sam\'s Club', 'Schueler Shoes', 'Shell', 'Sherwin-Williams', 'Sleep Number', 'Slumberland', 'Smashburger', 'Snack Shack', 'Snap Fitness', 'Sonic', 'Speedway', 'Speedy Wash', 'Sport Clips', 'Sprint', 'Starbucks', 'Stavrakis Jewelers', 'Subway', 'Sunbelt Rentals', 'T-Mobile', 'Tabacco', 'Taco Bell', 'Taco John\'s', 'Tailor on Man', 'Target', 'The Cabinet Store', 'The Dollar Store', 'The Great Frame Up', 'The Hearing Shoppe', 'The Home Depot', 'The Lakeville Barbers', 'The Travel Authority', 'Top Star Tobacco & ECig', 'Total Hockey', 'Toy Zone', 'TR\'s Lakeville Barbershop', 'Turn Style', 'U Nails', 'U.S. Bank', 'Ulta Beauty', 'Unwind Yarn Shop', 'Valley Bike & Ski', 'Valvoline', 'Vape Genius', 'Verizon', 'Von Hanson\'s', 'Walgreens', 'Walmart Supercenter', 'Wedding Day Diamonds', 'Wells Fargo', 'Wendy\'s', 'White Castle', 'Wildflower Quilt Co.', 'World of Games'];
+  var selectedNames = new Set(allTenantNames);
+ 
+  var plazaNameIndex = {};
+  storesData.forEach(function(s) {
+    if (s.plazaId === -1) return;
+    if (!plazaNameIndex[s.plazaId]) plazaNameIndex[s.plazaId] = new Set();
+    plazaNameIndex[s.plazaId].add(s.name);
+  });
+ 
+  var tenantControl = L.control({position: 'topleft'});
+  tenantControl.onAdd = function() {
+    var container = L.DomUtil.create('div', 'tenant-filter');
+    container.innerHTML =
+      '<button id="tenantToggleBtn" class="tenant-toggle-btn" type="button">'
+      + 'Tenants: All (' + allTenantNames.length + ')</button>'
+      + '<div id="tenantPanel" class="tenant-panel" style="display:none;">'
+      +   '<input id="tenantSearch" class="tenant-search" type="text" placeholder="Search tenants...">'
+      +   '<div class="tenant-actions">'
+      +     '<button id="tenantSelectAll" type="button">Select all</button>'
+      +     '<button id="tenantDeselectAll" type="button">Deselect all</button>'
+      +   '</div>'
+      +   '<div id="tenantList" class="tenant-list"></div>'
+      + '</div>';
+    L.DomEvent.disableClickPropagation(container);
+    L.DomEvent.disableScrollPropagation(container);
+    return container;
+  };
+  tenantControl.addTo(map);
+ 
+  function updateTenantToggleLabel() {
+    var btn = document.getElementById('tenantToggleBtn');
+    var n = selectedNames.size;
+    var total = allTenantNames.length;
+    var label;
+    if (n === total) {
+      label = 'Tenants: All (' + total + ')';
+    } else if (n === 0) {
+      label = 'Tenants: none selected';
+    } else {
+      label = 'Tenants: ' + n + ' of ' + total + ' selected';
+    }
+    btn.innerHTML = label;
+  }
+ 
+  var tenantRows = [];
+  var tenantListEl = document.getElementById('tenantList');
+  allTenantNames.forEach(function(name) {
+    var row = document.createElement('label');
+    row.className = 'tenant-item';
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = true;
+    cb.addEventListener('change', function() {
+      if (cb.checked) { selectedNames.add(name); } else { selectedNames.delete(name); }
+      updateTenantToggleLabel();
+      updateVisibility();
+    });
+    row.appendChild(cb);
+    row.appendChild(document.createTextNode(' ' + name));
+    tenantListEl.appendChild(row);
+    tenantRows.push({el: row, checkbox: cb, lower: name.toLowerCase()});
+  });
+ 
+  document.getElementById('tenantToggleBtn').addEventListener('click', function() {
+    var panel = document.getElementById('tenantPanel');
+    panel.style.display = (panel.style.display === 'none') ? 'block' : 'none';
+  });
+ 
+  document.getElementById('tenantSearch').addEventListener('input', function(e) {
+    var q = e.target.value.toLowerCase();
+    tenantRows.forEach(function(r) {
+      r.el.style.display = (r.lower.indexOf(q) !== -1) ? '' : 'none';
+    });
+  });
+ 
+  document.getElementById('tenantSelectAll').addEventListener('click', function() {
+    tenantRows.forEach(function(r) { r.checkbox.checked = true; });
+    selectedNames = new Set(allTenantNames);
+    updateTenantToggleLabel();
+    updateVisibility();
+  });
+ 
+  document.getElementById('tenantDeselectAll').addEventListener('click', function() {
+    tenantRows.forEach(function(r) { r.checkbox.checked = false; });
+    selectedNames = new Set();
+    updateTenantToggleLabel();
+    updateVisibility();
+  });
+  // ---- end tenant name filter ----
+ 
+  map.on('overlayadd overlayremove', updateVisibility);
+  updateVisibility();
+ 
+  var overlays = {
+    '🔴  Multi-anchor plazas (2+ anchors)': layerMultiAnchor,
+    '⭕  Single-anchor plazas': layerSingleAnchor,
+    '🟣  Plaza Center Points': layerPlazaCenters,
+    '🟡  Anchor Stores (in Plaza)': layerAnchors,
+    '🔵🔴  Tenants (In Plaza)': layerTenants,
+    '━━━━━━━━━━━━━━': L.layerGroup(),
+    '🔥  High Density Plazas (10+ tenants)': layerHighDensity,
+    '🔹  Lower Density (< 10 tenants)': layerLowDensity
+  };
+ 
+  var countyDivider = false;
+  for (var county in countyLayers) {
+    if (!countyDivider) {
+        overlays['━━━━━━━━━━━━━━ '] = L.layerGroup();
+        countyDivider = true;
+    }
+    overlays['📍 ' + county] = countyLayers[county];
+  }
+ 
+  L.control.layers(null, overlays, {
+    position: 'topright',
+    collapsed: false,
+  }).addTo(map);
+ 
+  var legend = L.control({position: 'bottomright'});
+  legend.onAdd = function() {
+    var div = L.DomUtil.create('div', 'legend');
+    div.innerHTML = '<b>Retail Centers – Lakeville, MN</b><br>'
+      + '<span class="legend-dot" style="background:#e74c3c"></span> Named plaza<br>'
+      + '<span class="legend-dot" style="background:#3498db"></span> Unnamed plaza<br>'
+      + '<span class="legend-dot" style="background:#8e44ad"></span> Plaza center point<br>'
+      + '<span class="legend-dot" style="background:#f39c12"></span> Anchor store (in plaza)<br>'
+      + '<span class="legend-dot" style="background:#27ae60"></span> Standalone store<br>'
+      + '⚓ = anchor &nbsp; 🔥 = 10+ tenants<br>'
+      + '<span style="font-size:11px;color:#666;">Use the Tenants filter (top-left) to isolate specific names.</span>';
+    return div;
+  };
+  legend.addTo(map);
+ 
+  document.getElementById('legendHeader').addEventListener('click', function() {
+    var body = document.getElementById('legendBody');
+    var icon = document.getElementById('legendToggleIcon');
+    var collapsed = (body.style.display === 'none');
+    body.style.display = collapsed ? 'block' : 'none';
+    icon.textContent = collapsed ? '▾' : '▸';
+  });
+</script>
+</body>
+</html>
