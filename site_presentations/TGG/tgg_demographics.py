@@ -218,7 +218,25 @@ def fetch_lodes_wac(state_abbr: str):
             # FAILED error while every other Census call kept working fine.
             resp = requests.get(url, timeout=60)
             resp.raise_for_status()
-            df = pd.read_csv(BytesIO(resp.content), compression="gzip", dtype={"w_geocode": str})
+            # LODES WAC files are one row per CENSUS BLOCK (not block group) and
+            # have 50+ columns -- for a big state (CA, TX, NY, FL) that's on the
+            # order of half a million to a million rows. Reading the full file
+            # with pandas' default dtypes (int64 for every numeric column, plus
+            # object-dtype string overhead) can spike a single call's memory by
+            # several hundred MB, which is enough to blow a 512MB instance's
+            # entire budget in ONE request -- this is believed to be the actual
+            # cause of the "exceeded its memory limit" restarts, not gradual
+            # growth. Two changes cut that peak substantially:
+            #   1. usecols restricts the C parser to only the ~22 columns this
+            #      function actually uses, instead of materializing all 50+.
+            #   2. dtype downcasts the job-count columns to int32 -- LODES job
+            #      counts per block never approach the int64 range.
+            needed_cols = ["w_geocode", "C000"] + blue_cols + white_cols
+            numeric_dtype = {c: "int32" for c in ["C000"] + blue_cols + white_cols}
+            df = pd.read_csv(
+                BytesIO(resp.content), compression="gzip",
+                usecols=needed_cols, dtype={"w_geocode": str, **numeric_dtype},
+            )
             if year != LODES_YEAR:
                 print(f"  Note: {state_abbr.upper()} LODES not available for {LODES_YEAR}, using {year} instead")
             df["bg_geoid"] = df["w_geocode"].str[:12]
@@ -226,6 +244,7 @@ def fetch_lodes_wac(state_abbr: str):
             df["white_jobs"] = df[white_cols].sum(axis=1)
             agg = df.groupby("bg_geoid", as_index=False)[["C000", "blue_jobs", "white_jobs"]].sum()
             agg = agg.rename(columns={"C000": "jobs", "bg_geoid": "geoid"})
+            del df  # drop the large per-block frame as soon as we have the small per-block-group result
             result = agg
             break
         except Exception as e:
