@@ -1760,11 +1760,19 @@ def save_run_to_cache(display: str, lat: float, lng: float,
  
  
 min_cached_plazas_to_trust = 3
-def load_cached_plazas(lat: float, lng: float, radius_km:float) -> list[Plaza]:
+def load_cached_plazas(lat: float, lng: float, radius_km:float, min_trust: int | None = None) -> list[Plaza]:
+    # min_trust overrides min_cached_plazas_to_trust below. The city-wide
+    # search wants several nearby plazas on file before it trusts the cache
+    # over a fresh neighborhood-wide Overpass sweep -- but a single site
+    # report just wants to know "is there already ANY known plaza within
+    # this one address's radius", so it passes min_trust=1 to accept even a
+    # single cached match instead of requiring a cluster of 3+.
+    effective_min_trust = min_trust if min_trust is not None else min_cached_plazas_to_trust
+ 
     sb = get_supabase()
     if not sb:
         return []
-    
+ 
     try:
         lat_delta = radius_km / 111.0
         lng_delta = radius_km / (111.0 * max(math.cos(math.radians(lat)),0.1))
@@ -1783,9 +1791,10 @@ def load_cached_plazas(lat: float, lng: float, radius_km:float) -> list[Plaza]:
             if haversine_m(lat, lng, p_lat, p_lng) / 1000.0 <= radius_km:
                 nearby_rows.append(row)
         
-        if len(nearby_rows) < min_cached_plazas_to_trust:
-            print(f"  [cache] Only {len(nearby_rows)} plaza(s) already known within {radius_km}km -"
-                  f"treating as a cache miss and doing a fresh OSMdiscovery instead")
+        if len(nearby_rows) < effective_min_trust:
+            print(f"  [cache] Only {len(nearby_rows)} plaza(s) already known within {radius_km}km "
+                  f"(need {effective_min_trust}) - treating as a cache miss and doing a fresh "
+                  f"OSM discovery instead")
             return []
         
         plazas = []
