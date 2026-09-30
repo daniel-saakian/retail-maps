@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8' />
+  <title>Retail Centers – Montrose, OH</title>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' />
+  <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
+  <style>
+    body { margin: 0; font-family: sans-serif; }
+    #map { height: 100vh; width: 100%; }
+    .legend {
+      background: white; padding: 10px 14px; border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); line-height: 1.8;
+      font-size: 13px;
+    }
+    .legend-dot { display: inline-block; width: 12px; height: 12px;
+                   border-radius: 50%; margin-right: 6px; }
+    .tenant-filter { font-size: 13px; }
+    .tenant-toggle-btn {
+      background: white; border: 2px solid rgba(0,0,0,0.2); border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); padding: 8px 12px; font-size: 13px;
+      font-family: sans-serif; cursor: pointer; min-width: 180px; text-align: left;
+    }
+    .tenant-toggle-btn:hover { background: #f4f4f4; }
+    .tenant-panel {
+      background: white; border-radius: 6px; box-shadow: 0 1px 5px rgba(0,0,0,0.3);
+      margin-top: 4px; padding: 10px; width: 260px; max-height: 380px;
+      display: flex; flex-direction: column;
+    }
+    .tenant-search {
+      width: 100%; box-sizing: border-box; padding: 6px 8px; margin-bottom: 8px;
+      border: 1px solid #ccc; border-radius: 4px; font-size: 13px;
+    }
+    .tenant-actions { display: flex; gap: 6px; margin-bottom: 8px; }
+    .tenant-actions button {
+      flex: 1; padding: 5px 6px; font-size: 12px; border: 1px solid #ccc;
+      border-radius: 4px; background: #f7f7f7; cursor: pointer;
+    }
+    .tenant-actions button:hover { background: #eaeaea; }
+    .tenant-list { overflow-y: auto; max-height: 260px; border-top: 1px solid #eee; padding-top: 6px; }
+    .tenant-item {
+      display: block; font-size: 12.5px; padding: 3px 2px; cursor: pointer;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .tenant-item:hover { background: #f4f4f4; }
+    .tenant-item input { margin-right: 6px; }
+  </style>
+</head>
+<body>
+<div id='map'></div>
+<script>
+  var map = L.map('map').setView([56.712346868085106, -2.4681632000000002], 12);
+ 
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(map);
+ 
+  var plazasData = [];
+  var storesData = [];
+ 
+  var layerMultiAnchor = L.layerGroup().addTo(map);
+  var layerSingleAnchor = L.layerGroup().addTo(map);
+  var layerPlazaCenters = L.layerGroup().addTo(map);
+  var layerAnchors = L.layerGroup().addTo(map);
+  var layerTenants = L.layerGroup().addTo(map);
+  var layerStandalone = L.layerGroup().addTo(map);
+  var layerHighDensity = L.layerGroup().addTo(map);
+  var layerLowDensity = L.layerGroup().addTo(map);
+  var countyLayers = {};
+ 
+  function getOrCreateCountyLayer(county) {
+    if (!county || county === '-') county = 'Unknown';
+    if (!countyLayers[county]) {
+        countyLayers[county] = L.layerGroup().addTo(map);
+    }
+    return countyLayers[county];
+  }
+ 
+  function addPlaza(lat, lng, radius_m, plazaId, name, address, county, city, numAnchors, anchors, numTenants, tenants, color, leasingHtml) {
+    var popup = '<b>' + name + '</b><br>'
+      + (address !== '-' ? address + '<br>' : '')
+      + city + (county !== '-' ? ', ' + county + ' County' : '') + '<br>'
+      + leasingHtml
+      + '<br><b>' + numAnchors + ' anchor(s): </b><br>'
+      + anchors.split(', ').join('<br>')
+      + '<br><br><b>' + numTenants + ' other tenant(s):</b><br>'
+      + tenants.split(', ').join('<br>');
+    
+    var circle = L.circle([lat, lng], {
+      radius: radius_m,
+      color: color,
+      fillColor: color,
+      fillOpacity: 0.08,
+      weight: 2
+    });
+    if (numAnchors > 1) {
+      layerMultiAnchor.addLayer(circle);
+    } else {
+      layerSingleAnchor.addLayer(circle);
+    }
+ 
+    var center = L.circleMarker([lat,lng], {
+        radius: 9,
+        color: '#fff',
+        fillColor: '#8e44ad',
+        fillOpacity: 1,
+        weight: 2
+    }).bindPopup(popup, {maxHeight: 320, autoPanPadding: [20, 20]}).bindTooltip(name, {permanent: false, direction: 'top'});
+ 
+    var cleanCounty = (!county || county === '-') ? 'Unknown' : county;
+    getOrCreateCountyLayer(cleanCounty);
+ 
+    plazasData.push({
+        circle: circle,
+        center: center,
+        id: plazaId,
+        name: name,
+        county: cleanCounty,
+        numAnchors: numAnchors,
+        numTenants: numTenants
+    });
+  }
+ 
+  function addStore(lat, lng, name, address, color, plazaId, plaza, isAnchor) {
+    var size = isAnchor ? 11 : 9;
+    var icon = L.divIcon({
+      className: '',
+      html: '<div style="position:absolute;width:' + size + 'px;height:' + size + 'px;'
+          + 'border-radius:50%;background:' + color + ';border:2px solid white;'
+          + 'box-shadow:0 1px 3px rgba(0,0,0,0.4);top:50%;left:50%;'
+          + 'transform:translate(-50%,-50%)'
+          + (isAnchor ? ';outline:2px solid rgba(0,0,0,0.25)' : '')
+          + '"></div>',
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2]
+    });
+    var marker = L.marker([lat, lng], {icon: icon})
+      .bindPopup('<b>' + name + '</b>' + (isAnchor ? '⚓' : '')+ '<br>' 
+        + '<i>' + plaza + '</i><br>'
+        + address)
+      .bindTooltip(name, {direction: 'top'})
+    
+    storesData.push({
+      marker: marker,
+      plazaId: plazaId,
+      plazaLabel: plaza,
+      isAnchor: isAnchor,
+      name: name
+    });
+  }
+ 
+  function tenantFilterMatchesPlaza(plazaId) {
+    // Fast path: nothing deselected, every plaza passes.
+    if (selectedNames.size >= allTenantNames.length) return true;
+    var names = plazaNameIndex[plazaId];
+    if (!names) return false;
+    for (var n of names) {
+      if (selectedNames.has(n)) return true;
+    }
+    return false;
+  }
+ 
+  function updateVisibility() {
+    plazasData.forEach(function(p) {
+      var anchorMatch = (p.numAnchors > 1) ? map.hasLayer(layerMultiAnchor): map.hasLayer(layerSingleAnchor);
+      var densityMatch = (p.numTenants >= 10) ? map.hasLayer(layerHighDensity) : map.hasLayer(layerLowDensity);
+      var countyLayer = countyLayers[p.county];
+      var countyMatch = countyLayer ? map.hasLayer(countyLayer) : true;
+      var tenantMatch = tenantFilterMatchesPlaza(p.id);
+ 
+      var plazaVisible = anchorMatch && densityMatch && countyMatch && tenantMatch;
+      p.isActive = plazaVisible;
+ 
+      if (plazaVisible) {
+        // FIX 2: Changed map.has() to map.hasLayer()
+        if (!map.hasLayer(p.circle)) p.circle.addTo(map);
+      } else {
+        if (map.hasLayer(p.circle)) map.removeLayer(p.circle);
+      }
+ 
+      if (plazaVisible && map.hasLayer(layerPlazaCenters)) {
+        if (!map.hasLayer(p.center)) p.center.addTo(map);
+      } else {
+        if (map.hasLayer(p.center)) map.removeLayer(p.center);
+      }
+    });
+      
+    storesData.forEach(function(s) {
+        var storeVisible = false;
+        var nameMatch = selectedNames.has(s.name);
+ 
+        if (s.plazaId === -1) {
+            // Standalone store
+            storeVisible = map.hasLayer(layerStandalone) && nameMatch;
+ 
+        } else {
+            var parentPlaza = plazasData.find(function(p) {
+                return p.id === s.plazaId;
+            });
+ 
+            if (parentPlaza && parentPlaza.isActive) {
+                storeVisible = (s.isAnchor
+                    ? map.hasLayer(layerAnchors)
+                    : map.hasLayer(layerTenants)) && nameMatch;
+            }
+        }
+ 
+        if (storeVisible) {
+            if (!map.hasLayer(s.marker))
+                s.marker.addTo(map);
+        } else {
+            if (map.hasLayer(s.marker))
+                map.removeLayer(s.marker);
+        }
+    });
+  }
+ 
+  addPlaza(56.712346868085106, -2.4681632000000002, 289.7, 0, 'Unnamed Retail Center', '78 High Street Montrose', 'Angus', 'Montrose', 2, 'Aldi, Lucky Stores', 45, 'Angus Tech, Argos, Banshee Tattoo Collective, Boots, Buth Tabhartas, Cancer Research UK, Card Factory, Cards & Things, Chique Boutique, Diabetes Aide, Dobry, Duncan and Todd, Eclips, Flair, Frost the Bakers, George Eaton, Greggs, J. Barclay Butcher, Millers, Mo\' Fidelity Records, Montrose Partytime, Nemetona, Nickel & Dime, Number 10, Ozgur, Peacocks, Picture House, Robert Ritchie Hi-Fi, Rosie\'s Sweets & Ice Cream, SES Mobility Ltd, Savers, Scotmid, Scotvapes, Shelter, Specsavers, Subway, TGJones, Tanya Thai Massage, Tesco, The Beauty Hive, The Funky Teapot, The Original Factory Shop, Town Angels, Tropical Tan, Virgin Money', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+  addStore(56.7111345, -2.4677552, 'Dobry', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.711988, -2.4678691, 'Boots', 'High Street Montrose', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7120873, -2.4678835, 'TGJones', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7119072, -2.4678454, 'Scotmid', '69-75 High Street Montrose', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.711822, -2.4678135, 'Peacocks', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7112189, -2.468543, 'Number 10', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7116274, -2.4678534, 'Specsavers', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7121773, -2.4684868, 'Lucky Stores', '78 High Street Montrose', '#f39c12', 0, 'Unnamed Retail Center', true);
+addStore(56.7120037, -2.4685516, 'J. Barclay Butcher', '90 High Street Montrose', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7116795, -2.4685749, 'Virgin Money', '114 High Street Montrose', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7117991, -2.4685658, 'Subway', '106 High Street Montrose', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7120744, -2.4685038, 'Ozgur', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7122137, -2.4664427, 'Nemetona', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7114975, -2.468614, 'Angus Tech', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7116341, -2.4659734, 'Argos', 'Montrose', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7124482, -2.4679533, 'Card Factory', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7125266, -2.4679378, 'Savers', '39 High Street Montrose', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7126202, -2.4679354, 'Greggs', '35 High Street Montrose', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7114921, -2.4678206, 'Frost the Bakers', '87-91 High Street Montrose', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7113537, -2.4677885, 'Buth Tabhartas', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7115279, -2.469419, 'Picture House', '12 Hume Street Montrose', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7128122, -2.4684678, 'Nickel & Dime', '44 High Street Montrose', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7123544, -2.4685348, 'Scotvapes', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7118803, -2.468567, 'Montrose Partytime', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7116168, -2.4685858, 'SES Mobility Ltd', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7111811, -2.467757, 'Duncan and Todd', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7110206, -2.4677597, 'Millers', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7129434, -2.4684472, 'The Original Factory Shop', '36-38 High Street Montrose', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7135853, -2.4680932, 'Mo\' Fidelity Records', '126 Murray Street Montrose', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.712827, -2.4674603, 'Cards & Things', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7106138, -2.4685601, 'Tanya Thai Massage', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7129622, -2.4670418, 'Eclips', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7129734, -2.466878, 'Chique Boutique', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7129626, -2.4671369, 'The Funky Teapot', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7122965, -2.4679398, 'Town Angels', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7106515, -2.4685552, 'Cancer Research UK', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7133829, -2.4682918, 'Rosie\'s Sweets & Ice Cream', '16 High Street Montrose', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7143193, -2.467601, 'Flair', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7132963, -2.4683319, 'Tropical Tan', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7130853, -2.4683557, 'Shelter', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7134542, -2.4680632, 'Diabetes Aide', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7142589, -2.4682284, 'George Eaton', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7144179, -2.4681178, 'The Beauty Hive', '2 Lower Hall Street', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7142679, -2.4683072, 'Banshee Tattoo Collective', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7139265, -2.4680158, 'Robert Ritchie Hi-Fi', '-', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7110999, -2.4708595, 'Tesco', 'Western Road Montrose', '#3498db', 0, 'Unnamed Retail Center', false);
+addStore(56.7132793, -2.4715828, 'Aldi', 'Basin View Montrose', '#f39c12', 0, 'Unnamed Retail Center', true);
+ 
+  // ---- Tenant name filter ----
+  var allTenantNames = ['Aldi', 'Angus Tech', 'Argos', 'Banshee Tattoo Collective', 'Boots', 'Buth Tabhartas', 'Cancer Research UK', 'Card Factory', 'Cards & Things', 'Chique Boutique', 'Diabetes Aide', 'Dobry', 'Duncan and Todd', 'Eclips', 'Flair', 'Frost the Bakers', 'George Eaton', 'Greggs', 'J. Barclay Butcher', 'Lucky Stores', 'Millers', 'Mo\' Fidelity Records', 'Montrose Partytime', 'Nemetona', 'Nickel & Dime', 'Number 10', 'Ozgur', 'Peacocks', 'Picture House', 'Robert Ritchie Hi-Fi', 'Rosie\'s Sweets & Ice Cream', 'Savers', 'Scotmid', 'Scotvapes', 'SES Mobility Ltd', 'Shelter', 'Specsavers', 'Subway', 'Tanya Thai Massage', 'Tesco', 'TGJones', 'The Beauty Hive', 'The Funky Teapot', 'The Original Factory Shop', 'Town Angels', 'Tropical Tan', 'Virgin Money'];
+  var selectedNames = new Set(allTenantNames);
+ 
+  var plazaNameIndex = {};
+  storesData.forEach(function(s) {
+    if (s.plazaId === -1) return;
+    if (!plazaNameIndex[s.plazaId]) plazaNameIndex[s.plazaId] = new Set();
+    plazaNameIndex[s.plazaId].add(s.name);
+  });
+ 
+  var tenantControl = L.control({position: 'topleft'});
+  tenantControl.onAdd = function() {
+    var container = L.DomUtil.create('div', 'tenant-filter');
+    container.innerHTML =
+      '<button id="tenantToggleBtn" class="tenant-toggle-btn" type="button">'
+      + 'Tenants: All (' + allTenantNames.length + ')</button>'
+      + '<div id="tenantPanel" class="tenant-panel" style="display:none;">'
+      +   '<input id="tenantSearch" class="tenant-search" type="text" placeholder="Search tenants...">'
+      +   '<div class="tenant-actions">'
+      +     '<button id="tenantSelectAll" type="button">Select all</button>'
+      +     '<button id="tenantDeselectAll" type="button">Deselect all</button>'
+      +   '</div>'
+      +   '<div id="tenantList" class="tenant-list"></div>'
+      + '</div>';
+    L.DomEvent.disableClickPropagation(container);
+    L.DomEvent.disableScrollPropagation(container);
+    return container;
+  };
+  tenantControl.addTo(map);
+ 
+  function updateTenantToggleLabel() {
+    var btn = document.getElementById('tenantToggleBtn');
+    var n = selectedNames.size;
+    var total = allTenantNames.length;
+    var label;
+    if (n === total) {
+      label = 'Tenants: All (' + total + ')';
+    } else if (n === 0) {
+      label = 'Tenants: none selected';
+    } else {
+      label = 'Tenants: ' + n + ' of ' + total + ' selected';
+    }
+    btn.innerHTML = label;
+  }
+ 
+  var tenantRows = [];
+  var tenantListEl = document.getElementById('tenantList');
+  allTenantNames.forEach(function(name) {
+    var row = document.createElement('label');
+    row.className = 'tenant-item';
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = true;
+    cb.addEventListener('change', function() {
+      if (cb.checked) { selectedNames.add(name); } else { selectedNames.delete(name); }
+      updateTenantToggleLabel();
+      updateVisibility();
+    });
+    row.appendChild(cb);
+    row.appendChild(document.createTextNode(' ' + name));
+    tenantListEl.appendChild(row);
+    tenantRows.push({el: row, checkbox: cb, lower: name.toLowerCase()});
+  });
+ 
+  document.getElementById('tenantToggleBtn').addEventListener('click', function() {
+    var panel = document.getElementById('tenantPanel');
+    panel.style.display = (panel.style.display === 'none') ? 'block' : 'none';
+  });
+ 
+  document.getElementById('tenantSearch').addEventListener('input', function(e) {
+    var q = e.target.value.toLowerCase();
+    tenantRows.forEach(function(r) {
+      r.el.style.display = (r.lower.indexOf(q) !== -1) ? '' : 'none';
+    });
+  });
+ 
+  document.getElementById('tenantSelectAll').addEventListener('click', function() {
+    tenantRows.forEach(function(r) { r.checkbox.checked = true; });
+    selectedNames = new Set(allTenantNames);
+    updateTenantToggleLabel();
+    updateVisibility();
+  });
+ 
+  document.getElementById('tenantDeselectAll').addEventListener('click', function() {
+    tenantRows.forEach(function(r) { r.checkbox.checked = false; });
+    selectedNames = new Set();
+    updateTenantToggleLabel();
+    updateVisibility();
+  });
+  // ---- end tenant name filter ----
+ 
+  map.on('overlayadd overlayremove', updateVisibility);
+  updateVisibility();
+ 
+  var overlays = {
+    '🔴  Multi-anchor plazas (2+ anchors)': layerMultiAnchor,
+    '⭕  Single-anchor plazas': layerSingleAnchor,
+    '🟣  Plaza Center Points': layerPlazaCenters,
+    '🟡  Anchor Stores (in Plaza)': layerAnchors,
+    '🔵🔴  Tenants (In Plaza)': layerTenants,
+    '━━━━━━━━━━━━━━': L.layerGroup(),
+    '🔥  High Density Plazas (10+ tenants)': layerHighDensity,
+    '🔹  Lower Density (< 10 tenants)': layerLowDensity
+  };
+ 
+  var countyDivider = false;
+  for (var county in countyLayers) {
+    if (!countyDivider) {
+        overlays['━━━━━━━━━━━━━━ '] = L.layerGroup();
+        countyDivider = true;
+    }
+    overlays['📍 ' + county] = countyLayers[county];
+  }
+ 
+  L.control.layers(null, overlays, {
+    position: 'topright',
+    collapsed: false,
+  }).addTo(map);
+ 
+  var legend = L.control({position: 'bottomright'});
+  legend.onAdd = function() {
+    var div = L.DomUtil.create('div', 'legend');
+    div.innerHTML = '<b>Retail Centers – Montrose, OH</b><br>'
+      + '<span class="legend-dot" style="background:#e74c3c"></span> Named plaza<br>'
+      + '<span class="legend-dot" style="background:#3498db"></span> Unnamed plaza<br>'
+      + '<span class="legend-dot" style="background:#8e44ad"></span> Plaza center point<br>'
+      + '<span class="legend-dot" style="background:#f39c12"></span> Anchor store (in plaza)<br>'
+      + '<span class="legend-dot" style="background:#27ae60"></span> Standalone store<br>'
+      + '⚓ = anchor &nbsp; 🔥 = 10+ tenants<br>'
+      + '<span style="font-size:11px;color:#666;">Use the Tenants filter (top-left) to isolate specific names.</span>';
+    return div;
+  };
+  legend.addTo(map);
+ 
+  document.getElementById('legendHeader').addEventListener('click', function() {
+    var body = document.getElementById('legendBody');
+    var icon = document.getElementById('legendToggleIcon');
+    var collapsed = (body.style.display === 'none');
+    body.style.display = collapsed ? 'block' : 'none';
+    icon.textContent = collapsed ? '▾' : '▸';
+  });
+</script>
+</body>
+</html>
