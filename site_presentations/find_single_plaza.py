@@ -15,7 +15,7 @@ from majorretail import (
     get_fips_from_coords, build_store_query, build_mall_query, run_overpass,
     extract_stores, build_plazas, attach_mall_names, deduplicate_plaza_stores,
     merge_same_name_plazas, attach_plaza_radius, attach_counties, score_plazas,
-    get_supabase, attach_existing_data, haversine_m,
+    get_supabase, attach_existing_data, haversine_m, load_cached_plazas,
     plaza_radius_mi, min_other_tenants,
 )
  
@@ -23,6 +23,28 @@ default_search_km = 0.75
  
 def find_single_plaza(lat,lng,search_km=default_search_km, radius_mi=None, use_cache=True):
     radius_mi = radius_mi if radius_mi is not None else plaza_radius_mi
+ 
+    # Checked BEFORE touching Overpass at all. load_cached_plazas() already
+    # existed for the city-wide search (which requires 3+ nearby plazas on
+    # file before it trusts the cache over a fresh area-wide sweep), but a
+    # single site report only needs to know "is there already ANY plaza on
+    # record within this one address's radius" -- so this passes min_trust=1
+    # to accept even one cached match. A hit here skips both Overpass calls
+    # (store query + mall-name query) entirely, which is the slow, rate-
+    # limit-prone, sometimes-unreachable part of this function.
+    if use_cache:
+        cached_plazas = load_cached_plazas(lat, lng, search_km, min_trust=1)
+        if cached_plazas:
+            best, best_dist = None, float("inf")
+            for p in cached_plazas:
+                clat, clng = p.center
+                d = haversine_m(lat, lng, clat, clng)
+                if d < best_dist:
+                    best, best_dist = p, d
+            print(f"  [cache] Found {len(cached_plazas)} plaza(s) already on file within {search_km}km - "
+                  f"skipping Overpass. Nearest: '{best.label}' ({best_dist:.0f}m away, "
+                  f"{len(best.anchors)} anchors, {len(best.tenants)} tenants)")
+            return best
  
     print(f"Searching {search_km}km around ({lat:.5f}, {lng:.5f})")
     state_fips, county_fips = get_fips_from_coords(lat, lng)
