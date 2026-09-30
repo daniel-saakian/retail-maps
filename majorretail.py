@@ -1915,15 +1915,20 @@ def run_city_search(city: str, search_km: float | None=None, radius_mi: float | 
     print(f"  -> {len(plazas) - len(new_plazas)} matched existing "
           f"(county + score + listings reused), {len(new_plazas)} need a fresh look")
  
+    # Scoring is temporarily disabled for the frontend's Search flow -- the
+    # scores it was producing were wrong. Plazas found here now save with no
+    # score (blank) instead of a bad one, until the scoring logic itself is
+    # fixed. Re-enable both calls below once that's sorted out.
     if needs_scoring:
-        print(f"  Scoring {len(needs_scoring)} previously-unscored matched plaza(s)...")
-        score_plazas(needs_scoring, state_fips, county_fips)
+        print(f"  Skipping scoring for {len(needs_scoring)} previously-unscored matched plaza(s) "
+              f"(scoring disabled - saving with no score)")
+        # score_plazas(needs_scoring, state_fips, county_fips)
     if new_plazas:
         print(f"  [5/6] looking up counties for {len(new_plazas)} plazas...")
         attach_counties(new_plazas)
  
-        print(f"  Scoring {len(new_plazas)} plazas...")
-        score_plazas(new_plazas,state_fips,county_fips)
+        print(f"  Skipping scoring for {len(new_plazas)} plazas (scoring disabled - saving with no score)")
+        # score_plazas(new_plazas,state_fips,county_fips)
  
         if _cancelled():
             return _empty("Cancelled by User")
