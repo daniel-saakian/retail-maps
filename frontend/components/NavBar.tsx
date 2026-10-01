@@ -8,7 +8,7 @@ import StoneMark from "./StoneMark";
 import { useJobs } from "@/lib/JobsContext";
  
 const TABS = [
-    { href: "/", label: "Search" },
+    { href: "/search", label: "Search" },
     { href: "/history", label: "History" },
     { href: "/demographics", label: "Demographics"},
     { href: "/site-presentations", label: "Site Presentations" }
