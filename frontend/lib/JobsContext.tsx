@@ -52,13 +52,27 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
         } catch {
         }
     }, []);
-
+ 
+    const isSco = me?.role === "sco";
+ 
     useEffect(() => {
         if (skip || !me) return;
         if (!me.first_name || !me.last_name) {
             router.replace("/onboarding");
+            return;
         }
-    }, [me, skip, router]);
+        // "sco" (S&Co) accounts only have backend access to Site
+        // Presentations -- everywhere else 403s for them (see
+        // require_full_access in api.py), so that's their homepage too,
+        // not the regular "Today" digest. /profile is allowed too: every
+        // account (sco included) needs to reach its own profile, and
+        // /api/me works for all roles.
+        const scoAllowedPath =
+            pathname.startsWith("/site-presentations") || pathname.startsWith("/profile");
+        if (isSco && !scoAllowedPath) {
+            router.replace("/site-presentations");
+        }
+    }, [me, isSco, skip, pathname, router]);
  
     const refreshAll = useCallback(async () => {
         const summaries = await api.listSearches();
@@ -89,17 +103,26 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
             setHistoryLoading(false);
         }
     }, []);
-
-    useEffect(() => {
-        if (skip) return;
-        api.defaults().then((d) => setDefaultSearchKm(d.search_km)).catch(() => {});
-        refreshAll();
-        refreshHistory();
-        refreshMe();
-    }, [skip]);
  
     useEffect(() => {
         if (skip) return;
+        refreshMe();
+    }, [skip]);
+ 
+    // Search/history/defaults all 403 for an "sco" account (it only has
+    // backend access to Site Presentations), so this waits for the role to
+    // be known before firing them, and skips them entirely for "sco" --
+    // previously these fired unconditionally right after login, which is
+    // what produced the error an S&Co user saw on sign-in.
+    useEffect(() => {
+        if (skip || !me || isSco) return;
+        api.defaults().then((d) => setDefaultSearchKm(d.search_km)).catch(() => {});
+        refreshAll();
+        refreshHistory();
+    }, [skip, me, isSco]);
+ 
+    useEffect(() => {
+        if (skip || isSco) return;
         const interval = setInterval(() => {
             const anyActive = jobsRef.current.some(
                 (j) => j.status === "queued" || j.status === "running"
@@ -107,7 +130,7 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
             if (anyActive) refreshActive();
         }, 2000);
         return () => clearInterval(interval);
-    }, [skip]);
+    }, [skip, isSco]);
  
     const prevStatuses = useRef<Record<string, string>>({});
     useEffect(() => {
