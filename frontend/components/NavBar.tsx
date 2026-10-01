@@ -1,43 +1,47 @@
 "use client";
-
+ 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logout } from "@/app/login/actions";
 import StoneMark from "./StoneMark";
 import { useJobs } from "@/lib/JobsContext";
-
+ 
 const TABS = [
-    { href: "/", label: "Search" },
+    { href: "/", label: "Today" },
+    { href: "/search", label: "Search" },
     { href: "/history", label: "History" },
     { href: "/demographics", label: "Demographics"},
     { href: "/site-presentations", label: "Site Presentations" }
 ];
 
+const SCO_ONLY_TABS = TABS.filter((t) => t.href === "/site-presentations");
+ 
 export default function NavBar() {
     const pathname = usePathname();
-
-
-
+ 
+ 
+ 
     const { jobs, me } = useJobs();
-
+ 
     if (pathname.startsWith("/login") || pathname.startsWith("/onboarding")) return null;
-
+ 
+    const visibleTabs = me?.role === "sco" ? SCO_ONLY_TABS : TABS;
     const runningCount = jobs.filter((j) => j.status === "queued" || j.status === "running").length;
-
+ 
     return (
         <nav className="border-b border-ink-2/40 bg-ink">
             <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
-                <div className="flex items-center gap-6">
+                <div className="flex min-w-0 items-center gap-6">
                     <div className="flex items-center gap-2.5">
                         <StoneMark size={28} />
                     </div>
-                    <div className="flex items-center gap-1">
-                        {TABS.map((t) => (
+                    <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
+                        {visibleTabs.map((t) => (
                             <Link
                                 key={t.href}
                                 href={t.href}
-                                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                                className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition ${
                                     pathname === t.href
                                         ? "bg-ink text-white"
                                         : "text-slate-500 hover:bg-slate-50"
@@ -48,10 +52,10 @@ export default function NavBar() {
                         ))}
                     </div>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex shrink-0 items-center gap-4 pl-3">
                     {runningCount > 0 && (
                         <Link
-                            href="/"
+                            href="/search"
                             className="flex items-center gap-1.5 text-xs font-semibold text-sky"
                         >
                             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky" />
@@ -70,20 +74,20 @@ export default function NavBar() {
         </nav>
     );
 }
-
+ 
 function initials (firstName?: string | null, lastName?: string | null): string {
     const a = firstName?.[0] || "";
     const b = lastName?.[0] || "";
     return (a + b).toUpperCase() || "?";
 }
-
+ 
 function ProfileMenu() {
     const { me } = useJobs();
     const [open, setOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
     
-
-
+ 
+ 
     useEffect(() => {
         if (!open) return;
         function handleClick(e:MouseEvent) {
@@ -94,9 +98,9 @@ function ProfileMenu() {
         document.addEventListener("mousedown", handleClick);
         return () => document.removeEventListener("mousedown", handleClick);
     }, [open]);
-
+ 
     if (!me) return null
-
+ 
     return (
         <div ref={containerRef} className="group relative">
             <button
@@ -151,3 +155,4 @@ function ProfileMenu() {
         </div>
     );
 }
+ 
