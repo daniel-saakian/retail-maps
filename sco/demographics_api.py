@@ -1,16 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-
+ 
 from sco.pull_demographics import profile_address
-
+ 
 router = APIRouter()
-
+ 
 AVAILABLE_RADII = [1,2,3,5,7,10]
-
+ 
 class DemographicsRequest(BaseModel):
     address:str
     radii: list[float]
-
+ 
 class RingProfile(BaseModel):
     population: int
     daytime_population: int
@@ -27,7 +27,7 @@ class RingProfile(BaseModel):
     hh_discretionary_spend: int | None = None
     hh_dining_spend: int | None = None
     n_block_groups: int
-
+ 
 class DemographicsResponse(BaseModel):
     address: str
     lat: float
@@ -35,11 +35,11 @@ class DemographicsResponse(BaseModel):
     renter_pct: float | None = None
     wfh_pct: float | None = None
     rings: dict[str, RingProfile]
-
-from api import require_auth
-
+ 
+from api import require_full_access
+ 
 @router.post("/api/demographics", response_model=DemographicsResponse)
-def get_demographics(req: DemographicsRequest, user = Depends(require_auth)):
+def get_demographics(req: DemographicsRequest, user = Depends(require_full_access)):
     if not req.address.strip():
         raise HTTPException(400, "address is required")
     radii = [r for r in req.radii if r > 0]
@@ -51,6 +51,6 @@ def get_demographics(req: DemographicsRequest, user = Depends(require_auth)):
         raise HTTPException(404, str(e))
     except Exception as e:
         raise HTTPException(500, f"Demographics pull failed: {e}")
-
+ 
     result["rings"] = {str(k): v for k, v in result["rings"].items()}
     return result
