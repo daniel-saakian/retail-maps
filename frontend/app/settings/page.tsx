@@ -126,6 +126,7 @@ function TeamManagementSection({ me }: { me: UserProfile }) {
                     >
                         <option value="member">Member</option>
                         <option value="staff">Staff</option>
+                        <option value="sco">S&amp;Co (Site Presentations only, Sourdough &amp; Co.)</option>
                     </select>
                 </label>
                 <button
@@ -170,6 +171,7 @@ function TeamManagementSection({ me }: { me: UserProfile }) {
                                                 >
                                                     <option value="member">Member</option>
                                                     <option value="staff">Staff</option>
+                                                    <option value="sco">S&amp;Co</option>
                                                 </select>
                                             </td>
                                             <td className="px-3 py-2 align-middle font-mono text-charcoal">
