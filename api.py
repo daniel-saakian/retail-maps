@@ -285,8 +285,14 @@ app.include_router(demographics_router)
 from site_presentations.api import router as site_presentations_router
 app.include_router(site_presentations_router)
  
-from digest_api import router as digest_router
-app.include_router(digest_router)
+try:
+    # digest_api.py (the daily digest) isn't pushed to this repo yet -- it's
+    # still being built locally. Don't let its absence crash the whole app;
+    # just skip registering its routes until it's actually added.
+    from digest_api import router as digest_router
+    app.include_router(digest_router)
+except ModuleNotFoundError:
+    pass
  
 @app.get("/api/defaults")
 def get_defaults():
