@@ -8,20 +8,12 @@ import StoneMark from "./StoneMark";
 import { useJobs } from "@/lib/JobsContext";
  
 const TABS = [
-    // "/" (Today, the daily digest) is left out here -- it's not ready to
-    // ship yet (see app/page.tsx and app/today/page.tsx) and just redirects
-    // to /search, so a separate nav tab for it would be a redundant entry
-    // pointing at the same place as "Search". Re-add it once the digest
-    // page is live again.
     { href: "/search", label: "Search" },
     { href: "/history", label: "History" },
     { href: "/demographics", label: "Demographics"},
     { href: "/site-presentations", label: "Site Presentations" }
 ];
- 
-// "sco" (S&Co) accounts only have backend access to Site Presentations --
-// every other tab's API calls would just 403 for them, so there's no point
-// showing the tab at all.
+
 const SCO_ONLY_TABS = TABS.filter((t) => t.href === "/site-presentations");
  
 export default function NavBar() {
