@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8' />
+  <title>Retail Centers – Auburn, CA</title>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' />
+  <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
+  <style>
+    body { margin: 0; font-family: sans-serif; }
+    #map { height: 100vh; width: 100%; }
+    .legend {
+      background: white; padding: 10px 14px; border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); line-height: 1.8;
+      font-size: 13px;
+    }
+    .legend-dot { display: inline-block; width: 12px; height: 12px;
+                   border-radius: 50%; margin-right: 6px; }
+    .tenant-filter { font-size: 13px; }
+    .tenant-toggle-btn {
+      background: white; border: 2px solid rgba(0,0,0,0.2); border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.3); padding: 8px 12px; font-size: 13px;
+      font-family: sans-serif; cursor: pointer; min-width: 180px; text-align: left;
+    }
+    .tenant-toggle-btn:hover { background: #f4f4f4; }
+    .tenant-panel {
+      background: white; border-radius: 6px; box-shadow: 0 1px 5px rgba(0,0,0,0.3);
+      margin-top: 4px; padding: 10px; width: 260px; max-height: 380px;
+      display: flex; flex-direction: column;
+    }
+    .tenant-search {
+      width: 100%; box-sizing: border-box; padding: 6px 8px; margin-bottom: 8px;
+      border: 1px solid #ccc; border-radius: 4px; font-size: 13px;
+    }
+    .tenant-actions { display: flex; gap: 6px; margin-bottom: 8px; }
+    .tenant-actions button {
+      flex: 1; padding: 5px 6px; font-size: 12px; border: 1px solid #ccc;
+      border-radius: 4px; background: #f7f7f7; cursor: pointer;
+    }
+    .tenant-actions button:hover { background: #eaeaea; }
+    .tenant-list { overflow-y: auto; max-height: 260px; border-top: 1px solid #eee; padding-top: 6px; }
+    .tenant-item {
+      display: block; font-size: 12.5px; padding: 3px 2px; cursor: pointer;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .tenant-item:hover { background: #f4f4f4; }
+    .tenant-item input { margin-right: 6px; }
+  </style>
+</head>
+<body>
+<div id='map'></div>
+<script>
+  var map = L.map('map').setView([38.928698292606214, -121.0833538985034], 12);
+ 
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(map);
+ 
+  var plazasData = [];
+  var storesData = [];
+ 
+  var layerMultiAnchor = L.layerGroup().addTo(map);
+  var layerSingleAnchor = L.layerGroup().addTo(map);
+  var layerPlazaCenters = L.layerGroup().addTo(map);
+  var layerAnchors = L.layerGroup().addTo(map);
+  var layerTenants = L.layerGroup().addTo(map);
+  var layerStandalone = L.layerGroup().addTo(map);
+  var layerHighDensity = L.layerGroup().addTo(map);
+  var layerLowDensity = L.layerGroup().addTo(map);
+  var countyLayers = {};
+ 
+  function getOrCreateCountyLayer(county) {
+    if (!county || county === '-') county = 'Unknown';
+    if (!countyLayers[county]) {
+        countyLayers[county] = L.layerGroup().addTo(map);
+    }
+    return countyLayers[county];
+  }
+ 
+  function addPlaza(lat, lng, radius_m, plazaId, name, address, county, city, numAnchors, anchors, numTenants, tenants, color, leasingHtml) {
+    var popup = '<b>' + name + '</b><br>'
+      + (address !== '-' ? address + '<br>' : '')
+      + city + (county !== '-' ? ', ' + county + ' County' : '') + '<br>'
+      + leasingHtml
+      + '<br><b>' + numAnchors + ' anchor(s): </b><br>'
+      + anchors.split(', ').join('<br>')
+      + '<br><br><b>' + numTenants + ' other tenant(s):</b><br>'
+      + tenants.split(', ').join('<br>');
+    
+    var circle = L.circle([lat, lng], {
+      radius: radius_m,
+      color: color,
+      fillColor: color,
+      fillOpacity: 0.08,
+      weight: 2
+    });
+    if (numAnchors > 1) {
+      layerMultiAnchor.addLayer(circle);
+    } else {
+      layerSingleAnchor.addLayer(circle);
+    }
+ 
+    var center = L.circleMarker([lat,lng], {
+        radius: 9,
+        color: '#fff',
+        fillColor: '#8e44ad',
+        fillOpacity: 1,
+        weight: 2
+    }).bindPopup(popup, {maxHeight: 320, autoPanPadding: [20, 20]}).bindTooltip(name, {permanent: false, direction: 'top'});
+ 
+    var cleanCounty = (!county || county === '-') ? 'Unknown' : county;
+    getOrCreateCountyLayer(cleanCounty);
+ 
+    plazasData.push({
+        circle: circle,
+        center: center,
+        id: plazaId,
+        name: name,
+        county: cleanCounty,
+        numAnchors: numAnchors,
+        numTenants: numTenants
+    });
+  }
+ 
+  function addStore(lat, lng, name, address, color, plazaId, plaza, isAnchor) {
+    var size = isAnchor ? 11 : 9;
+    var icon = L.divIcon({
+      className: '',
+      html: '<div style="position:absolute;width:' + size + 'px;height:' + size + 'px;'
+          + 'border-radius:50%;background:' + color + ';border:2px solid white;'
+          + 'box-shadow:0 1px 3px rgba(0,0,0,0.4);top:50%;left:50%;'
+          + 'transform:translate(-50%,-50%)'
+          + (isAnchor ? ';outline:2px solid rgba(0,0,0,0.25)' : '')
+          + '"></div>',
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2]
+    });
+    var marker = L.marker([lat, lng], {icon: icon})
+      .bindPopup('<b>' + name + '</b>' + (isAnchor ? '⚓' : '')+ '<br>' 
+        + '<i>' + plaza + '</i><br>'
+        + address)
+      .bindTooltip(name, {direction: 'top'})
+    
+    storesData.push({
+      marker: marker,
+      plazaId: plazaId,
+      plazaLabel: plaza,
+      isAnchor: isAnchor,
+      name: name
+    });
+  }
+ 
+  function tenantFilterMatchesPlaza(plazaId) {
+    // Fast path: nothing deselected, every plaza passes.
+    if (selectedNames.size >= allTenantNames.length) return true;
+    var names = plazaNameIndex[plazaId];
+    if (!names) return false;
+    for (var n of names) {
+      if (selectedNames.has(n)) return true;
+    }
+    return false;
+  }
+ 
+  function updateVisibility() {
+    plazasData.forEach(function(p) {
+      var anchorMatch = (p.numAnchors > 1) ? map.hasLayer(layerMultiAnchor): map.hasLayer(layerSingleAnchor);
+      var densityMatch = (p.numTenants >= 10) ? map.hasLayer(layerHighDensity) : map.hasLayer(layerLowDensity);
+      var countyLayer = countyLayers[p.county];
+      var countyMatch = countyLayer ? map.hasLayer(countyLayer) : true;
+      var tenantMatch = tenantFilterMatchesPlaza(p.id);
+ 
+      var plazaVisible = anchorMatch && densityMatch && countyMatch && tenantMatch;
+      p.isActive = plazaVisible;
+ 
+      if (plazaVisible) {
+        // FIX 2: Changed map.has() to map.hasLayer()
+        if (!map.hasLayer(p.circle)) p.circle.addTo(map);
+      } else {
+        if (map.hasLayer(p.circle)) map.removeLayer(p.circle);
+      }
+ 
+      if (plazaVisible && map.hasLayer(layerPlazaCenters)) {
+        if (!map.hasLayer(p.center)) p.center.addTo(map);
+      } else {
+        if (map.hasLayer(p.center)) map.removeLayer(p.center);
+      }
+    });
+      
+    storesData.forEach(function(s) {
+        var storeVisible = false;
+        var nameMatch = selectedNames.has(s.name);
+ 
+        if (s.plazaId === -1) {
+            // Standalone store
+            storeVisible = map.hasLayer(layerStandalone) && nameMatch;
+ 
+        } else {
+            var parentPlaza = plazasData.find(function(p) {
+                return p.id === s.plazaId;
+            });
+ 
+            if (parentPlaza && parentPlaza.isActive) {
+                storeVisible = (s.isAnchor
+                    ? map.hasLayer(layerAnchors)
+                    : map.hasLayer(layerTenants)) && nameMatch;
+            }
+        }
+ 
+        if (storeVisible) {
+            if (!map.hasLayer(s.marker))
+                s.marker.addTo(map);
+        } else {
+            if (map.hasLayer(s.marker))
+                map.removeLayer(s.marker);
+        }
+    });
+  }
+ 
+  addPlaza(38.94147720909091, -121.09553335, 532.8, 0, 'Crossroads Shopping Center', '2513 Bell Road Auburn', 'Placer County', 'Auburn', 5, 'BevMo!, Harbor Freight Tools, Rite Aid, Target, The Home Depot', 17, 'Auburn Phone Doctor, Bank of America, Briar Patch, Burger King, ChargePoint, Chevron, Chipotle, Lighthouse Tattoo Club, McDonald\'s, Nails, Old Navy, Panera Bread, S and J Cigars and Cigarettes, Starbucks, Super K, The UPS Store, Wells Fargo', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.92440957647059, -121.05540425882354, 289.7, 1, 'Auburn Ravine Shopping Center', '13446 Lincoln Way Auburn', 'Placer County', 'Auburn', 1, 'Raley\'s', 16, 'Arco, Auburn Liquor Mart, BMO, Bank of America, Barebones Ourdoor & Workwear, Best Western Golden Key, Chevron, FlipFlopShops, Flowers, Jack in the Box, McDonald\'s, See\'s Candies, Smoke & Vape Shop, Tesla Supercharger, Thrifty Wash, ampm', '#e74c3c', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.90449411875, -121.07454445, 289.7, 2, 'Unnamed Retail Center', '392 Elm Avenue Auburn', 'Placer County', 'Auburn', 2, 'Grocery Outlet, Save Mart', 14, '76, ACE True Value, Auburn Bike Works, Beauty 360, Cool Tea Bar & Poke, Dutch Bros. Coffee, Elm Dry Cleaners, FedEx Office, Flour Garden Bakery, McCaulou\'s, Shell, Starbucks, Verizon, Wells Fargo', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.93466444375, -121.0914362125, 334.6, 3, 'Unnamed Retail Center', '2248 Grass Valley Hwy Auburn', 'Placer County', 'Auburn', 3, 'BelAir, Dollar Tree, Walgreens', 13, 'Carl\'s Jr., Domino\'s, Golden 1 Credit Union, Leslie\'s Pool Supplies, MOD Pizza, Metro by T-Mobile, Phone Reapir, Roper\'s Jewelers - North Auburn, Sally Beauty, Speedway, Subway, Sunrise Natural Foods, Verizon', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.938604090909095, -121.09623403636364, 345.2, 4, 'Unnamed Retail Center', '2635 Bell Avenue Auburn', 'Placer County', 'Auburn', 3, 'Big 5 Sporting Goods, Petco, Smart & Final', 8, 'AAA Insurance, America\'s Tire, Auburn Honda, Chase, Chick-fil-A, Les Schwab Tire Center, Panda Express, Papa Murphy\'s', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+addPlaza(38.92854031666667, -121.08697108333332, 289.7, 5, 'Unnamed Retail Center', '1760 Grass Valley Highway Auburn', 'Placer County', 'Auburn', 1, 'Best Buy', 5, 'Auburn Ford, Pearl Nails, Sweetea, T-Mobile, Taco Bell', '#3498db', '<br><br><b>Leasing:</b> no broker contact found');
+  addStore(38.9037988, -121.0758355, 'Shell', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.9229658, -121.056527, 'Chevron', '-', '#e74c3c', 1, 'Auburn Ravine Shopping Center', false);
+addStore(38.9407089, -121.0933058, 'BevMo!', '-', '#f39c12', 0, 'Crossroads Shopping Center', true);
+addStore(38.9042854, -121.0728591, 'Flour Garden Bakery', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.9041306, -121.074121, 'Starbucks', '392 Elm Avenue Auburn', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.9053539, -121.074061, 'Save Mart', '-', '#f39c12', 2, 'Unnamed Retail Center', true);
+addStore(38.9047723, -121.07521, 'Grocery Outlet', '415 Grass Valley Highway', '#f39c12', 2, 'Unnamed Retail Center', true);
+addStore(38.9052273, -121.075216, 'ACE True Value', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.904937, -121.073862, 'Beauty 360', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.90452, -121.072909, 'Cool Tea Bar & Poke', '340 Elm Ave', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.904434, -121.07293, 'Verizon', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.9381221, -121.094886, 'Papa Murphy\'s', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.937874, -121.0949982, 'Big 5 Sporting Goods', '-', '#f39c12', 4, 'Unnamed Retail Center', true);
+addStore(38.905083, -121.077103, 'FedEx Office', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.9041867, -121.076596, '76', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.942438, -121.097676, 'Chevron', 'Auburn', '#e74c3c', 0, 'Crossroads Shopping Center', false);
+addStore(38.9415449, -121.09744, 'Wells Fargo', '-', '#e74c3c', 0, 'Crossroads Shopping Center', false);
+addStore(38.9036262, -121.0758302, 'Auburn Bike Works', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.9407104, -121.0976332, 'Auburn Honda', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.943126, -121.097967, 'Auburn Phone Doctor', 'Auburn', '#e74c3c', 0, 'Crossroads Shopping Center', false);
+addStore(38.9031917, -121.0737178, 'Elm Dry Cleaners', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.9269735, -121.0854185, 'Auburn Ford', '1650 Grass Valley Highway', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.9224479, -121.0557961, 'McDonald\'s', '13370 Lincoln Way', '#e74c3c', 1, 'Auburn Ravine Shopping Center', false);
+addStore(38.941075, -121.0961174, 'Chipotle', '2845 Bell Road Auburn', '#e74c3c', 0, 'Crossroads Shopping Center', false);
+addStore(38.9413024, -121.0961932, 'Panera Bread', '2845 Bell Road Auburn', '#e74c3c', 0, 'Crossroads Shopping Center', false);
+addStore(38.9247891, -121.0546834, 'Bank of America', '-', '#e74c3c', 1, 'Auburn Ravine Shopping Center', false);
+addStore(38.924648, -121.0551727, 'BMO', '-', '#e74c3c', 1, 'Auburn Ravine Shopping Center', false);
+addStore(38.9292236, -121.0875268, 'T-Mobile', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.9293214, -121.0876407, 'Pearl Nails', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.9295342, -121.0877962, 'Sweetea', '-', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.9290326, -121.0862129, 'Best Buy', '1760 Grass Valley Highway Auburn', '#f39c12', 5, 'Unnamed Retail Center', true);
+addStore(38.9255252, -121.0550197, 'Tesla Supercharger', '13446 Lincoln Way Auburn', '#e74c3c', 1, 'Auburn Ravine Shopping Center', false);
+addStore(38.9410811, -121.0926731, 'Nails', '-', '#e74c3c', 0, 'Crossroads Shopping Center', false);
+addStore(38.9425639, -121.0959388, 'ChargePoint', '-', '#e74c3c', 0, 'Crossroads Shopping Center', false);
+addStore(38.9058792, -121.0728058, 'McCaulou\'s', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.9240429, -121.0540472, 'Raley\'s', '-', '#f39c12', 1, 'Auburn Ravine Shopping Center', true);
+addStore(38.941775, -121.0926223, 'Briar Patch', '-', '#e74c3c', 0, 'Crossroads Shopping Center', false);
+addStore(38.9410314, -121.0926464, 'S and J Cigars and Cigarettes', '-', '#e74c3c', 0, 'Crossroads Shopping Center', false);
+addStore(38.9402498, -121.0950386, 'Rite Aid', '-', '#f39c12', 0, 'Crossroads Shopping Center', true);
+addStore(38.9417141, -121.0962808, 'Burger King', '2905 Bell Road Auburn', '#e74c3c', 0, 'Crossroads Shopping Center', false);
+addStore(38.9418635, -121.0958528, 'McDonald\'s', '-', '#e74c3c', 0, 'Crossroads Shopping Center', false);
+addStore(38.9418082, -121.0954303, 'Bank of America', '-', '#e74c3c', 0, 'Crossroads Shopping Center', false);
+addStore(38.9419316, -121.0945904, 'The UPS Store', '-', '#e74c3c', 0, 'Crossroads Shopping Center', false);
+addStore(38.9401557, -121.0959053, 'Starbucks', '2815 Bell Road Rock Creek Plaza', '#e74c3c', 0, 'Crossroads Shopping Center', false);
+addStore(38.9431268, -121.0952792, 'Target', '2700 Bell Road Auburn', '#f39c12', 0, 'Crossroads Shopping Center', true);
+addStore(38.9366227, -121.0938764, 'AAA Insurance', '2480 Grass Valley Highway Auburn', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.9337888, -121.0913291, 'MOD Pizza', '2150 Grass Valley Highway Auburn', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.935119, -121.092669, 'Carl\'s Jr.', '2300 Grass Valley Highway Auburn', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.9372744, -121.0945501, 'Chase', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.9387008, -121.0978473, 'Petco', '2635 Bell Avenue Auburn', '#f39c12', 4, 'Unnamed Retail Center', true);
+addStore(38.9039507, -121.0726484, 'Wells Fargo', '-', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.9392097, -121.1000277, 'The Home Depot', '11755 Willow Creek Drive Auburn', '#f39c12', 0, 'Crossroads Shopping Center', true);
+addStore(38.9271566, -121.0872314, 'Taco Bell', '1717 Grass Valley Highway Auburn', '#3498db', 5, 'Unnamed Retail Center', false);
+addStore(38.9258967, -121.0549171, 'Best Western Golden Key', '13450 Lincoln Way Auburn', '#e74c3c', 1, 'Auburn Ravine Shopping Center', false);
+addStore(38.932391, -121.08977, 'Walgreens', '-', '#f39c12', 3, 'Unnamed Retail Center', true);
+addStore(38.9045291, -121.0770064, 'Dutch Bros. Coffee', '405 Grass Valley Highway Auburn', '#3498db', 2, 'Unnamed Retail Center', false);
+addStore(38.9377927, -121.096731, 'Les Schwab Tire Center', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.9380862, -121.0963378, 'America\'s Tire', '-', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.9356152, -121.0920008, 'Subway', '2310 Grass Valley Highway Auburn', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.9355445, -121.0919782, 'Roper\'s Jewelers - North Auburn', '2288 Grass Valley Highway Auburn', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.9354132, -121.09186, 'Sally Beauty', '2276', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.9353143, -121.091775, 'Domino\'s', '2260 Grass Valley Highway Auburn', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.9351517, -121.0916367, 'Golden 1 Credit Union', '2248 Grass Valley Hwy Auburn', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.9347415, -121.091065, 'BelAir', '-', '#f39c12', 3, 'Unnamed Retail Center', true);
+addStore(38.9343264, -121.0908629, 'Leslie\'s Pool Supplies', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.9342541, -121.0907529, 'Verizon', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.9341415, -121.0905911, 'Sunrise Natural Foods', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.9336353, -121.0899626, 'Dollar Tree', '-', '#f39c12', 3, 'Unnamed Retail Center', true);
+addStore(38.9248609, -121.0550324, 'Barebones Ourdoor & Workwear', '-', '#e74c3c', 1, 'Auburn Ravine Shopping Center', false);
+addStore(38.9249274, -121.0546578, 'See\'s Candies', '-', '#e74c3c', 1, 'Auburn Ravine Shopping Center', false);
+addStore(38.9249151, -121.0545061, 'Thrifty Wash', '-', '#e74c3c', 1, 'Auburn Ravine Shopping Center', false);
+addStore(38.9350157, -121.0915266, 'Phone Reapir', '-', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.9356619, -121.0920433, 'Metro by T-Mobile', '2314', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.934517, -121.0931562, 'Speedway', '2280 Drive In Way Auburn', '#3498db', 3, 'Unnamed Retail Center', false);
+addStore(38.9415021, -121.0979571, 'Lighthouse Tattoo Club', '-', '#e74c3c', 0, 'Crossroads Shopping Center', false);
+addStore(38.9415124, -121.0978063, 'Super K', '-', '#e74c3c', 0, 'Crossroads Shopping Center', false);
+addStore(38.9400205, -121.0976424, 'Smart & Final', '-', '#f39c12', 4, 'Unnamed Retail Center', true);
+addStore(38.93992, -121.0972045, 'Panda Express', '2775 Grass Valley Highway Auburn', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.9395212, -121.0968675, 'Chick-fil-A', '2755 Grass Valley Highway Auburn', '#3498db', 4, 'Unnamed Retail Center', false);
+addStore(38.9414985, -121.0925247, 'Old Navy', '-', '#e74c3c', 0, 'Crossroads Shopping Center', false);
+addStore(38.9412796, -121.0924605, 'Harbor Freight Tools', '2513 Bell Road Auburn', '#f39c12', 0, 'Crossroads Shopping Center', true);
+addStore(38.9247218, -121.0543791, 'FlipFlopShops', '-', '#e74c3c', 1, 'Auburn Ravine Shopping Center', false);
+addStore(38.9246246, -121.0555049, 'Flowers', '-', '#e74c3c', 1, 'Auburn Ravine Shopping Center', false);
+addStore(38.9243618, -121.05636, 'Auburn Liquor Mart', '-', '#e74c3c', 1, 'Auburn Ravine Shopping Center', false);
+addStore(38.9241832, -121.056301, 'Smoke & Vape Shop', '-', '#e74c3c', 1, 'Auburn Ravine Shopping Center', false);
+addStore(38.9236418, -121.0562386, 'Arco', '-', '#e74c3c', 1, 'Auburn Ravine Shopping Center', false);
+addStore(38.9238543, -121.0564184, 'ampm', '-', '#e74c3c', 1, 'Auburn Ravine Shopping Center', false);
+addStore(38.9245563, -121.0563109, 'Jack in the Box', '13421 East Lincoln Way Auburn', '#e74c3c', 1, 'Auburn Ravine Shopping Center', false);
+ 
+  // ---- Tenant name filter ----
+  var allTenantNames = ['76', 'AAA Insurance', 'ACE True Value', 'America\'s Tire', 'ampm', 'Arco', 'Auburn Bike Works', 'Auburn Ford', 'Auburn Honda', 'Auburn Liquor Mart', 'Auburn Phone Doctor', 'Bank of America', 'Barebones Ourdoor & Workwear', 'Beauty 360', 'BelAir', 'Best Buy', 'Best Western Golden Key', 'BevMo!', 'Big 5 Sporting Goods', 'BMO', 'Briar Patch', 'Burger King', 'Carl\'s Jr.', 'ChargePoint', 'Chase', 'Chevron', 'Chick-fil-A', 'Chipotle', 'Cool Tea Bar & Poke', 'Dollar Tree', 'Domino\'s', 'Dutch Bros. Coffee', 'Elm Dry Cleaners', 'FedEx Office', 'FlipFlopShops', 'Flour Garden Bakery', 'Flowers', 'Golden 1 Credit Union', 'Grocery Outlet', 'Harbor Freight Tools', 'Jack in the Box', 'Les Schwab Tire Center', 'Leslie\'s Pool Supplies', 'Lighthouse Tattoo Club', 'McCaulou\'s', 'McDonald\'s', 'Metro by T-Mobile', 'MOD Pizza', 'Nails', 'Old Navy', 'Panda Express', 'Panera Bread', 'Papa Murphy\'s', 'Pearl Nails', 'Petco', 'Phone Reapir', 'Raley\'s', 'Rite Aid', 'Roper\'s Jewelers - North Auburn', 'S and J Cigars and Cigarettes', 'Sally Beauty', 'Save Mart', 'See\'s Candies', 'Shell', 'Smart & Final', 'Smoke & Vape Shop', 'Speedway', 'Starbucks', 'Subway', 'Sunrise Natural Foods', 'Super K', 'Sweetea', 'T-Mobile', 'Taco Bell', 'Target', 'Tesla Supercharger', 'The Home Depot', 'The UPS Store', 'Thrifty Wash', 'Verizon', 'Walgreens', 'Wells Fargo'];
+  var selectedNames = new Set(allTenantNames);
+ 
+  var plazaNameIndex = {};
+  storesData.forEach(function(s) {
+    if (s.plazaId === -1) return;
+    if (!plazaNameIndex[s.plazaId]) plazaNameIndex[s.plazaId] = new Set();
+    plazaNameIndex[s.plazaId].add(s.name);
+  });
+ 
+  var tenantControl = L.control({position: 'topleft'});
+  tenantControl.onAdd = function() {
+    var container = L.DomUtil.create('div', 'tenant-filter');
+    container.innerHTML =
+      '<button id="tenantToggleBtn" class="tenant-toggle-btn" type="button">'
+      + 'Tenants: All (' + allTenantNames.length + ')</button>'
+      + '<div id="tenantPanel" class="tenant-panel" style="display:none;">'
+      +   '<input id="tenantSearch" class="tenant-search" type="text" placeholder="Search tenants...">'
+      +   '<div class="tenant-actions">'
+      +     '<button id="tenantSelectAll" type="button">Select all</button>'
+      +     '<button id="tenantDeselectAll" type="button">Deselect all</button>'
+      +   '</div>'
+      +   '<div id="tenantList" class="tenant-list"></div>'
+      + '</div>';
+    L.DomEvent.disableClickPropagation(container);
+    L.DomEvent.disableScrollPropagation(container);
+    return container;
+  };
+  tenantControl.addTo(map);
+ 
+  function updateTenantToggleLabel() {
+    var btn = document.getElementById('tenantToggleBtn');
+    var n = selectedNames.size;
+    var total = allTenantNames.length;
+    var label;
+    if (n === total) {
+      label = 'Tenants: All (' + total + ')';
+    } else if (n === 0) {
+      label = 'Tenants: none selected';
+    } else {
+      label = 'Tenants: ' + n + ' of ' + total + ' selected';
+    }
+    btn.innerHTML = label;
+  }
+ 
+  var tenantRows = [];
+  var tenantListEl = document.getElementById('tenantList');
+  allTenantNames.forEach(function(name) {
+    var row = document.createElement('label');
+    row.className = 'tenant-item';
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = true;
+    cb.addEventListener('change', function() {
+      if (cb.checked) { selectedNames.add(name); } else { selectedNames.delete(name); }
+      updateTenantToggleLabel();
+      updateVisibility();
+    });
+    row.appendChild(cb);
+    row.appendChild(document.createTextNode(' ' + name));
+    tenantListEl.appendChild(row);
+    tenantRows.push({el: row, checkbox: cb, lower: name.toLowerCase()});
+  });
+ 
+  document.getElementById('tenantToggleBtn').addEventListener('click', function() {
+    var panel = document.getElementById('tenantPanel');
+    panel.style.display = (panel.style.display === 'none') ? 'block' : 'none';
+  });
+ 
+  document.getElementById('tenantSearch').addEventListener('input', function(e) {
+    var q = e.target.value.toLowerCase();
+    tenantRows.forEach(function(r) {
+      r.el.style.display = (r.lower.indexOf(q) !== -1) ? '' : 'none';
+    });
+  });
+ 
+  document.getElementById('tenantSelectAll').addEventListener('click', function() {
+    tenantRows.forEach(function(r) { r.checkbox.checked = true; });
+    selectedNames = new Set(allTenantNames);
+    updateTenantToggleLabel();
+    updateVisibility();
+  });
+ 
+  document.getElementById('tenantDeselectAll').addEventListener('click', function() {
+    tenantRows.forEach(function(r) { r.checkbox.checked = false; });
+    selectedNames = new Set();
+    updateTenantToggleLabel();
+    updateVisibility();
+  });
+  // ---- end tenant name filter ----
+ 
+  map.on('overlayadd overlayremove', updateVisibility);
+  updateVisibility();
+ 
+  var overlays = {
+    '🔴  Multi-anchor plazas (2+ anchors)': layerMultiAnchor,
+    '⭕  Single-anchor plazas': layerSingleAnchor,
+    '🟣  Plaza Center Points': layerPlazaCenters,
+    '🟡  Anchor Stores (in Plaza)': layerAnchors,
+    '🔵🔴  Tenants (In Plaza)': layerTenants,
+    '━━━━━━━━━━━━━━': L.layerGroup(),
+    '🔥  High Density Plazas (10+ tenants)': layerHighDensity,
+    '🔹  Lower Density (< 10 tenants)': layerLowDensity
+  };
+ 
+  var countyDivider = false;
+  for (var county in countyLayers) {
+    if (!countyDivider) {
+        overlays['━━━━━━━━━━━━━━ '] = L.layerGroup();
+        countyDivider = true;
+    }
+    overlays['📍 ' + county] = countyLayers[county];
+  }
+ 
+  L.control.layers(null, overlays, {
+    position: 'topright',
+    collapsed: false,
+  }).addTo(map);
+ 
+  var legend = L.control({position: 'bottomright'});
+  legend.onAdd = function() {
+    var div = L.DomUtil.create('div', 'legend');
+    div.innerHTML = '<b>Retail Centers – Auburn, CA</b><br>'
+      + '<span class="legend-dot" style="background:#e74c3c"></span> Named plaza<br>'
+      + '<span class="legend-dot" style="background:#3498db"></span> Unnamed plaza<br>'
+      + '<span class="legend-dot" style="background:#8e44ad"></span> Plaza center point<br>'
+      + '<span class="legend-dot" style="background:#f39c12"></span> Anchor store (in plaza)<br>'
+      + '<span class="legend-dot" style="background:#27ae60"></span> Standalone store<br>'
+      + '⚓ = anchor &nbsp; 🔥 = 10+ tenants<br>'
+      + '<span style="font-size:11px;color:#666;">Use the Tenants filter (top-left) to isolate specific names.</span>';
+    return div;
+  };
+  legend.addTo(map);
+ 
+  document.getElementById('legendHeader').addEventListener('click', function() {
+    var body = document.getElementById('legendBody');
+    var icon = document.getElementById('legendToggleIcon');
+    var collapsed = (body.style.display === 'none');
+    body.style.display = collapsed ? 'block' : 'none';
+    icon.textContent = collapsed ? '▾' : '▸';
+  });
+</script>
+</body>
+</html>
