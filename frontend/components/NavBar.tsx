@@ -1,23 +1,17 @@
 "use client";
- 
+
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logout } from "@/app/login/actions";
 import StoneMark from "./StoneMark";
 import { useJobs } from "@/lib/JobsContext";
-<<<<<<< HEAD
- 
-const TABS = [
-    { href: "/", label: "Search" },
-=======
 import { useProjections } from "@/lib/projections";
 import {keptReset} from "@/lib/keep";
 
 const TABS =[
     { href: "/", label: "Home" },
     { href: "/search", label: "Search" },
->>>>>>> f8bc158 (major changes)
     { href: "/history", label: "History" },
     { href: "/demographics", label: "Demographics" },
     { href: "/projections", label: "Projections" },
@@ -25,23 +19,13 @@ const TABS =[
 ];
 
 const SCO_ONLY_TABS = TABS.filter((t) => t.href === "/site-presentations");
-<<<<<<< HEAD
- 
-=======
 
->>>>>>> f8bc158 (major changes)
 export default function NavBar() {
     const pathname = usePathname();
- 
- 
- 
+
+
+
     const { jobs, me } = useJobs();
-<<<<<<< HEAD
- 
-    if (pathname.startsWith("/login") || pathname.startsWith("/onboarding")) return null;
- 
-    const visibleTabs = me?.role === "sco" ? SCO_ONLY_TABS : TABS;
-=======
     const projections = useProjections(!!me && me.role !== "sco");
 
     if (pathname.startsWith("/login") || pathname.startsWith("/onboarding")) return null;
@@ -51,9 +35,8 @@ export default function NavBar() {
         me?.role === "sco"
             ? SCO_ONLY_TABS
             : TABS.filter((t) => t.href !== "/projections" || projections.hasAccess);
->>>>>>> f8bc158 (major changes)
     const runningCount = jobs.filter((j) => j.status === "queued" || j.status === "running").length;
- 
+
     return (
         <nav className="border-b border-ink-2/40 bg-ink">
             <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
@@ -99,31 +82,20 @@ export default function NavBar() {
         </nav>
     );
 }
-<<<<<<< HEAD
- 
-function initials (firstName?: string | null, lastName?: string | null): string {
-=======
 
 function initial (firstName?: string | null, lastName?: string | null): string {
->>>>>>> f8bc158 (major changes)
     const a = firstName?.[0] || "";
     const b = lastName?.[0] || "";
     return (a + b).toUpperCase();
 }
- 
+
 function ProfileMenu() {
     const { me } = useJobs();
     const [open, setOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
-<<<<<<< HEAD
-    
- 
- 
-=======
 
 
 
->>>>>>> f8bc158 (major changes)
     useEffect(() => {
         if (!open) return;
         function handleClick(e:MouseEvent) {
@@ -134,9 +106,9 @@ function ProfileMenu() {
         document.addEventListener("mousedown", handleClick);
         return () => document.removeEventListener("mousedown", handleClick);
     }, [open]);
- 
+
     if (!me) return null
- 
+
     return (
         <div ref={containerRef} className="group relative">
             <button

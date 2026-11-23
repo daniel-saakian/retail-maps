@@ -1,14 +1,4 @@
 "use client";
-<<<<<<< HEAD
-import SearchForm from "@/components/SearchForm";
-import JobCard from "@/components/JobCard";
-import { useJobs } from "@/lib/JobsContext";
- 
-export default function SearchPage() {
-    const { jobs, defaultSearchKm, createSearch, dismissSearch } = useJobs();
- 
-    return(
-=======
  
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -197,7 +187,6 @@ export default function DigestPage() {
     const filtersActive = Boolean(stateFilter || query);
  
     return (
->>>>>>> f8bc158 (major changes)
         <main className="mx-auto max-w-6xl px-6 py-10">
             <header className="mb-6">
                 <h1 className="font-display text-3xl font-bold text-ink">Daily Digest</h1>
@@ -206,24 +195,10 @@ export default function DigestPage() {
                         Daily Listings
                     </span>
                 </div>
-<<<<<<< HEAD
-                <p className="text-sm text-charcoal">
-                    Search a city, watch it run, and get the exportable map
-                </p>
-            </header>
- 
-            <SearchForm defaultSearchKm={defaultSearchKm} onSubmit={createSearch} />
- 
-            <div className="mt-8 flex flex-col gap-5">
-                {jobs.length === 0 && (
-                    <p className="rounded-lg border border-dashed border-line bg-paper-dim/50 p-6 text-center text-sm text-charcoal/70">
-                        No Searches Yet
-=======
                 <div className="flex flex-wrap items-center justify-between gap-3">
                     <p className="text-sm text-charcoal">
                         New retail space from the brokerage feeds, grouped by center, plus every active listing on file.
                         {data && <> Last refreshed <span className="font-medium text-ink">{formatRunTime(data.last_run_at)}</span>.</>}
->>>>>>> f8bc158 (major changes)
                     </p>
                     <button
                         onClick={() => setReloadKey((k) => k + 1)}
@@ -435,8 +410,6 @@ export default function DigestPage() {
         </main>
     );
 }
-<<<<<<< HEAD
-=======
  
 function SortToggle({
     sort, setSort, showWhitespace,
@@ -619,4 +592,3 @@ function PlazaCard({
         </article>
     );
 }
->>>>>>> f8bc158 (major changes)
