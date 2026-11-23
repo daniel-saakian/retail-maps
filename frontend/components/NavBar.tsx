@@ -6,26 +6,52 @@ import { usePathname } from "next/navigation";
 import { logout } from "@/app/login/actions";
 import StoneMark from "./StoneMark";
 import { useJobs } from "@/lib/JobsContext";
+<<<<<<< HEAD
  
 const TABS = [
     { href: "/", label: "Search" },
+=======
+import { useProjections } from "@/lib/projections";
+import {keptReset} from "@/lib/keep";
+
+const TABS =[
+    { href: "/", label: "Home" },
+    { href: "/search", label: "Search" },
+>>>>>>> f8bc158 (major changes)
     { href: "/history", label: "History" },
-    { href: "/demographics", label: "Demographics"},
-    { href: "/site-presentations", label: "Site Presentations" }
+    { href: "/demographics", label: "Demographics" },
+    { href: "/projections", label: "Projections" },
+    { href: "/site-presentations", label: "Site Presentations" },
 ];
 
 const SCO_ONLY_TABS = TABS.filter((t) => t.href === "/site-presentations");
+<<<<<<< HEAD
  
+=======
+
+>>>>>>> f8bc158 (major changes)
 export default function NavBar() {
     const pathname = usePathname();
  
  
  
     const { jobs, me } = useJobs();
+<<<<<<< HEAD
  
     if (pathname.startsWith("/login") || pathname.startsWith("/onboarding")) return null;
  
     const visibleTabs = me?.role === "sco" ? SCO_ONLY_TABS : TABS;
+=======
+    const projections = useProjections(!!me && me.role !== "sco");
+
+    if (pathname.startsWith("/login") || pathname.startsWith("/onboarding")) return null;
+
+
+    const visibleTabs =
+        me?.role === "sco"
+            ? SCO_ONLY_TABS
+            : TABS.filter((t) => t.href !== "/projections" || projections.hasAccess);
+>>>>>>> f8bc158 (major changes)
     const runningCount = jobs.filter((j) => j.status === "queued" || j.status === "running").length;
  
     return (
@@ -63,30 +89,41 @@ export default function NavBar() {
                     )}
                     <ProfileMenu />
                     <button
-                        onClick={() => logout()}
+                        onClick={() => { keptReset(); logout()}}
                         className="text-xs font-semibold uppercase tracking-[0.1em] text-paper/50 hover:text-paper"
                     >
                         Sign Out
                     </button>
-                </div> 
+                </div>
             </div>
         </nav>
     );
 }
+<<<<<<< HEAD
  
 function initials (firstName?: string | null, lastName?: string | null): string {
+=======
+
+function initial (firstName?: string | null, lastName?: string | null): string {
+>>>>>>> f8bc158 (major changes)
     const a = firstName?.[0] || "";
     const b = lastName?.[0] || "";
-    return (a + b).toUpperCase() || "?";
+    return (a + b).toUpperCase();
 }
  
 function ProfileMenu() {
     const { me } = useJobs();
     const [open, setOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
+<<<<<<< HEAD
     
  
  
+=======
+
+
+
+>>>>>>> f8bc158 (major changes)
     useEffect(() => {
         if (!open) return;
         function handleClick(e:MouseEvent) {
@@ -108,13 +145,13 @@ function ProfileMenu() {
                 aria-label="Account menu"
             >
                 {me.avatar_url ? (
-                    
+
                     <img src={me.avatar_url} alt="" className="h-full w-full object-cover" />
                 ) : (
-                    initials(me.first_name, me.last_name)
+                    initial(me.first_name, me.last_name)
                 )}
             </button>
- 
+
             <div
                 className={`absolute right-0 top-full z-50 mt-2 w-52 origin-top-right rounded-lg border border-line bg-white shadow-lg transition-all duration-150 ease-out ${
                     open

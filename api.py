@@ -284,6 +284,17 @@ app.include_router(demographics_router)
  
 from site_presentations.api import router as site_presentations_router
 app.include_router(site_presentations_router)
+
+from site_presentations.HB.hb_review_api import router as hb_review_router
+app.include_router(hb_review_router)
+ 
+from digest_api import router as digest_router
+app.include_router(digest_router)
+try:
+    from projections_api import make_router as _projections_router
+    app.include_router(_projections_router(require_auth, get_profile, require_full_access))
+except Exception as e:  # a problem here must never stop the rest of the API
+    print(f"[projections] disabled: {e}")
  
 try:
     # digest_api.py (the daily digest) isn't pushed to this repo yet -- it's

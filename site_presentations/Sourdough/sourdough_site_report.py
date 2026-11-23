@@ -217,7 +217,7 @@ def generate_site_report(address, used_names=None, manual_lat=None, manual_lon=N
  
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print('usage: python st_site_report.py "<address>" [manual_lat manual_lon]')
+        print('usage: python sourdough_site_report.py "<address>" [manual_lat manual_lon]')
         sys.exit(1)
     address = sys.argv[1]
     manual_lat = float(sys.argv[2]) if len(sys.argv) > 2 else None

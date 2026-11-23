@@ -88,8 +88,14 @@ def mark_stale_inactive(sb,plaza_id:str, touched: set) -> int:
           .execute()
     ).data or []
     stale_ids = [r["id"] for r in rows if r["id"] not in touched]
+    now = datetime.now(timezone.utc).isoformat()
     for sid in stale_ids:
-        sb.table("listings").update({"active": False}).eq("id", sid).execute()
+        try:
+            # deactivated_at powers the "Leased / removed" section of the digest page.
+            sb.table("listings").update({"active": False, "deactivated_at": now}).eq("id", sid).execute()
+        except Exception:
+            # Column not added yet (see migrations/) -- fall back to the old behaviour.
+            sb.table("listings").update({"active": False}).eq("id", sid).execute()
     return len(stale_ids)
 
 def send_summary_email(new_listings: list[dict]) -> None:
@@ -112,8 +118,12 @@ def send_summary_email(new_listings: list[dict]) -> None:
     for l in new_listings:
         by_city[l["plaza_city"] or "Unknown city"].append(l)
 
+    digest_url = os.getenv("DIGEST_URL") or os.getenv("FRONTEND_URL")
     lines_html = [f"<h2>{len(new_listings)} new retail listing(s) found today</h2>"]
     lines_text = [f"{len(new_listings)} new retail listing(s) found today\n"]
+    if digest_url:
+        lines_html.append(f'<p><a href="{digest_url}">Open today\'s digest</a></p>')
+        lines_text.append(f"Open today's digest: {digest_url}\n")
 
     for city in sorted(by_city):
         lines_html.append(f"<h3>{city}</h3><ul>")
@@ -140,6 +150,17 @@ def send_summary_email(new_listings: list[dict]) -> None:
     msg["To"] = email_to
     msg.attach(MIMEText(text, "plain"))
     msg.attach(MIMEText(html, "html"))
+
+    # This send step was missing, so the summary email was built but never went out.
+    recipients = [a.strip() for a in email_to.split(",") if a.strip()]
+    try:
+        with smtplib.SMTP(host, port, timeout=30) as server:
+            server.starttls()
+            server.login(user, password)
+            server.sendmail(email_from, recipients, msg.as_string())
+        print(f"  [email] Sent summary to {', '.join(recipients)}")
+    except Exception as e:
+        print(f"  [email] Send failed: {e}")
 
 
 

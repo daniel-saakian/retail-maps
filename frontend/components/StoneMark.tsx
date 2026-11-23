@@ -1,15 +1,30 @@
-export default function StoneMark({ size=32 }: { size?: number }) {
-    return (
+import { logo_aspect, tile } from "@/lib/logoTile";
+
+export default function StoneMark({ size = 32 }: {size?: number}) {
+    const imgW = size / tile.w;
+    const imgH = imgW / logo_aspect;
+    return(
         <div
-            className="flex shrink-0 items-center justify-center rounded-md font-display font-bold text-white shadow-sm"
-            style={{
-                width:size,
-                height:size,
-                fontSize:size * 0.8,
-                background: "linear-gradient(135deg, #2AA7DE 0%, #1B355E 100%)"
-            }}
+            data-nav-mark
+            className="relative shrink-0 overflow-hidden"
+            style={{ width: size, height: size }}
+            aria-label="Stone Commercial"
+            role="img"
         >
-            S
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+                src="/logo.png"
+                alt=""
+                draggable={false}
+                style={{
+                    position:"absolute",
+                    maxWidth: "none",
+                    width: imgW,
+                    height: imgH,
+                    left: -tile.left * imgW,
+                    top: -tile.top * imgH
+                }}
+            />
         </div>
     );
 }

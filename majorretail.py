@@ -369,6 +369,15 @@ is_in({lat}, {lng});
 out tags;
 """.strip()
  
+_last_good_mirror = [None]
+# A mirror that fails (all its retries) twice in a row is skipped for 10 minutes
+# so a dead one doesn't cost a full timeout on every single request.
+_mirror_fails: dict = {}
+_mirror_dead_until: dict = {}
+_mirror_ever_ok: set = set()   # a mirror that has answered at least once is never benched
+mirror_dead_seconds = 600
+ 
+ 
 def run_overpass(query: str, retries: int = 2) -> list:
     last_error = None
     # Client-side timeout must stay ahead of the query's own [timeout:N] --
@@ -379,7 +388,14 @@ def run_overpass(query: str, retries: int = 2) -> list:
     server_timeout = int(query_timeout_match.group(1)) if query_timeout_match else 25
     http_timeout = server_timeout + 10
  
-    for mirror in overpass_mirrors:
+    ordered = sorted(overpass_mirrors, key=lambda m_: m_ != _last_good_mirror[0])  # last-good first (stable)
+    live = [m_ for m_ in ordered if _mirror_dead_until.get(m_, 0) <= time.time()]
+    if not live:
+        # Every mirror is marked dead: probe only the one due back soonest, once,
+        # instead of paying a full timeout on all of them again.
+        live = [min(ordered, key=lambda m_: _mirror_dead_until.get(m_, 0))]
+        retries = 1
+    for mirror in live:
         for attempt in range(retries):
             try:
                 resp = requests.post(mirror, data={"data": query}, headers=headers, timeout=http_timeout)
@@ -408,6 +424,10 @@ def run_overpass(query: str, retries: int = 2) -> list:
                     last_error = RuntimeError(f"HTTP 400 from {mirror}: {resp.text[:200]}")
                     break  # this mirror's interpreter rejects the query -- retrying it won't help, move on
                 resp.raise_for_status()
+                _last_good_mirror[0] = mirror
+                _mirror_fails[mirror] = 0
+                _mirror_ever_ok.add(mirror)
+                _mirror_dead_until.pop(mirror, None)
                 return resp.json().get("elements", [])
             except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
                 wait = 2 * (attempt + 1)
@@ -425,7 +445,134 @@ def run_overpass(query: str, retries: int = 2) -> list:
                 time.sleep(wait)
                 continue
         print(f"  [warn] {mirror} exhausted, moving to next mirror...")
+        _mirror_fails[mirror] = _mirror_fails.get(mirror, 0) + 1
+        if _mirror_fails[mirror] >= 2 and mirror not in _mirror_ever_ok:
+            _mirror_dead_until[mirror] = time.time() + mirror_dead_seconds
+            print(f"  [warn] {mirror} failed {_mirror_fails[mirror]} requests in a row - skipping it for {mirror_dead_seconds // 60} min")
     raise RuntimeError(f"All Overpass mirrors failed. Last error: {last_error}")
+ 
+ 
+# Public Overpass mirrors time out on one big `around:` query (a 60-100 km
+# search over a dense metro never finishes). Anything bigger than a tile is
+# split into a grid of tile-sized queries -- each one the same size as the
+# default 12 km search that is known to work -- and merged.
+overpass_tile_km = 12.0
+overpass_tile_timeout_s = 40
+# Failed tiles are retried after a pause, not split (a failure here means the
+# public mirrors are overloaded, and splitting only sends them more requests).
+overpass_retry_waits_s = (60, 120, 180)
+overpass_defer_after_consecutive_failures = 8
+overpass_retry_round_max_consecutive_failures = 3
+ 
+ 
+def _element_latlng(el: dict):
+    if "lat" in el and "lon" in el:
+        return el["lat"], el["lon"]
+    c = el.get("center") or {}
+    if "lat" in c and "lon" in c:
+        return c["lat"], c["lon"]
+    return None, None
+ 
+ 
+def _tile_centers(lat: float, lng: float, radius_km: float, tile_km: float) -> list[tuple[float, float]]:
+    # Square grid, spacing tile_km*sqrt(2): a circle of radius tile_km covers
+    # its whole grid cell (half-diagonal == tile_km), so there are no gaps.
+    spacing = tile_km * math.sqrt(2)
+    n = int(math.ceil((radius_km + tile_km) / spacing))
+    centers = []
+    for i in range(-n, n + 1):
+        for j in range(-n, n + 1):
+            dy, dx = i * spacing, j * spacing
+            if math.hypot(dx, dy) > radius_km + tile_km:
+                continue
+            clat = lat + dy / 111.0
+            clng = lng + dx / (111.0 * max(math.cos(math.radians(clat)), 0.1))
+            centers.append((math.hypot(dx, dy), clat, clng))
+    centers.sort()  # city core first
+    return [(c[1], c[2]) for c in centers]
+ 
+ 
+def run_overpass_tiled(build_query, lat: float, lng: float, radius_km: float,
+                       label: str = "stores", tile_km: float = overpass_tile_km,
+                       cancel_check=None) -> list:
+    """Like run_overpass(build_query(lat, lng, radius_km)), but large radii are
+    split into tile-sized queries, merged and de-duplicated.
+ 
+    A tile that fails is skipped and retried later (after a pause), once the
+    rest of the tiles are done -- the public Overpass mirrors recover on their
+    own, so coming back to a tile works better than hammering it."""
+    if radius_km <= tile_km * 1.25:
+        return run_overpass(build_query(lat, lng, radius_km))
+ 
+    centers = _tile_centers(lat, lng, radius_km, tile_km)
+    total = len(centers)
+    print(f"  [tiles] {radius_km:g} km is too big for one Overpass query - "
+          f"splitting the {label} search into {total} tiles of {tile_km:g} km")
+    seen: dict = {}
+ 
+    def _try(clat, clng):
+        q = re.sub(r"\[timeout:\d+\]", f"[timeout:{overpass_tile_timeout_s}]", build_query(clat, clng, tile_km))
+        try:
+            els = run_overpass(q)
+        except RuntimeError:
+            return False
+        for el in els:
+            elat, elng = _element_latlng(el)
+            if elat is not None and haversine_m(lat, lng, elat, elng) / 1000.0 > radius_km:
+                continue  # tile overshoots the requested circle
+            seen[(el.get("type"), el.get("id"))] = el
+        return True
+ 
+    deferred: list = []
+    consecutive = 0
+    for idx, (clat, clng) in enumerate(centers, 1):
+        if cancel_check and cancel_check():
+            return list(seen.values())
+        if consecutive >= overpass_defer_after_consecutive_failures:
+            deferred.append((clat, clng))      # Overpass is clearly down right now -- don't burn time on it
+            continue
+        if _try(clat, clng):
+            consecutive = 0
+        else:
+            consecutive += 1
+            deferred.append((clat, clng))
+            print(f"  [tiles] tile {idx}/{total} failed - will come back to it later")
+        if idx % 5 == 0 or idx == total:
+            print(f"  [tiles] {idx}/{total} done - {len(seen)} unique elements so far, {len(deferred)} waiting to retry")
+        time.sleep(1)
+ 
+    for rnd, wait in enumerate(overpass_retry_waits_s, 1):
+        if not deferred:
+            break
+        print(f"  [tiles] {len(deferred)} tile(s) still to fetch - waiting {wait}s, then retrying (round {rnd}/{len(overpass_retry_waits_s)})")
+        for _ in range(int(wait)):
+            if cancel_check and cancel_check():
+                return list(seen.values())
+            time.sleep(1)
+        still = []
+        consecutive = 0
+        for clat, clng in deferred:
+            if cancel_check and cancel_check():
+                return list(seen.values())
+            if consecutive >= overpass_retry_round_max_consecutive_failures:
+                still.append((clat, clng))
+                continue
+            if _try(clat, clng):
+                consecutive = 0
+            else:
+                consecutive += 1
+                still.append((clat, clng))
+            time.sleep(1)
+        deferred = still
+        print(f"  [tiles] round {rnd}: {len(deferred)} tile(s) still missing, {len(seen)} unique elements so far")
+ 
+    if deferred:
+        if not seen:
+            raise RuntimeError("Overpass never answered - try again later")
+        print(f"  [tiles] WARNING: {len(deferred)}/{total} tiles never loaded - those areas are missing from the results. "
+              f"Re-run later to fill them in (plazas already saved are skipped).")
+    return list(seen.values())
+ 
  
 def is_anchor(name:str) -> bool:
     if not name:
@@ -1874,7 +2021,7 @@ def run_city_search(city: str, search_km: float | None=None, radius_mi: float | 
         return _empty("Cancelled by user")
  
     print("  [2/6] Querying OpenStreetMap for stores (may take 10-20s)...")
-    store_elements = run_overpass(build_store_query(lat,lng,args.search_km))
+    store_elements = run_overpass_tiled(build_store_query, lat, lng, args.search_km, label="store", cancel_check=_cancelled)
     print(f"   -> {len(store_elements)} raw elements returned")
  
     # Give the mirror we just hit a moment before firing the next big query
@@ -1884,7 +2031,7 @@ def run_city_search(city: str, search_km: float | None=None, radius_mi: float | 
  
     print("  [3/6] querying for mall/retail area names...")
     try:
-        mall_elements = run_overpass(build_mall_query(lat, lng, args.search_km))
+        mall_elements = run_overpass_tiled(build_mall_query, lat, lng, args.search_km, label="mall", tile_km=25.0, cancel_check=_cancelled)  # malls are sparse, so bigger tiles = far fewer requests
         print(f"   -> {len(mall_elements)} mall/retail areas found")
     except RuntimeError as e:
         print(f"  [warn] Mall name lookup failed ({e}). Centers will show as 'Unnamed'.")

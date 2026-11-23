@@ -4,6 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { SitePresentationBrand, api } from "@/lib/api";
 import type { LuckysheetEditorHandle } from "@/components/LuckysheetEditor";
+import HBSiteReview, { type HBSiteReviewHandle } from "@/components/HBSiteReview";
+
+// Brands that also get the "Site Review Form" tab.
+const REVIEW_FORM_BRANDS = new Set(["HB"]);
  
 const LuckysheetEditor = dynamic(() => import("@/components/LuckysheetEditor"), {
     ssr: false,
@@ -23,6 +27,11 @@ export default function SitePresentationsPage() {
     const [brandsError, setBrandsError] = useState<string | null>(null);
     const [brand, setBrand] = useState("");
     const [address, setAddress] = useState("");
+    const [view, setView] = useState<"presentation" | "review">("presentation");
+    const [reviewBusy, setReviewBusy] = useState(false);
+    const reviewRef = useRef<HBSiteReviewHandle>(null);
+    const hasReviewForm = REVIEW_FORM_BRANDS.has(brand);
+    const inReview = hasReviewForm && view === "review";
 
 
 
@@ -118,6 +127,12 @@ export default function SitePresentationsPage() {
             coords = {lat, lon};
         }
 
+        if (inReview) {
+            setError(null);
+            await reviewRef.current?.prefill(address.trim(), coords);
+            return;
+        }
+
         const controller = new AbortController();
         abortRef.current = controller;
         setGenerating(true);
@@ -158,7 +173,8 @@ export default function SitePresentationsPage() {
     }
  
     function handleCancel() {
-        abortRef.current?.abort();
+        if (inReview) reviewRef.current?.cancel();
+        else abortRef.current?.abort();
     }
  
     async function handleDownload() {
@@ -191,6 +207,29 @@ export default function SitePresentationsPage() {
                 </p>
             </header>
  
+            {hasReviewForm && (
+                <div className="mb-3 inline-flex rounded-lg border border-line bg-white p-1 shadow-sm">
+                    {(
+                        [
+                            ["presentation", "Site Presentation"],
+                            ["review", "Site Review Form"],
+                        ] as const
+                    ).map(([key, label]) => (
+                        <button
+                            key={key}
+                            type="button"
+                            onClick={() => setView(key)}
+                            disabled={generating || reviewBusy}
+                            className={`rounded-md px-4 py-2 text-sm font-semibold transition disabled:opacity-50 ${
+                                view === key ? "bg-ink text-white" : "text-charcoal hover:bg-paper"
+                            }`}
+                        >
+                            {label}
+                        </button>
+                    ))}
+                </div>
+            )}
+
             <form onSubmit={handleGenerate} className="rounded-xl border border-line bg-white p-5 shadow-sm">
                 <div className="grid gap-4 sm:grid-cols-[220px_1fr]">
                     <label className="text-sm">
@@ -267,12 +306,18 @@ export default function SitePresentationsPage() {
                 <div className="mt-5 flex items-center gap-3">
                     <button
                         type="submit"
-                        disabled={generating || !brand || !address.trim()}
+                        disabled={generating || reviewBusy || !brand || !address.trim()}
                         className="rounded-lg bg-ink px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-ink-2 disabled:opacity-40"
                     >
-                        {generating ? "Generating..." : "Generate"}
+                        {inReview
+                            ? reviewBusy
+                                ? "Working..."
+                                : "Prefill Form"
+                            : generating
+                              ? "Generating..."
+                              : "Generate"}
                     </button>
-                    {generating && (
+                    {(generating || (inReview && reviewBusy)) && (
                         <button
                             type="button"
                             onClick={handleCancel}
@@ -340,7 +385,13 @@ export default function SitePresentationsPage() {
                 )}
             </form>
  
-            {previewFile && (
+            {hasReviewForm && (
+                <div className={inReview ? "" : "hidden"}>
+                    <HBSiteReview ref={reviewRef} onBusyChange={setReviewBusy} />
+                </div>
+            )}
+
+            {previewFile && !inReview && (
                 <section
                     className={
                         isFullscreen
