@@ -1,5 +1,6 @@
 flask
 flask-cors
+fastapi
 requests
 tabulate
 PyGithub
@@ -15,3 +16,4 @@ uvicorn[standard]
 pydantic
 geopy
 scikit-learn
+python-docx>=1.1
