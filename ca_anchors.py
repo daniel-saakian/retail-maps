@@ -64,7 +64,7 @@ anchors_by_state = {
     "ID": [
         ("Boise", 43.6150, -116.2023, 35),
         ("Idaho Falls", 43.4666, -112.0362, 40),
-        ("Coeur d'Alene", 47.6777, -116.7805),
+        ("Coeur d'Alene", 47.6777, -116.7805, 40),
     ],
     "MT": [
         ("Billings", 45.7833, -108.5007, 45),
@@ -259,10 +259,10 @@ anchors_by_state = {
         ("Washington DC", 38.9072, -77.0369, 20),
     ],
     "PA": [
-        ("Philadelphia", 39.9526, -75.1652, 30),
-        ("Pittsburgh", 40.4406, -79.9959, 30),
+        ("Philadelphia", 39.9526, -75.1652, 53),
+        ("Pittsburgh", 40.4406, -79.9959, 40),
         ("Harrisburg", 40.2732, -76.8867, 35),
-        ("Allentown", 40.6084, -75.4902, 30)
+        ("Allentown", 40.6084, -75.4902, 53)
     ],
     "NJ": [
         ("Newark / North Jersey", 40.7357, -74.1724, 25),
